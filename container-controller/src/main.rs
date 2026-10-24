@@ -21,6 +21,7 @@ struct Settings {
     #[serde(default="poll_ms")] poll_ms:u64,
     #[serde(default="heartbeat_port")] heartbeat_port:u16,
     #[serde(default)] metrics_every_seconds:u64,
+    #[serde(default)] telemetry:Option<sdwan_router_controller::telemetry_config::Settings>,
 }
 fn poll_ms()->u64 {1000}
 fn heartbeat_port()->u16 {45999}
@@ -44,6 +45,13 @@ fn resources()->serde_json::Value {
 
 fn service(settings:Settings)->Result<(),Box<dyn std::error::Error>> {
     if !(500..=2000).contains(&settings.poll_ms) || settings.identity.is_empty() || settings.username.is_empty() {return Err(invalid("Invalid controller identity/poll interval (500..2000 ms)").into());}
+    #[cfg(feature="web")]
+    let web=settings.telemetry.clone().and_then(|cfg|{
+        let observer=sdwan_router_controller::web::Observer{endpoint:settings.endpoint,identity:settings.identity.clone(),username:settings.username.clone(),password_file:settings.password_file.clone()};
+        match sdwan_router_controller::web::Runtime::start(cfg,observer){Ok(runtime)=>runtime,Err(_)=>{eprintln!("Optional web telemetry unavailable; routing continues");None}}
+    });
+    #[cfg(not(feature="web"))]
+    if settings.telemetry.as_ref().is_some_and(|cfg|cfg.enabled){eprintln!("Web feature is absent from this image; routing continues");}
     let instance=nonce()?;
     let heartbeat=SocketAddr::new(settings.endpoint.ip(),settings.heartbeat_port);
     let socket=UdpSocket::bind(if heartbeat.is_ipv4(){"0.0.0.0:0"}else{"[::]:0"})?;
@@ -70,6 +78,8 @@ fn service(settings:Settings)->Result<(),Box<dyn std::error::Error>> {
             let client=api.as_mut().ok_or_else(||invalid("API session unavailable"))?;
             let raw=client.environment("sdwanStatusJSON")?.ok_or_else(||invalid("Controller metrics not initialized"))?;
             let metrics:Metrics=serde_json::from_str(&raw)?;
+            #[cfg(feature="web")]
+            if let Some(web)=&web{web.observe(raw);}
             if let Some((uptime,since))=&last_observed {
                 if *uptime==metrics.uptime_seconds && since.elapsed()>Duration::from_secs(10) {return Err(invalid("Router controller telemetry stalled").into());}
             }
@@ -127,7 +137,7 @@ fn main() {
     let args:Vec<String>=std::env::args().collect();
     let result=(||->Result<(),Box<dyn std::error::Error>> {
         match args.get(1).map(String::as_str) {
-            Some("--version")=>println!("sdwan-router-controller {}",env!("CARGO_PKG_VERSION")),
+            Some("--version")=>println!("sdwan-router-controller {} web={}",env!("CARGO_PKG_VERSION"),cfg!(feature="web")),
             Some("plan") if args.len()==4=>{
                 let metrics:Metrics=serde_json::from_str(&read_limited(&args[2],1048576)?)?;
                 let config:Config=serde_json::from_str(&read_limited(&args[3],1048576)?)?;

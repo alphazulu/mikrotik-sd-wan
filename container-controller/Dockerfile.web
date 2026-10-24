@@ -1,0 +1,5 @@
+FROM scratch
+COPY --chmod=0555 sdwan-controller-web /sdwan-controller-web
+USER 65532:65532
+ENTRYPOINT ["/sdwan-controller-web"]
+CMD ["run", "/config/controller.json"]

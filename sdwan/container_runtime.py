@@ -4,6 +4,7 @@ import json
 import secrets
 import time
 from .container_config import BRIDGE,VETH,NAME,USER,HEARTBEAT_PORT,addresses,settings,validate_backend
+from . import container_telemetry as web
 
 PREFIX='sdwan-container:'
 POLICIES={'read','write','policy','test','sensitive','api'}
@@ -15,14 +16,15 @@ def paths(config):
     storage=settings(config)['storage']
     return {'storage':storage,'root':storage+'/root','config':storage+'/config',
             'secrets':storage+'/secrets','settings':storage+'/config/controller.json',
-            'password':storage+'/secrets/api-password'}
+            'password':storage+'/secrets/api-password','web_token':storage+'/secrets/web-token'}
 
 def read_container(router):
-    rows=router.call('container/print',{'.proplist':'.id,name,interface,stopped,running,default-user,default-entrypoint,user,entrypoint,privileged,cmd,root-dir,mountlists,comment,arch,image-id,file,memory-max,dns,start-on-boot'},'POST')
+    rows=router.call('container/print',{'.proplist':'.id,name,interface,stopped,running,default-user,default-entrypoint,user,entrypoint,privileged,cmd,root-dir,mountlists,comment,arch,image-id,file,memory-max,swap-max,logging,dns,start-on-boot'},'POST')
     return next((row for row in rows if row.get('name')==NAME),None)
 
 def prerequisites(router,config,expected):
     validate_backend(config)
+    web.validate_interfaces(router,config)
     if one(router.call('system/identity'))['name']!=expected:raise ValueError('Router identity differs from expected identity')
     resource=one(router.call('system/resource'))
     if resource['version'].split()[0]!='7.24.5':raise ValueError('Container backend is validated on RouterOS 7.24.5')
@@ -46,11 +48,16 @@ def check_ready(router,config,expected):
     _,network,host,guest=prerequisites(router,config,expected)
     row=read_container(router)
     if not row or row.get('comment')!=PREFIX+'controller':raise ValueError('Prepare the local SD-WAN container before applying this backend')
-    if row.get('interface')!=VETH or row.get('default-user')!='65532:65532' or row.get('default-entrypoint')!='/sdwan-controller':raise ValueError('Prepared container image/interface differs from expected SD-WAN runtime')
-    if row.get('privileged')=='true' or row.get('user','') not in ('','65532:65532') or row.get('entrypoint','') not in ('','/sdwan-controller'):raise ValueError('SD-WAN container must retain its unprivileged image user and entrypoint')
+    if row.get('interface')!=VETH or row.get('default-user')!='65532:65532' or row.get('default-entrypoint') not in ('/sdwan-controller','/sdwan-controller-web'):raise ValueError('Prepared container image/interface differs from expected SD-WAN runtime')
+    if row.get('privileged')=='true' or row.get('user','') not in ('','65532:65532') or row.get('entrypoint','') not in ('',row.get('default-entrypoint')):raise ValueError('SD-WAN container must retain its unprivileged image user and entrypoint')
     runtime=paths(config)
     if row.get('root-dir','').strip('/')!=runtime['root']:raise ValueError('Container storage changed; prepare it before applying')
     actual=json.loads(router.read_file(runtime['settings']))
+    web.check_ready(router,config,actual,row.get('default-entrypoint'),runtime['web_token'])
+    # RouterOS 7.24.5 interprets zero as unlimited. Keep the smallest positive
+    # per-container limit as a defence; web prerequisites also require no swap
+    # devices, since kernel page rounding is platform dependent.
+    if web.process_settings(config) and (row.get('swap-max')!='1' or row.get('logging')!='false'):raise ValueError('Web statistics require swap-max=1 and logging=no to avoid persistent writes')
     if actual.get('identity')!=expected or actual.get('username')!=USER or actual.get('endpoint','').split(':')[0]!=host or actual.get('mode')!='active' or actual.get('poll_ms')!=settings(config)['poll_ms']:raise ValueError('Prepared controller settings differ from selected backend')
     if row.get('file')!=settings(config)['image_file'] or int(row.get('memory-max',0))!=settings(config)['memory_max_bytes']:raise ValueError('Prepared container archive/memory limit differs; prepare it before applying')
     if row.get('dns')!=host:raise ValueError('Prepared container requires an explicit local DNS setting even though its API uses numeric IP')
@@ -80,6 +87,7 @@ def prepare(router,config,expected,*,timeout=120):
     if current and (current.get('comment')!=PREFIX+'controller' or current.get('root-dir','').strip('/')!=runtime['root']):raise ValueError('Existing container name/storage is not managed by this configuration')
     if current and current.get('stopped')!='true':raise ValueError('Stop the SD-WAN container before preparing its files')
     if current and current.get('file')!=cfg['image_file']:raise ValueError('To change the image archive, reimport the stopped SD-WAN container first; settings preparation does not replace its filesystem')
+    if current and web.process_settings(config) and current.get('default-entrypoint')!='/sdwan-controller-web':raise ValueError('Telemetry requires reimporting the optional web scratch image first')
     files=router.call('file/print',{'.proplist':'.id,name,type,size'},'POST')
     image=next((f for f in files if f['name']==cfg['image_file']),None)
     if not current and (not image or not 0<int(image.get('size',0))<=8388608):raise ValueError('Upload the matching scratch image archive (up to 8 MiB) to container.image_file first')
@@ -127,12 +135,20 @@ def prepare(router,config,expected,*,timeout=120):
     process={'endpoint':host+':'+str(api.get('port','8728')),'identity':expected,'username':USER,
              'password_file':'/secrets/api-password','mode':'active','poll_ms':cfg['poll_ms'],
              'heartbeat_port':HEARTBEAT_PORT,'metrics_every_seconds':0}
+    telemetry=web.process_settings(config)
+    if telemetry:
+        try:token=router.read_file(runtime['web_token'])
+        except ValueError:token=''
+        if not web.valid_token(token) or token==password:token=secrets.token_hex(32)
+        router.upload(runtime['web_token'],token)
+        process['telemetry']=telemetry
     router.upload(runtime['settings'],json.dumps(process,separators=(',',':')))
     for src,dst in ((runtime['config'],'/config'),(runtime['secrets'],'/secrets')):
         ensure('container/mounts','dst',dst,{'list':'sdwan-controller','src':src,'mode':'ro'},where=lambda row:row.get('list')=='sdwan-controller')
     # Insert managed input/forward rules before existing rules, without moving
     # any existing rule. Exact veth/source constraints do not open WAN services.
-    rule_specs=[
+    web.provision_sources(router,config)
+    rule_specs=[('ip/firewall/filter',tag,fields) for tag,fields in web.rule_specs(config)]+[
         ('ip/firewall/mangle','heartbeat',dict(chain='prerouting',action='add-src-to-address-list',passthrough='yes',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'udp','dst-port':str(HEARTBEAT_PORT),'address-list':'sdwan-container-live','address-list-timeout':'6s'})),
         ('ip/firewall/filter','api',dict(chain='input',action='accept',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'tcp','dst-port':str(api.get('port','8728'))})),
         ('ip/firewall/filter','heartbeat-drop',dict(chain='input',action='drop',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'udp','dst-port':str(HEARTBEAT_PORT)})),
@@ -143,7 +159,7 @@ def prepare(router,config,expected,*,timeout=120):
     for menu in ('ip/firewall/mangle','ip/firewall/filter'):
         owned={PREFIX+tag for kind,tag,_ in rule_specs if kind==menu}
         for row in router.call(menu):
-            if row.get('comment') in owned:router.call(menu+'/'+row['.id'],method='DELETE')
+            if row.get('comment') in owned or (menu=='ip/firewall/filter' and row.get('comment','').startswith(web.PREFIX)):router.call(menu+'/'+row['.id'],method='DELETE')
         remaining=router.call(menu);before=remaining[0]['.id'] if remaining else None
         for kind,tag,fields in rule_specs:
             if kind!=menu:continue
@@ -155,7 +171,7 @@ def prepare(router,config,expected,*,timeout=120):
         router.call('container',{'file':cfg['image_file'],'interface':VETH,'root-dir':runtime['root'],
                     'name':NAME,'comment':PREFIX+'controller','cmd':'run /config/controller.json',
                     'mountlists':'sdwan-controller','memory-max':str(cfg['memory_max_bytes']),
-                    'shm-size':'0','logging':'no','start-on-boot':'no','privileged':'no','dns':host},'PUT')
+                    'shm-size':'0','swap-max':'1','logging':'no','start-on-boot':'no','privileged':'no','dns':host},'PUT')
     end=time.monotonic()+timeout
     while time.monotonic()<end:
         current=read_container(router)
@@ -164,7 +180,7 @@ def prepare(router,config,expected,*,timeout=120):
     else:raise RuntimeError('Container extraction timed out; inspect RouterOS container log')
     expected_arch='amd64' if resource['architecture-name'] in ('x86','x86_64') else resource['architecture-name']
     if current.get('arch')!=expected_arch:raise ValueError('Uploaded image architecture differs from this router')
-    router.call('container/'+current['.id'],{'cmd':'run /config/controller.json','memory-max':str(cfg['memory_max_bytes']),'shm-size':'0','mountlists':'sdwan-controller','start-on-boot':'no','dns':host},'PATCH')
+    router.call('container/'+current['.id'],{'cmd':'run /config/controller.json','memory-max':str(cfg['memory_max_bytes']),'shm-size':'0','swap-max':'1','logging':'no','mountlists':'sdwan-controller','start-on-boot':'no','dns':host},'PATCH')
     check_ready(router,config,expected)
     return {'prepared':True,'container':NAME,'started':False,'sdwan_policies_modified':False,
             'dedicated_api_user':USER,'api_policies':sorted(POLICIES),'storage':runtime['storage']}

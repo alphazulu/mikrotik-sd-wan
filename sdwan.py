@@ -190,7 +190,7 @@ def main():
     maintenance.add_argument('--execute',action='store_true')
     b=sub.add_parser('bundle');b.add_argument('--output',default=str(ROOT/'build'))
     a=p.parse_args();c=load(a.config) if a.command in ('validate','bundle','plan','apply','container-prepare') else None
-    if a.command=='validate':print(f'Valid: {len(c["wans"])} WANs, {len(c["sla_profiles"])} SLA profiles, {len(c["policies"])} policies. Controller: native RouterOS.');return
+    if a.command=='validate':print(f'Valid: {len(c["wans"])} WANs, {len(c["sla_profiles"])} SLA profiles, {len(c["policies"])} policies. Controller: '+('local Rust container + RouterOS fallback' if c.get('controller_backend')=='container' else 'native RouterOS')+'.');return
     if a.command=='bundle':print(bundle(c,a.output));return
     router=Router(ROOT,a.url,a.credentials,a.ca)
     if a.command=='prune-backups':

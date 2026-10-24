@@ -22,7 +22,9 @@ python3 container-controller/build.py
 python3 container-controller/build.py --architectures amd64
 ```
 
-Все три сборки формируют `dist/container/build-report.json`, tar, gzip и готовые Docker contexts. Скрипт проверяет ELF machine и отсутствие `PT_INTERP`/`PT_DYNAMIC`. Образ содержит один статический бинарник с mode0555 и UID65532:65532; настроек, пароля, shell, toolchain и shared libraries в нём нет.
+По умолчанию собираются два профиля (`base` и `web`) × три архитектуры.
+`--profiles base` оставляет только минимальный контроллер; `--profiles web` —
+только вариант со встроенным HTTP. Полный набор из шести сборок формирует `dist/container/build-report.json`, tar, gzip и готовые Docker contexts. Скрипт проверяет ELF machine и отсутствие `PT_INTERP`/`PT_DYNAMIC`. Образ содержит один статический бинарник с mode0555 и UID65532:65532; настроек, пароля, shell, toolchain и shared libraries в нём нет.
 
 ## Docker и проверка артефактов
 
@@ -32,7 +34,7 @@ Docker daemon не требуется для основной сборки. Пр
 docker build --platform linux/arm64 -t sdwan-controller:arm64 dist/container/arm64
 ```
 
-После сборки всех трёх архитектур:
+После сборки обоих профилей для всех трёх архитектур:
 
 ```sh
 mkdir -p runtime
@@ -46,5 +48,10 @@ python3 tests/container_artifact_acceptance.py
 ```sh
 RUSTUP_HOME="$PWD/runtime/toolchains/rustup" CARGO_HOME="$PWD/runtime/toolchains/cargo" CARGO_TARGET_DIR="$PWD/runtime/container-build" RUSTC="$PWD/runtime/toolchains/cargo/bin/rustc" runtime/toolchains/cargo/bin/cargo test --locked --manifest-path container-controller/Cargo.toml
 ```
+
+Для web-профиля запустите те же Rust-тесты с `--features web`. Windows CI также
+проверяет `tests/gui_telemetry_smoke.py`. Контекст `dist/container/web-arm64`
+содержит отдельный `/sdwan-controller-web`; shell и assets-файлов в слое нет,
+HTML/CSS/JS встроены в бинарник. `build-report.json` фиксирует profile/version.
 
 Установка контейнера, устройство API и ограничения: [CONTAINER.md](CONTAINER.md).
