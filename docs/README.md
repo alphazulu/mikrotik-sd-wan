@@ -30,6 +30,7 @@
 
 ## Проверки
 
+- [API/архивы/CI](RESOURCE-VALIDATION.md) — текущие183unit,17targetedCHR и28baseline.
 - [Лаборатория CHR](LAB.md) и [порядок тестирования](TESTING.md).
 - [Итоговая контейнерная приёмка](CONTAINER-VALIDATION.md) — текущие 155 Python / 9 Rust / 120 CHR.
 - [Нативные SLA-сценарии](NATIVE-VALIDATION.md).

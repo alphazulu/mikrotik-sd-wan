@@ -13,7 +13,7 @@ python3 sdwan.py --config config/examples/container.json validate
 python3 tools/audit_public_tree.py
 ```
 
-Текущий unit-набор содержит179 проверок и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
+Текущий unit-набор содержит183 проверки и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
 
 ## Исходная пятиузловая лаборатория
 

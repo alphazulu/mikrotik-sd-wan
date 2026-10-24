@@ -159,7 +159,7 @@ def apply(router,c,expected,*,timeout=120):
     if 'maintenance' in c:
         from sdwan.maintenance import prune_backups
         try:print(json.dumps({'archive_cleanup':prune_backups(router,expected,c['maintenance']['backup_keep'],execute=True)},ensure_ascii=False))
-        except (RuntimeError,ValueError,OSError) as error:
+        except Exception as error:
             # Installation is already committed. A maintenance failure must not
             # claim that routing failed or trigger a second deployment/rollback.
             print(json.dumps({'archive_cleanup_skipped':str(error),'deployment_committed':True},ensure_ascii=False))

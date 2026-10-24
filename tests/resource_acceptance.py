@@ -101,6 +101,15 @@ def main():
         states[tokens[1]]['phase'] = 'committed'
         write('sdwan-txn-' + tokens[1] + '.json', json.dumps(states[tokens[1]]))
 
+        write('sdwan-txn-' + tokens[1] + '.json', '[]')
+        changes.clear()
+        try: prune_backups(provider, 'sdwan-isp1', 2, execute=True)
+        except ValueError as error: assert 'blocked' in str(error)
+        else: raise AssertionError('Invalid journal schema did not block deletion')
+        assert not changes
+        passed('unstructured journal blocks execute without deletion')
+        write('sdwan-txn-' + tokens[1] + '.json', json.dumps(states[tokens[1]]))
+
         states[tokens[0]]['previous'] = {'previous-file': 'sdwan-prev-' + tokens[1] + '-0'}
         write('sdwan-txn-' + tokens[0] + '.json', json.dumps(states[tokens[0]]))
         assert not prune_backups(provider, 'sdwan-isp1', 2)['delete']

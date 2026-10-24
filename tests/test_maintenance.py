@@ -1,9 +1,12 @@
 import copy
+import contextlib
+import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from sdwan.maintenance import backup_plan, prune_backups, require_backup_space
 from sdwan.config import load, validate
 
@@ -72,6 +75,23 @@ class MaintenanceTests(unittest.TestCase):
         self.r.states['b' * 24]['identity'] = 'other'
         self.assertTrue(backup_plan(self.r, 'edge', 1)['blocked'])
 
+    def test_unstructured_or_invalid_journals_are_rejected(self):
+        base = copy.deepcopy(self.r.states['b' * 24])
+        for invalid in ([], dict(base, previous=[]), dict(base, phase={}), dict(base, backup_ready='true')):
+            self.r.states['b' * 24] = invalid
+            self.assertTrue(backup_plan(self.r, 'edge', 1)['blocked'])
+        self.assertEqual(self.r.removed, [])
+
+    def test_invalid_current_journal_blocks_cleanup(self):
+        for value in ({}, []):
+            self.r.current = value
+            self.assertTrue(backup_plan(self.r, 'edge', 1)['blocked'])
+        self.assertEqual(self.r.removed, [])
+
+    def test_tied_retention_boundary_keeps_all_recovery_points(self):
+        for row in self.r.rows: row['last-modified'] = '2026-10-01 10:00:00'
+        self.assertEqual(backup_plan(self.r, 'edge', 1)['delete'], [])
+
     def test_unknown_date_is_preserved(self):
         for row in self.r.rows:
             if row['name'] == 'sdwan-txn-' + 'b' * 24 + '.json':row.pop('last-modified')
@@ -130,3 +150,19 @@ class MaintenanceConfigTests(unittest.TestCase):
         cfg = load(Path(__file__).resolve().parents[1] / 'config/sdwan.json')
         cfg['maintenance'] = {'backup_keep': 3, 'delete_anything': True}
         with self.assertRaises(ValueError): validate(cfg)
+
+    def test_unexpected_cleanup_error_does_not_fail_committed_installation(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location('maintenance_cli', root/'sdwan.py')
+        cli = importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+        cfg = load(root/'config/sdwan.json'); cfg['maintenance'] = {'backup_keep': 3}
+        router = Mock(); router.read_file.return_value = '{}'; router.call.return_value = []; router.status.return_value = {}
+        with tempfile.TemporaryDirectory() as directory, patch.object(cli, 'ROOT', Path(directory)), \
+                patch.object(cli, 'preflight', return_value=[]), patch.object(cli, 'bundle'), \
+                patch('sdwan.deployment.start', return_value='fixture'), \
+                patch('sdwan.deployment.wait', return_value={'phase': 'committed'}), \
+                patch('sdwan.maintenance.prune_backups', side_effect=AttributeError('maintenance unavailable')), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            cli.apply(router, cfg, 'edge')
+        self.assertIn('"deployment_committed": true', output.getvalue())
+        self.assertIn('"installed": true', output.getvalue())

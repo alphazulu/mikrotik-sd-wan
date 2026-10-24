@@ -28,6 +28,15 @@ def _date(value):
         return None
 
 
+def _valid_state(state, expected):
+    return (isinstance(state, dict) and isinstance(state.get('token'), str)
+            and re.fullmatch(TOKEN, state['token']) is not None
+            and state.get('identity') == expected and isinstance(state.get('phase'), str)
+            and type(state.get('backup_ready')) is bool
+            and isinstance(state.get('previous'), dict)
+            and all(isinstance(value, str) for value in state['previous'].values()))
+
+
 def require_backup_space(router, package, reserve=1048576):
     """Check internal backup storage before uploading or mutating any file.
 
@@ -62,7 +71,7 @@ def backup_plan(router, expected, keep=3):
             if len(text) > 1048576:
                 raise ValueError('oversized journal')
             state = json.loads(text)
-            if state.get('token') != token or state.get('identity') != expected:
+            if not _valid_state(state, expected) or state['token'] != token:
                 raise ValueError('unverified journal identity/token')
             if token in states and states[token] != state:
                 raise ValueError('divergent flash/root journals')
@@ -74,6 +83,9 @@ def backup_plan(router, expected, keep=3):
         except (ValueError, KeyError, TypeError):
             blocked.append('Unreadable or unverified transaction journal: ' + row['name'])
     current = read_state(router)
+    if current is not None and not _valid_state(current, expected):
+        blocked.append('Current journal has an invalid recovery schema')
+        current = None
     if current and current.get('phase') not in TERMINAL:
         blocked.append('Current deployment is not safely completed')
     if current and current.get('token') not in states:
@@ -129,6 +141,8 @@ def prune_backups(router, expected, keep=3, *, execute=False):
     removed_bytes = 0
     for row in plan['delete']:
         current = read_state(router)
+        if current is not None and not _valid_state(current, expected):
+            raise RuntimeError('Deployment changed during cleanup; invalid current journal')
         if (current.get('token') if current else None) != plan['current_token'] or (current and current.get('phase') not in TERMINAL):
             raise RuntimeError('Deployment changed during cleanup; remaining files were not removed')
         actual = router.file_records([row['name']])
