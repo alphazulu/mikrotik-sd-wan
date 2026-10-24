@@ -7,6 +7,7 @@
 - [Конфигурация JSON](CONFIGURATION.md) — структура, SLA, WAN, политики и примеры.
 - [Нативный контроллер](NATIVE-CONTROLLER.md) — файлы, команды и работа RouterOS.
 - [Защищённая установка](DEPLOYMENT.md) — scheduler, backup, ACK и восстановление.
+- [API и архивы установки](MAINTENANCE.md) — точечный поиск, минимум записей, место и retention.
 - [Диагностика](DIAGNOSTICS.md) — состояние, история и объяснение выбора канала.
 
 ## Маршрутизация и WAN
@@ -24,6 +25,7 @@
 - [Подготовка и запуск](CONTAINER.md) — пакет, veth, API, GUI/CLI и heartbeat.
 - [Сборка](BUILD.md) — закреплённый Rust SDK, musl, три архитектуры и scratch.
 - [Завершённый план backend](CONTAINER-PLAN.md).
+- [Проект RAM-статистики и web](STATISTICS-DESIGN.md) — опциональный режим, бюджет и ограничения; сервер ещё не реализован.
 - [Приёмка и расход ресурсов](CONTAINER-VALIDATION.md).
 
 ## Проверки

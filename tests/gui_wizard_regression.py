@@ -75,6 +75,12 @@ def main():
             assert not errors,errors
             cfg=app.collect();assert cfg['wans'][0]['gateway']=='192.0.2.1'
             assert cfg['wans'][0]['probes'][0]['name']=='example.com'
+            assert 'maintenance' not in cfg
+            app.auto_prune.set(True);app.backup_keep.set('3')
+            assert app.collect()['maintenance']=={'backup_keep':3}
+            checks.append({'check':'archive retention is explicitly enabled and collected','pass':True})
+            app.auto_prune.set(False);assert 'maintenance' not in app.collect()
+            checks.append({'check':'disabling retention preserves legacy no-cleanup configuration','pass':True})
             assert app.steps.select()==str(app.review)
             checks.append({'check':'Create succeeds with recursive gateway discovery and domain-like probe names','pass':True})
             save_screenshot('wizard-create-regression.png')

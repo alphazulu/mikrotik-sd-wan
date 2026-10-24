@@ -129,6 +129,12 @@ def preflight(router,c,expected):
     if settings.get('rp-filter')=='strict':actions.append({'action':'set rp-filter to loose for multiple WANs; save original for rollback','menu':'ip/settings'})
     actions.append({'action':'order SD-WAN mangle jumps first and local routing rules before WAN source pins; clear only affected managed conntrack marks on policy/WAN transitions'})
     actions.append({'action':'save encrypted full backup and previous files; apply in local scheduler; require fresh API confirmation within 120 seconds; native watchdog restores backup and reboots on failure or timeout'})
+    if 'maintenance' in c:
+        from sdwan.maintenance import backup_plan
+        plan=backup_plan(router,expected,c['maintenance']['backup_keep'])
+        actions.append({'action':'opt-in archive cleanup once after committed installation','keep':plan['keep'],
+                        'currently_eligible_files':len(plan['delete']),'currently_reclaimable_bytes':plan['reclaim_bytes'],
+                        'blocked':plan['blocked'],'reasons':plan['reasons'],'protect_current_and_dependencies':True})
     return actions
 
 
@@ -150,6 +156,13 @@ def apply(router,c,expected,*,timeout=120):
     if previous_backend=='container' and c.get('controller_backend')!='container':
         from sdwan.container_runtime import deactivate
         deactivate(router)
+    if 'maintenance' in c:
+        from sdwan.maintenance import prune_backups
+        try:print(json.dumps({'archive_cleanup':prune_backups(router,expected,c['maintenance']['backup_keep'],execute=True)},ensure_ascii=False))
+        except (RuntimeError,ValueError,OSError) as error:
+            # Installation is already committed. A maintenance failure must not
+            # claim that routing failed or trigger a second deployment/rollback.
+            print(json.dumps({'archive_cleanup_skipped':str(error),'deployment_committed':True},ensure_ascii=False))
     print(json.dumps({'installed':True,'controller':'local Rust container + RouterOS fallback' if c.get('controller_backend')=='container' else 'native RouterOS','deployment':result,'snapshot':f'runtime/pre-native-{stamp}.json','objects':len(actions),'status':router.status()},ensure_ascii=False,indent=2))
 
 
@@ -172,12 +185,18 @@ def main():
     p.add_argument('--expect-identity',default='sdwan-edge')
     sub=p.add_subparsers(dest='command',required=True)
     for name in ('validate','plan','apply','container-prepare','status','events','enable','disable','rollback'):sub.add_parser(name)
+    maintenance=sub.add_parser('prune-backups',help='Preview old verified transaction archives; no deletion unless --execute')
+    maintenance.add_argument('--keep',type=int,default=3)
+    maintenance.add_argument('--execute',action='store_true')
     b=sub.add_parser('bundle');b.add_argument('--output',default=str(ROOT/'build'))
     a=p.parse_args();c=load(a.config) if a.command in ('validate','bundle','plan','apply','container-prepare') else None
     if a.command=='validate':print(f'Valid: {len(c["wans"])} WANs, {len(c["sla_profiles"])} SLA profiles, {len(c["policies"])} policies. Controller: native RouterOS.');return
     if a.command=='bundle':print(bundle(c,a.output));return
     router=Router(ROOT,a.url,a.credentials,a.ca)
-    if a.command=='plan':
+    if a.command=='prune-backups':
+        from sdwan.maintenance import prune_backups
+        print(json.dumps(prune_backups(router,a.expect_identity,a.keep,execute=a.execute),indent=2,ensure_ascii=False))
+    elif a.command=='plan':
         actions=preflight(router,c,a.expect_identity)
         print(json.dumps(actions,indent=2))
         old=''

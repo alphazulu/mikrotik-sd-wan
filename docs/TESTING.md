@@ -13,7 +13,7 @@ python3 sdwan.py --config config/examples/container.json validate
 python3 tools/audit_public_tree.py
 ```
 
-Unit-набор содержит155 проверок и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
+Текущий unit-набор содержит179 проверок и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
 
 ## Исходная пятиузловая лаборатория
 
@@ -53,3 +53,12 @@ Shadow/image bootstrap scripts отражают ранние прототипы 
 Текущая матрица:155 Python unit,9 Rust unit,50 контейнерных CHR checks,70 нативных regression checks и4 набора Windows GUI. Подробности и ограничения: [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md). Предыдущие этапы имеют отдельные отчёты; число проверок нельзя суммировать как уникальные сценарии.
 
 Сырые журналы, пароли, screenshots, архивы восстановления и экспорты устройств намеренно не опубликованы. После клонирования они отсутствуют и создаются только вашим локальным запуском.
+
+## CI
+
+`.github/workflows/ci.yml` запускает unit/schema/bundle/security проверки на Linux/Windows,
+офлайн GUI в Windows, Gitleaks и Rust unit. После них собираются три scratch-образа
+и сверяются архивы. Actions закреплены полными SHA, Gitleaks —версией и SHA256;
+обычные jobs имеют только contents:read. Публикация release включается только
+для явно отправленного тега v* после всех проверок; write-права есть лишь у release job.
+CHR fault suites в облаке не запускаются, доступ к рабочему MikroTik CI не требуется.
