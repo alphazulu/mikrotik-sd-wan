@@ -17,7 +17,9 @@ web-токен до явного включения `container.telemetry.enabled
    архитектуры: amd64 для CHR/x86_64, arm64 или armv5 для соответствующего MikroTik.
 2. На вкладке **«Веб и статистика»** включите модуль. Задайте период, размер
    истории, порт, разрешённые RFC1918 IPv4 сети и входные LAN/VLAN интерфейсы.
-   Сети должны входить в `local_networks`. WAN, его bridge и bridge-порты запрещены.
+   Сети должны входить в `local_networks`. WAN, его PPPoE/VLAN носители, bridge и bridge-порты запрещены.
+   Учитываются также include/exclude и явные members списка WAN, в
+   [порядке RouterOS](https://manual.mikrotik.com/docs/cli-reference/interface/list/).
 3. Остановите подготовленный контейнер перед изменением его файлов. Нажмите
    **«Подготовить контейнер»**, затем выполните защищённую установку SD-WAN.
    Подготовка проверяет web-entrypoint образа, RO mounts, права и API identity.

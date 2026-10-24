@@ -9,7 +9,8 @@ ROOT=Path(__file__).resolve().parents[1]
 class Router:
     def __init__(self,config):
         self.data={'interface/print':[{'name':s} for s in ('ether2','ether3','ether4','ether5','bridge-lan','vlan-office')],
-                   'interface/bridge/port/print':[],'interface/list/member/print':[],'disk/print':[],
+                   'interface/bridge/port/print':[],'interface/list/member/print':[],'interface/list/print':[],
+                   'interface/pppoe-client/print':[],'interface/vlan/print':[],'disk/print':[],
                    'ip/firewall/filter':[dict(fields,comment='sdwan-container:'+tag) for tag,fields in web.rule_specs(config)]+[{'comment':'sdwan-container:'+s,'chain':'forward','action':'drop'} for s in ('no-forward','no-forward-to-container')],
                    'ip/firewall/address-list':[{'list':web.CLIENTS,'address':s,'comment':web.PREFIX+'source'} for s in telemetry(config)['allowed_sources']]}
         for rows in self.data.values():
@@ -64,5 +65,18 @@ class TelemetryTests(unittest.TestCase):
         r=Router(self.cfg);r.data['disk/print']=[{'slot':'swap-file','swap':'true'}]
         with self.assertRaisesRegex(ValueError,'swap devices'):web.validate_interfaces(r,self.cfg)
         self.assertTrue(all(method in (None,'POST') for _,_,method in r.calls))
+    def test_pppoe_and_vlan_wan_carriers_are_not_lan(self):
+        self.cfg['wans'][0]['interface']='pppoe-isp'
+        r=Router(self.cfg);r.data['interface/pppoe-client/print']=[{'name':'pppoe-isp','interface':'vlan-provider'}]
+        r.data['interface/vlan/print']=[{'name':'vlan-provider','interface':'ether5'}]
+        with self.assertRaisesRegex(ValueError,'WAN/container'):web.validate_interfaces(r,self.cfg)
+        self.cfg['container']['telemetry']['allowed_interfaces']=['vlan-office'];web.validate_interfaces(r,self.cfg)
+    def test_wan_list_include_exclude_and_explicit_membership(self):
+        r=Router(self.cfg);r.data['interface/list/print']=[{'name':'WAN','include':'provider-ports','exclude':'internal'},{'name':'provider-ports'},{'name':'internal'}]
+        r.data['interface/list/member/print']=[{'list':'provider-ports','interface':'ether5'}]
+        with self.assertRaisesRegex(ValueError,'WAN/container'):web.validate_interfaces(r,self.cfg)
+        r.data['interface/list/member/print'].append({'list':'internal','interface':'ether5'});web.validate_interfaces(r,self.cfg)
+        r.data['interface/list/member/print'].append({'list':'WAN','interface':'ether5'})
+        with self.assertRaisesRegex(ValueError,'WAN/container'):web.validate_interfaces(r,self.cfg)
 
 if __name__=='__main__':unittest.main()

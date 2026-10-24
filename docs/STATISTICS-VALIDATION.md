@@ -5,7 +5,7 @@
 
 ## Код и артефакты
 
-- 191 Python unit-тест, включая настройки, ограничения private CIDR, запрет
+- 193 Python unit-тест, включая настройки, ограничения private CIDR, запрет
   WAN/bridge, swap, точность и порядок firewall scopes.
 - 12 Rust base-тестов, 27 Rust-тестов с feature `web`: выбор WAN, codec,
   ограниченный observer API transcript, очереди, кольца, epoch, secret redaction,

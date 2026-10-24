@@ -11,14 +11,32 @@ def validate_interfaces(router,config):
     if not cfg['enabled']:return
     if any(r.get('swap') in ('true',True) or r.get('swap-enabled') in ('true',True) for r in router.call('disk/print',{'.proplist':'slot,swap,swap-enabled'},'POST')):raise ValueError('RAM-only telemetry requires no enabled RouterOS swap devices; global disk settings are not changed')
     if any(r.get('list')==CLIENTS and (r.get('comment')!=PREFIX+'source' or r.get('dynamic')=='true') for r in router.call('ip/firewall/address-list')):raise ValueError('Reserved web source list contains unrelated entries')
-    names={r['name'] for r in router.call('interface/print',{'.proplist':'name'},'POST')}
+    interfaces=router.call('interface/print',{'.proplist':'name,dynamic'},'POST')
+    names={r['name'] for r in interfaces}
     forbidden={BRIDGE,VETH}|{w['interface'] for w in config['wans']}
     ports=router.call('interface/bridge/port/print',{'.proplist':'interface,bridge'},'POST')
     members=router.call('interface/list/member/print',{'.proplist':'interface,list'},'POST')
-    forbidden.update(r['interface'] for r in members if r.get('list','').upper()=='WAN')
-    # Refuse a bridge carrying WAN ports and any port of a WAN bridge.
-    for _ in range(len(ports)+1):
+    lists=router.call('interface/list/print',{'.proplist':'name,include,exclude'},'POST')
+    memo={}
+    def resolve(name,seen):
+        if name=='all':return names
+        if name in ('static','dynamic'):return {r['name'] for r in interfaces if (r.get('dynamic')=='true')==(name=='dynamic')}
+        if name in memo:return memo[name]
+        if name in seen or len(seen)>=64:raise ValueError('Circular or excessively nested interface list prevents safe web LAN validation')
+        row=next((r for r in lists if r['name']==name),{})
+        result=set()
+        for child in filter(None,row.get('include','').split(',')):result.update(resolve(child,seen|{name}))
+        for child in filter(None,row.get('exclude','').split(',')):result.difference_update(resolve(child,seen|{name}))
+        result.update(r['interface'] for r in members if r.get('list')==name)
+        memo[name]=result
+        return result
+    for name in {r['name'] for r in lists if r['name'].upper()=='WAN'}|{r['list'] for r in members if r.get('list','').upper()=='WAN'}:forbidden.update(resolve(name,set()))
+    parents=router.call('interface/pppoe-client/print',{'.proplist':'name,interface'},'POST')+router.call('interface/vlan/print',{'.proplist':'name,interface'},'POST')
+    # Refuse PPPoE/VLAN WAN carriers, bridges carrying WAN and their ports.
+    for _ in range(len(ports)+len(parents)+1):
         previous=len(forbidden)
+        for row in parents:
+            if row.get('name') in forbidden:forbidden.add(row.get('interface'))
         for row in ports:
             if row.get('interface') in forbidden or row.get('bridge') in forbidden:forbidden.update((row.get('interface'),row.get('bridge')))
         if len(forbidden)==previous:break
