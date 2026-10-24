@@ -25,11 +25,13 @@ def main():
     report={'checks':prior['checks'][:1] if resume else []}
     def record(name):
         report['checks'].append({'check':name,'pass':True});print('PASS '+name,flush=True)
-    def restored(token,previous):
+    def restored(token,previous,expected_error):
         try:wait(r,token,'sdwan-edge',timeout=120,confirm=False)
         except RuntimeError as error:assert 'rolled-back' in str(error),str(error)
         else:raise AssertionError('Unconfirmed transaction committed')
-        assert read_state(r,token)['phase']=='rolled-back'
+        journal=read_state(r,token)
+        assert journal['phase']=='rolled-back'
+        assert expected_error in journal.get('error',''), 'Unexpected restore cause: '+journal.get('error','')
         for name,text in previous.items():assert r.read_file(name)==text,'File not restored: '+name
         end=time.monotonic()+45
         while time.monotonic()<end:
@@ -60,14 +62,14 @@ def main():
                 file=package/name;file.write_text(file.read_text()+'\n# unconfirmed changed package\n')
             token=start(r,package,'sdwan-edge',revision=cfg['revision'],default_policy='default',timeout=120)
             # Close the installing session. No external ACK or rollback commands.
-            r.close();restored(token,previous)
+            r.close();restored(token,previous,'deployment confirmation deadline exceeded')
             record('missing confirmation restores the encrypted backup and package through native watchdog and reboot')
 
             installer=package/'sdwan-install.rsc'
             original=installer.read_text()
-            installer.write_text(original+'\n/ip/firewall/address-list/add list=sdwan-deployment-test address=198.18.0.1 comment="protected-deployment-test-only"\n/ip/service/disable [/ip/service/find where name="api"]\n:error "injected failure after API disabled"\n')
+            installer.write_text(original+'\n/ip/firewall/address-list/add list=sdwan-deployment-test address=198.18.0.1 comment="protected-deployment-test-only"\n:local service [/ip/service/find where name="api" and dynamic=no]\n:if ([:len $service] != 1) do={ :error "static API service selection failed" }\n/ip/service/disable $service\n:if (![/ip/service/get $service disabled]) do={ :error "API service was not disabled" }\n:error "injected failure after API disabled"\n')
             token=start(r,package,'sdwan-edge',revision=cfg['revision'],default_policy='default',timeout=120)
-            restored(token,previous)
+            restored(token,previous,'injected failure after API disabled')
             assert not any(x.get('list')=='sdwan-deployment-test' for x in r.call('ip/firewall/address-list'))
             api=r.call('ip/service/print',{'.proplist':'name,disabled','.query':['name=api']},'POST')
             assert api[0]['disabled']=='false'
