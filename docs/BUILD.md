@@ -42,6 +42,9 @@ python3 tests/container_artifact_acceptance.py
 ```
 
 Проверка сравнивает SHA256 tar/gzip/ELF/image-config, single-layer rootfs, UID и Docker contexts. Содержимое `dist/` создаётся локально и исключено из Git. Опубликованные release-архивы сопровождаются `SHA256SUMS` и build report.
+Абсолютные пути toolchain/crates могут попасть в диагностические строки ELF,
+поэтому локальная сборка не обязана совпадать с CI побайтово. Размеры релиза
+берутся из его build report; на CHR отдельно проверен CI web amd64 образ.
 
 ## Rust unit
 
