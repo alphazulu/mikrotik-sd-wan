@@ -12,3 +12,8 @@ Rust/musl, `FROM scratch`, один исполняемый файл, без shel
 Для запуска не нужен внешний Docker daemon. Физический ARM ещё не проверен.
 
 Приёмка завершена; результаты — `runtime/container-final-validation.json`. Рабочий MikroTik не изменялся.
+
+
+Optional `web` feature (0.2.0): separate scratch image and entrypoint, bounded RAM
+history/events and embedded read-only UI, runtime disabled by default. No database,
+access logs, CDN or automatic disk checkpoints. See [statistics guide](../docs/STATISTICS.md).

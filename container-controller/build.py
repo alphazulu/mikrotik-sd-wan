@@ -11,6 +11,7 @@ from pathlib import Path
 import struct
 import subprocess
 import tarfile
+import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
@@ -47,15 +48,17 @@ def add(tar: tarfile.TarFile, name: str, data: bytes, mode: int = 0o644) -> None
 def packed(value: object) -> bytes:
     return json.dumps(value, separators=(',', ':'), sort_keys=True).encode()
 
-def image(binary: bytes, architecture: str, variant: str | None, destination: Path) -> dict:
+def image(binary: bytes, architecture: str, variant: str | None, destination: Path, profile: str = 'base') -> dict:
+    name='sdwan-controller'+('-web' if profile=='web' else '')
+    version=tomllib.loads((ROOT/'container-controller/Cargo.toml').read_text())['package']['version']
     layer_io = io.BytesIO()
     with tarfile.open(fileobj=layer_io, mode='w', format=tarfile.USTAR_FORMAT) as tar:
-        add(tar, 'sdwan-controller', binary, 0o555)
+        add(tar, name, binary, 0o555)
     layer = layer_io.getvalue()
     diff_id = hashlib.sha256(layer).hexdigest()
     config = {'architecture': architecture, 'os': 'linux',
               'config': {'User': '65532:65532', 'WorkingDir': '/',
-                         'Entrypoint': ['/sdwan-controller'],
+                         'Entrypoint': ['/'+name],
                          'Cmd': ['run', '/config/controller.json']},
               'rootfs': {'type': 'layers', 'diff_ids': ['sha256:' + diff_id]},
               'history': [{'created_by': 'COPY static binary; FROM scratch'}]}
@@ -65,7 +68,7 @@ def image(binary: bytes, architecture: str, variant: str | None, destination: Pa
     config_name = hashlib.sha256(config_bytes).hexdigest() + '.json'
     layer_name = diff_id + '/layer.tar'
     manifest = [{'Config': config_name,
-                 'RepoTags': ['sdwan-controller:0.1.0'], 'Layers': [layer_name]}]
+                 'RepoTags': [name+':'+version], 'Layers': [layer_name]}]
     with tarfile.open(destination, 'w', format=tarfile.USTAR_FORMAT) as tar:
         add(tar, config_name, config_bytes)
         add(tar, layer_name, layer)
@@ -73,8 +76,8 @@ def image(binary: bytes, architecture: str, variant: str | None, destination: Pa
     archive = destination.read_bytes()
     compressed = gzip.compress(archive, compresslevel=9, mtime=0)
     destination.with_suffix('.tar.gz').write_bytes(compressed)
-    return {'architecture': architecture, 'variant': variant, 'base': 'scratch',
-            'filesystem_entries': ['sdwan-controller'], 'binary_bytes': len(binary),
+    return {'architecture': architecture, 'variant': variant, 'base': 'scratch','profile':profile,'version':version,
+            'filesystem_entries': [name], 'binary_bytes': len(binary),
             'tar_bytes': len(archive), 'gzip_bytes': len(compressed),
             'binary_sha256': hashlib.sha256(binary).hexdigest(),
             'image_config_sha256': config_name.removesuffix('.json'),
@@ -85,12 +88,12 @@ def image(binary: bytes, architecture: str, variant: str | None, destination: Pa
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--architectures', nargs='+', choices=TARGETS, default=list(TARGETS))
+    parser.add_argument('--profiles',nargs='+',choices=['base','web'],default=['base','web'])
     args = parser.parse_args()
     env = os.environ.copy()
-    env.update(RUSTUP_HOME=str(ROOT/'runtime/toolchains/rustup'),
-               CARGO_HOME=str(ROOT/'runtime/toolchains/cargo'),
-               CARGO_TARGET_DIR=str(ROOT/'runtime/container-build'),
-               RUSTC=str(ROOT/'runtime/toolchains/cargo/bin/rustc'))
+    for key,path in {'RUSTUP_HOME':'runtime/toolchains/rustup','CARGO_HOME':'runtime/toolchains/cargo',
+                     'CARGO_TARGET_DIR':'runtime/container-build','RUSTC':'runtime/toolchains/cargo/bin/rustc'}.items():env.setdefault(key,str(ROOT/path))
+    cargo=str(Path(env['CARGO_HOME'])/'bin/cargo')
     rustc = [env['RUSTC']]
     sysroot = Path(subprocess.check_output(rustc + ['--print', 'sysroot'], env=env, text=True).strip())
     linker = sysroot/'lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld'
@@ -98,21 +101,22 @@ def main() -> None:
     output = ROOT/'dist/container'
     output.mkdir(parents=True, exist_ok=True)
     reports = []
-    for key in args.architectures:
+    for profile,key in [(p,k) for p in args.profiles for k in args.architectures]:
         target, machine, variant = TARGETS[key]
-        subprocess.run([str(ROOT/'runtime/toolchains/cargo/bin/cargo'), 'build', '--locked',
+        subprocess.run([cargo, 'build', '--locked',
                         '--release', '--target', target, '--manifest-path',
-                        str(ROOT/'container-controller/Cargo.toml'), '-j1'], env=env, check=True)
+                        str(ROOT/'container-controller/Cargo.toml'), '-j1']+(['--features','web'] if profile=='web' else ['--no-default-features']), env=env, check=True)
         binary = (Path(env['CARGO_TARGET_DIR'])/target/'release/sdwan-router-controller').read_bytes()
         static_elf(binary, machine)
         architecture = 'arm' if variant else key
-        reports.append(image(binary, architecture, variant, output/f'sdwan-controller-{key}.tar'))
-        context=output/key
+        name='sdwan-controller'+('-web' if profile=='web' else '')
+        reports.append(image(binary, architecture, variant, output/f'{name}-{key}.tar',profile))
+        context=output/(('web-' if profile=='web' else '')+key)
         context.mkdir(exist_ok=True)
-        (context/'sdwan-controller').write_bytes(binary)
-        (context/'sdwan-controller').chmod(0o555)
-        for name in ('Dockerfile','.dockerignore'):
-            (context/name).write_bytes((ROOT/'container-controller'/name).read_bytes())
+        temporary=context/(name+'.tmp')
+        temporary.write_bytes(binary);temporary.chmod(0o555);temporary.replace(context/name)
+        (context/'Dockerfile').write_bytes((ROOT/'container-controller'/('Dockerfile.web' if profile=='web' else 'Dockerfile')).read_bytes())
+        (context/'.dockerignore').write_text('*\n!Dockerfile\n!'+name+'\n')
         print(json.dumps(reports[-1]), flush=True)
         (output/'build-report.json').write_text(json.dumps(reports, indent=2)+'\n')
 

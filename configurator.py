@@ -11,6 +11,7 @@ import ipaddress
 from pathlib import Path
 import queue
 import threading
+import webbrowser
 import tkinter as tk
 from tkinter import ttk,filedialog,messagebox
 from sdwan.config import validate
@@ -19,7 +20,7 @@ from sdwan.discovery import discover
 from sdwan.wizard_ui import SetupWizard
 from sdwan.diagnostics_ui import DiagnosticsPanel
 from sdwan.policies import ordered,conflicts
-from sdwan.container_config import settings as container_settings
+from sdwan.container_config import settings as container_settings,telemetry as telemetry_settings,addresses as container_addresses
 
 BACKENDS={'Скрипт RouterOS':'routeros','Локальный контейнер Rust':'container'}
 
@@ -254,7 +255,21 @@ class App(tk.Tk):
             ttk.Label(controller,text=label).grid(row=row,column=0,sticky='w',pady=4)
             entry=ttk.Entry(controller,textvariable=var,width=48);entry.grid(row=row,column=1,sticky='w',pady=4);self.container_entries.append(entry)
         ttk.Label(controller,text='Для контейнера заранее установите пакет container и разрешите device-mode с физическим подтверждением.\nЗагрузите подходящий scratch-архив на MikroTik, затем нажмите «Подготовить контейнер» и «Установить».\nПароль отдельного API-пользователя создаётся автоматически и хранится отдельно от образа и JSON. Сеть контейнера добавляется в локальные сети.',wraplength=1050).grid(row=8,columnspan=2,sticky='w',pady=10)
-        self.backend.trace_add('write',self.backend_changed);self.backend_changed()
+        self.backend.trace_add('write',self.backend_changed)
+        web=ttk.Frame(self.tabs,padding=12);self.tabs.add(web,text='Веб и статистика')
+        telemetry=telemetry_settings(c);self.telemetry_enabled=tk.BooleanVar(value=telemetry['enabled'])
+        self.telemetry_check=ttk.Checkbutton(web,text='Включить веб-интерфейс и RAM-статистику в локальном контейнере',variable=self.telemetry_enabled,command=self.telemetry_changed)
+        self.telemetry_check.grid(row=0,columnspan=2,sticky='w',pady=8)
+        self.telemetry_vars={};self.telemetry_entries=[]
+        for row,(key,label) in enumerate([('sample_seconds','Период истории, с (5–60)'),('history_points','Точек на WAN (12–600)'),('port','TCP-порт (1024–65535)'),('allowed_sources','Разрешённые локальные IPv4 сети, через запятую'),('allowed_interfaces','Входные LAN / VLAN интерфейсы, через запятую')],1):
+            value=telemetry[key];var=tk.StringVar(value=', '.join(value) if isinstance(value,list) else str(value));self.telemetry_vars[key]=var
+            ttk.Label(web,text=label).grid(row=row,column=0,sticky='w',pady=6)
+            entry=ttk.Entry(web,textvariable=var,width=52);entry.grid(row=row,column=1,sticky='w',padx=10);self.telemetry_entries.append(entry)
+        ttk.Label(web,text='Требуется отдельный образ sdwan-controller-web для архитектуры роутера. Сети должны входить в «Локальные сети».\nИстория и события живут только в RAM и теряются при перезапуске. Веб-интерфейс показывает состояние и экспортирует JSON в браузер.\nДоступ открывается только через указанные LAN/VLAN; WAN-интерфейсы запрещены. Токен отдельный от пароля API.',wraplength=1050).grid(row=6,columnspan=2,sticky='w',pady=14)
+        ttk.Button(web,text='Открыть веб-интерфейс',command=self.open_web).grid(row=7,column=0,sticky='w')
+        ttk.Button(web,text='Скопировать токен с MikroTik',command=lambda:self.run('web-token')).grid(row=7,column=1,sticky='w',padx=10)
+        self.telemetry_hint=tk.StringVar();ttk.Label(web,textvariable=self.telemetry_hint,wraplength=1000).grid(row=8,columnspan=2,sticky='w',pady=12)
+        self.backend_changed()
         settings=ttk.Frame(self.tabs,padding=12);self.tabs.add(settings,text='Файл и локальные сети')
         self.revision=tk.StringVar(value=c['revision']);ttk.Label(settings,text='Версия конфигурации').pack(anchor='w');ttk.Entry(settings,textvariable=self.revision,width=50).pack(anchor='w',pady=5)
         ttk.Label(settings,text='Локальные сети (одна на строку), маршрутизируются через main').pack(anchor='w');self.local=tk.Text(settings,height=5,width=65);self.local.pack(anchor='w');self.local.insert('1.0','\n'.join(c['local_networks']))
@@ -283,6 +298,10 @@ class App(tk.Tk):
         c['health']={k:int(v.get()) for k,v in self.health.items()};c['revision']=self.revision.get().strip();c['local_networks']=[x.strip() for x in self.local.get('1.0','end').splitlines() if x.strip()]
         if BACKENDS[self.backend.get()]=='container':
             c['controller_backend']='container';c['container']={key:int(var.get()) if key in ('poll_ms','memory_max_bytes') else var.get().strip() for key,var in self.container_vars.items()}
+            if self.telemetry_enabled.get():
+                c['container']['telemetry']={'enabled':True,**{key:[s.strip() for s in var.get().split(',') if s.strip()] if key.startswith('allowed_') else int(var.get()) for key,var in self.telemetry_vars.items()}}
+            elif 'telemetry' in self.data.get('container',{}):
+                c['container']['telemetry']=dict(self.data['container']['telemetry'],enabled=False)
             subnet=ipaddress.IPv4Network(c['container']['subnet'],strict=True)
             if not any(subnet.subnet_of(ipaddress.IPv4Network(item)) for item in c['local_networks']):
                 c['local_networks'].append(str(subnet));self.local.insert('end','\n'+str(subnet))
@@ -292,6 +311,23 @@ class App(tk.Tk):
     def backend_changed(self,*args):
         state='normal' if BACKENDS.get(self.backend.get())=='container' else 'disabled'
         for widget in self.container_entries:widget.configure(state=state)
+        if hasattr(self,'telemetry_check'):
+            self.telemetry_check.configure(state=state);self.telemetry_changed(update_image=False)
+    def telemetry_changed(self,update_image=True):
+        enabled=self.telemetry_enabled.get();container=BACKENDS.get(self.backend.get())=='container'
+        for widget in self.telemetry_entries:widget.configure(state='normal' if enabled and container else 'disabled')
+        self.telemetry_check.configure(state='normal' if container else 'disabled')
+        if update_image:
+            image=self.container_vars['image_file'];match=re.fullmatch(r'sdwan-controller-(?:web-)?(amd64|arm64|armv5)(\.tar(?:\.gz)?)',image.get())
+            if match:image.set('sdwan-controller-'+('web-' if enabled else '')+match[1]+match[2])
+        self.telemetry_hint.set('Токен считывается отдельно после подготовки контейнера и не сохраняется в JSON или журнале.' if enabled else 'Выключено: нет HTTP-порта и сбора истории.')
+    def open_web(self):
+        try:
+            config=self.collect();cfg=telemetry_settings(config)
+            if not cfg['enabled']:raise ValueError('Сначала включите и подготовьте веб-интерфейс.')
+            _,_,guest=container_addresses(config);url='http://'+guest+':'+str(cfg['port'])+'/'
+            webbrowser.open(url);self.telemetry_hint.set(url+' — браузер должен иметь доступ к MikroTik через разрешённый LAN / VLAN.')
+        except Exception as e:messagebox.showerror('Веб-интерфейс',str(e),parent=self)
     def open(self):
         path=filedialog.askopenfilename(filetypes=[('SD-WAN JSON','*.json')])
         if path:
@@ -318,7 +354,7 @@ class App(tk.Tk):
         if self.busy:return
         try:
             if not self.connection_matches():raise ValueError('Подключитесь к MikroTik и получите его настройки.')
-            config=self.collect() if command in ('plan','apply','container-prepare') else None
+            config=self.collect() if command in ('plan','apply','container-prepare','web-token') else None
             values=self.connection_values();expected=self.inventory['identity']['name'];self.busy=True;self.refresh_buttons()
             self.log.insert('end',f'\n--- {command} ---\n');self.log.see('end')
             def work():
@@ -333,6 +369,11 @@ class App(tk.Tk):
                         elif command=='container-prepare':
                             from sdwan.container_runtime import prepare
                             print(json.dumps(prepare(router,config,expected),indent=2,ensure_ascii=False))
+                        elif command=='web-token':
+                            from sdwan.container_runtime import paths,check_ready
+                            if not telemetry_settings(config)['enabled']:raise ValueError('Веб-интерфейс выключен.')
+                            check_ready(router,config,expected)
+                            token=router.read_file(paths(config)['web_token']);self.messages.put(('web-token',(values,token)));return
                         elif command=='diagnostics':
                             from sdwan.diagnostics import read
                             snapshot,active=read(router);self.messages.put(('diagnostics',(values,snapshot,active)));return
@@ -372,6 +413,16 @@ class App(tk.Tk):
                 if values==self.connection_values():self.diagnostics.clear('Не удалось обновить диагностику: '+error)
             elif kind=='operation':
                 output,code=payload;self.log.insert('end',output+f'\nКод завершения: {code}\n');self.log.see('end')
+            elif kind=='web-token':
+                values,token=payload
+                if self.connection_matches() and values==self.connection_values():
+                    self.clipboard_clear();self.clipboard_append(token)
+                    self.telemetry_hint.set('Токен скопирован. Вставьте его на странице входа. Буфер будет очищен через 60 секунд, если его содержимое не изменится.')
+                    def clear_token(token=token):
+                        try:
+                            if self.clipboard_get()==token:self.clipboard_clear()
+                        except tk.TclError:pass
+                    self.after(60000,clear_token)
             else:
                 self.bound_connection=None;self.connection_info.set('Подключение не выполнено: '+payload);self.log.insert('end','\n'+payload+'\n')
             self.refresh_buttons()

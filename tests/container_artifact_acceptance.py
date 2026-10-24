@@ -29,16 +29,19 @@ def main():
             layer=tar.extractfile(manifest['Layers'][0]).read()
             assert config['rootfs']['diff_ids']==['sha256:'+hashlib.sha256(layer).hexdigest()]
             with tarfile.open(fileobj=io.BytesIO(layer)) as fs:
-                files=fs.getmembers();assert len(files)==1 and files[0].name=='sdwan-controller' and files[0].isfile() and files[0].mode==0o555
+                name='sdwan-controller'+('-web' if entry['profile']=='web' else '')
+                files=fs.getmembers();assert len(files)==1 and files[0].name==name and files[0].isfile() and files[0].mode==0o555
                 binary=fs.extractfile(files[0]).read()
+                assert config['config']['Entrypoint']==['/'+name]
+                assert manifest['RepoTags']==[name+':'+entry['version']]
         assert hashlib.sha256(binary).hexdigest()==entry['binary_sha256']
         build.static_elf(binary,{'amd64':62,'arm64':183,'arm':40}[entry['architecture']])
-        context=ROOT/'dist/container'/('armv5' if entry['variant'] else entry['architecture'])
-        assert (context/'sdwan-controller').read_bytes()==binary
+        context=ROOT/'dist/container'/(('web-' if entry['profile']=='web' else '')+('armv5' if entry['variant'] else entry['architecture']))
+        assert (context/name).read_bytes()==binary
         assert (context/'Dockerfile').read_text().splitlines()[0]=='FROM scratch'
-        checks.append({'architecture':entry['architecture'],'variant':entry['variant'],'pass':True,
+        checks.append({'architecture':entry['architecture'],'variant':entry['variant'],'profile':entry['profile'],'pass':True,
                        'single_binary_only':True,'static_elf':True,'config_sha256':entry['image_config_sha256']})
-    assert len(checks)==3
+    assert {(c['profile'],c['architecture'],c['variant']) for c in checks}=={(p,a,v) for p in ('base','web') for a,v in [('amd64',None),('arm64',None),('arm','v5')]}
     (ROOT/'runtime/container-artifact-validation.json').write_text(json.dumps({'pass':True,'checks':checks,'daemon_required':False},indent=2)+'\n')
     print(json.dumps({'pass':True,'architectures':len(checks),'single_layer':'scratch/static binary only'}))
 

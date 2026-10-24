@@ -10,10 +10,11 @@ python3 -m compileall -q sdwan tools configurator.py sdwan.py
 python3 sdwan.py --config config/sdwan.json validate
 python3 sdwan.py --config config/examples/clients-applications.json validate
 python3 sdwan.py --config config/examples/container.json validate
+python3 sdwan.py --config config/examples/container-web.json validate
 python3 tools/audit_public_tree.py
 ```
 
-Текущий unit-набор содержит183 проверки и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
+Текущий unit-набор содержит193 проверку и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
 
 ## Исходная пятиузловая лаборатория
 
@@ -57,8 +58,33 @@ Shadow/image bootstrap scripts отражают ранние прототипы 
 ## CI
 
 `.github/workflows/ci.yml` запускает unit/schema/bundle/security проверки на Linux/Windows,
-офлайн GUI в Windows, Gitleaks и Rust unit. После них собираются три scratch-образа
+офлайн GUI в Windows, Gitleaks и Rust unit. После них собираются шесть scratch-образов (base/web × три архитектуры)
 и сверяются архивы. Actions закреплены полными SHA, Gitleaks —версией и SHA256;
 обычные jobs имеют только contents:read. Публикация release включается только
 для явно отправленного тега v* после всех проверок; write-права есть лишь у release job.
 CHR fault suites в облаке не запускаются, доступ к рабочему MikroTik CI не требуется.
+
+
+## RAM/web модуль
+
+`tests/gui_telemetry_smoke.py` проверяет конфигурацию и clipboard с mock API в
+Windows/Tk. Rust: 12 base-тестов и 27 тестов с `--features web`, в том числе
+лимиты, авторизация, реальные loopback HTTP-запросы и медленные заголовки.
+
+На уже подготовленной отдельной контейнерной CHR лаборатории с включённым web:
+
+```sh
+python3 tests/container_web_acceptance.py --reboot
+```
+
+Можно задать `--lab-root /path/to/existing/project`, если исходники тестируются
+из отдельного чистого checkout. Тест проверяет фиксированные localhost API и
+identity `sdwan-container-edge`, не создаёт новый стенд. Он временно использует
+SOCKS4 только на клиентском CHR через QEMU loopback-порт 48881 и восстанавливает
+его настройки. Во время замера не запускайте компиляцию/браузер: нагрузка хоста
+может вызвать реальные изменения SLA и законную запись нового intent. Тест
+останавливает/запускает контейнер, временно отключает web, меняет WAN link;
+`--reboot` дополнительно перезагружает только edge CHR. История RAM теряется.
+
+Результаты, методика проверки носителя и ограничения:
+[STATISTICS-VALIDATION.md](STATISTICS-VALIDATION.md).
