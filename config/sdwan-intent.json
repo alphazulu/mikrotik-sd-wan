@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "design-input-not-applied",
+  "wan_priority": ["wan1", "wan2", "wan3"],
+  "sla_profiles": {
+    "default": {"rtt_ms": 150, "jitter_ms": 30, "loss_percent": 2},
+    "voice": {"rtt_ms": 80, "jitter_ms": 15, "loss_percent": 1}
+  },
+  "health": {
+    "probe_types": ["icmp", "dns", "https"],
+    "targets_per_wan": 3,
+    "quorum": 2,
+    "interval_seconds": 5,
+    "fail_windows": 3,
+    "recover_windows": 6,
+    "hold_down_seconds": 60,
+    "probe_routing": "strictly-pinned-to-tested-wan"
+  },
+  "client_policies": [
+    {"source": "192.168.50.101/32", "mode": "prefer", "wans": ["wan1", "wan2", "wan3"]},
+    {"source": "192.168.50.102/32", "mode": "prefer", "wans": ["wan2", "wan1", "wan3"]}
+  ],
+  "planned_policy_modes": ["prefer", "strict", "weighted-per-connection"],
+  "notes": "This file specifies future controller behavior; baseline routing does not implement SLA."
+}

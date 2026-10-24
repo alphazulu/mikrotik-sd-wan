@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "revision": "container-example-v1",
+  "health": {
+    "interval_seconds": 2,
+    "timeout_ms": 700,
+    "packet_count": 20,
+    "packet_interval_ms": 25,
+    "quorum": 2,
+    "fail_windows": 2,
+    "recover_windows": 3,
+    "hold_down_seconds": 6,
+    "stale_seconds": 10
+  },
+  "sla_profiles": {
+    "default": {
+      "rtt_ms": 150,
+      "jitter_ms": 30,
+      "loss_percent": 2
+    },
+    "voice": {
+      "rtt_ms": 80,
+      "jitter_ms": 15,
+      "loss_percent": 1
+    }
+  },
+  "wans": [
+    {
+      "name": "wan1",
+      "interface": "ether2",
+      "address": "172.20.1.2",
+      "gateway": "172.20.1.1",
+      "probe_table": "sdwan-probe-wan1",
+      "icmp_target": "10.77.1.2",
+      "probes": [
+        {
+          "name": "a",
+          "type": "http-get",
+          "host": "10.77.1.2",
+          "port": 48081
+        },
+        {
+          "name": "b",
+          "type": "http-get",
+          "host": "10.77.1.2",
+          "port": 48082
+        },
+        {
+          "name": "c",
+          "type": "http-get",
+          "host": "10.77.1.2",
+          "port": 48083
+        }
+      ]
+    },
+    {
+      "name": "wan2",
+      "interface": "ether3",
+      "address": "172.20.2.2",
+      "gateway": "172.20.2.1",
+      "probe_table": "sdwan-probe-wan2",
+      "icmp_target": "10.77.2.2",
+      "probes": [
+        {
+          "name": "a",
+          "type": "http-get",
+          "host": "10.77.2.2",
+          "port": 48081
+        },
+        {
+          "name": "b",
+          "type": "http-get",
+          "host": "10.77.2.2",
+          "port": 48082
+        },
+        {
+          "name": "c",
+          "type": "http-get",
+          "host": "10.77.2.2",
+          "port": 48083
+        }
+      ]
+    },
+    {
+      "name": "wan3",
+      "interface": "ether4",
+      "address": "172.20.3.2",
+      "gateway": "172.20.3.1",
+      "probe_table": "sdwan-probe-wan3",
+      "icmp_target": "10.77.3.2",
+      "probes": [
+        {
+          "name": "a",
+          "type": "http-get",
+          "host": "10.77.3.2",
+          "port": 48081
+        },
+        {
+          "name": "b",
+          "type": "http-get",
+          "host": "10.77.3.2",
+          "port": 48082
+        },
+        {
+          "name": "c",
+          "type": "http-get",
+          "host": "10.77.3.2",
+          "port": 48083
+        }
+      ]
+    }
+  ],
+  "local_networks": [
+    "192.168.50.0/24",
+    "10.77.0.0/24",
+    "172.31.255.0/30"
+  ],
+  "policies": [
+    {
+      "name": "default",
+      "source": "",
+      "table": "main",
+      "profile": "default",
+      "mode": "prefer",
+      "wans": [
+        "wan1",
+        "wan2",
+        "wan3"
+      ],
+      "allow_degraded": false
+    },
+    {
+      "name": "client101",
+      "source": "192.168.50.101/32",
+      "table": "sdwan-client101",
+      "profile": "default",
+      "mode": "prefer",
+      "wans": [
+        "wan1",
+        "wan2",
+        "wan3"
+      ],
+      "allow_degraded": false
+    },
+    {
+      "name": "client102",
+      "source": "192.168.50.102/32",
+      "table": "sdwan-client102",
+      "profile": "voice",
+      "mode": "prefer",
+      "wans": [
+        "wan2",
+        "wan1",
+        "wan3"
+      ],
+      "allow_degraded": false
+    },
+    {
+      "name": "strict103",
+      "source": "192.168.50.103/32",
+      "table": "sdwan-strict103",
+      "profile": "default",
+      "mode": "strict",
+      "wans": [
+        "wan3"
+      ],
+      "allow_degraded": false
+    }
+  ],
+  "takeover_route_comments": [
+    "baseline-wan1",
+    "baseline-wan2",
+    "baseline-wan3"
+  ],
+  "takeover_rule": {
+    "src-address": "192.168.50.102/32",
+    "table": "prefer-wan2"
+  },
+  "controller_backend": "container",
+  "container": {
+    "image_file": "sdwan-controller-amd64.tar.gz",
+    "storage": "sdwan-container"
+  }
+}
