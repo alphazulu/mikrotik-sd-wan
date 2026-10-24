@@ -36,13 +36,16 @@ jobs:
           python sdwan.py --config config/sdwan.json validate
           python sdwan.py --config config/examples/clients-applications.json validate
           python sdwan.py --config config/examples/container.json validate
+          python sdwan.py --config config/examples/container-web.json validate
           python sdwan.py --config config/sdwan.json bundle --output build/native
           python sdwan.py --config config/examples/container.json bundle --output build/container
           python tools/audit_public_tree.py
       - name: Offline Windows GUI
         if: runner.os == 'Windows'
         shell: bash
-        run: python tests/gui_wizard_regression.py
+        run: |
+          python tests/gui_wizard_regression.py
+          python tests/gui_telemetry_smoke.py
       - name: Scan Git history for secrets
         if: runner.os == 'Linux'
         shell: bash
@@ -72,9 +75,10 @@ jobs:
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 https://sh.rustup.rs -o runtime/toolchains/rustup-init.sh
           sh runtime/toolchains/rustup-init.sh -y --no-modify-path --default-toolchain 1.99.1
           runtime/toolchains/cargo/bin/rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl armv5te-unknown-linux-musleabi
-      - name: Rust tests and three static images
+      - name: Rust base and web tests; six static images
         run: |
           runtime/toolchains/cargo/bin/cargo test --locked --manifest-path container-controller/Cargo.toml
+          runtime/toolchains/cargo/bin/cargo test --locked --manifest-path container-controller/Cargo.toml --features web
           python3 container-controller/build.py
           python3 tests/container_artifact_acceptance.py
           python3 tools/release_checksums.py
@@ -108,4 +112,4 @@ jobs:
         run: |
           cd release
           sha256sum -c SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes SHA256SUMS build-report.json sdwan-controller-amd64.tar.gz sdwan-controller-arm64.tar.gz sdwan-controller-armv5.tar.gz
+          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes SHA256SUMS build-report.json sdwan-controller-amd64.tar.gz sdwan-controller-arm64.tar.gz sdwan-controller-armv5.tar.gz sdwan-controller-web-amd64.tar.gz sdwan-controller-web-arm64.tar.gz sdwan-controller-web-armv5.tar.gz
