@@ -41,8 +41,9 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     # Bootstrap/worker/watchdog must be uploaded before the native bootstrap can
     # run. Preserve their PREVIOUS files first, including distinct flash/root
     # copies, so updating the recovery framework itself is reversible too.
-    files={row['name']:row['.id'] for row in router.call('file/print',{'.proplist':'.id,name'},'POST')}
     prefixes=list(dict.fromkeys((router.storage_prefix,'')))
+    names=[prefix+name for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc') for prefix in prefixes]
+    files={row['name']:row['.id'] for row in router.file_records(names)}
     old_infrastructure={}
     for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc'):
         for prefix in prefixes:
@@ -52,7 +53,9 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
                 if not isinstance(data,dict) or 'ret' not in data:raise RuntimeError('Cannot archive previous deployment framework file')
                 old_infrastructure[original]=data['ret']
             else:old_infrastructure[original]=None
-    request={'token':token,'password':secrets.token_urlsafe(40),'identity':expected,'operation':operation,'revision':revision,'default_policy':default_policy,'timeout_seconds':timeout}
+    from .maintenance import require_backup_space
+    require_backup_space(router,package)
+    request={'token':token,'password':secrets.token_urlsafe(40),'identity':expected,'operation':operation,'revision':revision,'default_policy':default_policy,'timeout_seconds':timeout,'created_utc':datetime.now(timezone.utc).isoformat()}
     run=router.root/'runtime';run.mkdir(exist_ok=True)
     key=run/('recovery-'+token+'.json')
     key.write_text(json.dumps({'token':token,'identity':expected,'backup_password':request['password'],'backup_file':router.storage_prefix+'sdwan-before-'+token+'.backup'},indent=2)+'\n')

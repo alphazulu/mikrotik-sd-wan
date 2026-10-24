@@ -259,12 +259,21 @@ class App(tk.Tk):
         self.revision=tk.StringVar(value=c['revision']);ttk.Label(settings,text='Версия конфигурации').pack(anchor='w');ttk.Entry(settings,textvariable=self.revision,width=50).pack(anchor='w',pady=5)
         ttk.Label(settings,text='Локальные сети (одна на строку), маршрутизируются через main').pack(anchor='w');self.local=tk.Text(settings,height=5,width=65);self.local.pack(anchor='w');self.local.insert('1.0','\n'.join(c['local_networks']))
         ttk.Label(settings,text='Исходные маршруты и локальные сети получены при чтении MikroTik. Перечень изменений доступен кнопкой «План изменений».').pack(anchor='w',pady=10)
+        self.auto_prune=tk.BooleanVar(value='maintenance' in c)
+        self.backup_keep=tk.StringVar(value=str(c.get('maintenance',{}).get('backup_keep',3)))
+        ttk.Checkbutton(settings,text='После успешной установки очищать старые завершённые архивы',variable=self.auto_prune).pack(anchor='w',pady=5)
+        retention=ttk.Frame(settings);retention.pack(anchor='w')
+        ttk.Label(retention,text='Сохранять последних транзакций (1–20), дополнительно текущую и связанные файлы:').pack(side='left')
+        ttk.Spinbox(retention,from_=1,to=20,textvariable=self.backup_keep,width=5).pack(side='left',padx=6)
+        ttk.Label(settings,text='Очистка запускается один раз после подтверждения установки. При pending/recovery или непонятном журнале ничего не удаляется.',wraplength=1000).pack(anchor='w',pady=5)
         self.title('MikroTik SD-WAN — '+str(self.path))
     def load(self,path):
         self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
     def collect(self):
         if self.data is None:raise ValueError('Сначала получите настройки и создайте конфигурацию, либо откройте готовый JSON.')
         c=copy.deepcopy(self.data);c['wans']=self.wans.rows;c['policies']=self.policies.rows
+        if self.auto_prune.get():c['maintenance']={'backup_keep':int(self.backup_keep.get())}
+        else:c.pop('maintenance',None)
         groups={row['name']:row['members'] for row in self.groups.rows}
         if len(groups)!=len(self.groups.rows):raise ValueError('Повторяются имена групп')
         if groups:c['groups']=groups

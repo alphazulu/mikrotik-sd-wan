@@ -21,7 +21,10 @@ def validate(c):
         need(not missing,f'{label}: missing fields {sorted(missing)}')
         need(not unknown,f'{label}: unknown fields {sorted(unknown)}')
     required=('schema_version','revision','health','sla_profiles','wans','local_networks','policies','takeover_route_comments','takeover_rule')
-    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container'),'config',required)
+    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container','maintenance'),'config',required)
+    if 'maintenance' in c:
+        keys(c['maintenance'],('backup_keep',),'maintenance')
+        need(type(c['maintenance']['backup_keep']) is int and 1 <= c['maintenance']['backup_keep'] <= 20,'maintenance.backup_keep must be 1..20')
     from .container_config import validate_backend
     validate_backend(c)
     need(type(c.get('schema_version')) is int and c['schema_version'] == 1, 'schema_version must be 1')
