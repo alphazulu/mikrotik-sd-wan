@@ -11,7 +11,7 @@ from vpn_lab import VPNLab
 from vpn_traffic import VPNTraffic
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);args=p.parse_args();v=VPNLab(args.lab_root);lock=(v.run/'lab.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);a=v.routers['sitea'];h=v.routers['hub'];traffic=None;nat=None;script=None;report={'pass':False,'checks':[]};tag='sdwan-overlay-rebind-acceptance'
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);args=p.parse_args();v=VPNLab(args.lab_root);lock=(v.run/'lab.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);a=v.routers['sitea'];h=v.routers['hub'];traffic=None;nat=None;script=None;scheduler=None;report={'pass':False,'checks':[]};tag='sdwan-overlay-rebind-acceptance'
  def wait(fn,timeout=60):
   end=time.monotonic()+timeout
   while time.monotonic()<end:
@@ -49,8 +49,8 @@ def main():
   assert hub_flow(51821,60992);assert other['.id'] in {x['.id'] for x in udp(h)}
   report['retirement_seconds']=round(time.monotonic()-start,3);traffic.assert_sessions(retained=[ordinary,branch]);record('authenticated endpoint roaming retires the previous hub UDP tuple in both-direction-aware cleanup, preserving unrelated SiteB UDP and the same TCP streams')
   stable=hub_flow(51821,60992)['.id'];time.sleep(8);assert stable in {x['.id'] for x in udp(h)};traffic.assert_sessions(retained=[ordinary,branch]);record('unchanged transport geometry retains the new UDP conntrack and both established TCP streams')
-  # Explicit RAM-signature injection exercises cached local sources on the
-  # standby socket. This is a geometry-trigger test, not a claimed DHCP event.
+  # Directly exercise retirement of the real standby socket's saved geometry.
+  # This isolates conntrack cleanup; dynamic address changes have separate tests.
   local_ips={x['address'].split('/')[0] for x in a.call('ip/address/print',{'.proplist':'address'},'POST')}
   def owned_outer(x,listen):
    return x.get('protocol')=='udp' and x.get('src-port')==str(listen) and x.get('dst-port')==str(listen) and ((x.get('dst-address')=='198.18.100.1' and x.get('src-address') in local_ips) or (x.get('src-address')=='198.18.100.1' and x.get('dst-address') in local_ips))
@@ -61,12 +61,20 @@ def main():
   # RouterOS may immediately reuse the same conntrack ID for the same UDP
   # tuple. Verify the real helper's removal count rather than requiring a hole
   # long enough for an external API poll to observe a missing identifier.
-  script=a.call('system/script/add',{'name':tag,'source':':global sdwanOverlayTransport; :global sdwanOverlayRetireTransport; :global sdwanOverlayRetireTestCount; :set sdwanOverlayRetireTestCount [$sdwanOverlayRetireTransport previous=($sdwanOverlayTransport->"hub-wan2")]','policy':'read,write,policy,test','comment':tag},'POST')['ret'];a.call('system/script/run',{'number':script},'POST')
-  result=a.call('system/script/environment/print',{'.proplist':'value','.query':['name=sdwanOverlayRetireTestCount']},'POST');assert len(result)==1 and int(result[0]['value'])>=1;report['standby_retired_count']=int(result[0]['value'])
+  # Use the same scheduler environment as the controller. Direct API /run does
+  # not share the scheduler's RAM globals, even with identical owner/policies.
+  for entry in a.call('system/script/environment/print',{'.proplist':'.id','.query':['name=sdwanOverlayRetireTestCount']},'POST'):a.call('system/script/environment/'+entry['.id'],method='DELETE')
+  policy='read,write,policy,test,sensitive'
+  assert not a.call('system/scheduler/print',{'.proplist':'.id','.query':['name='+tag]},'POST'),'Do not duplicate a retirement scheduler'
+  source='/system/scheduler/disable [/system/scheduler/find where name="'+tag+'"]; :global sdwanOverlayTransport; :global sdwanOverlayRetireTransport; :global sdwanOverlayRetireTestCount; :set sdwanOverlayRetireTestCount [$sdwanOverlayRetireTransport previous=($sdwanOverlayTransport->"hub-wan2")]'
+  script=a.call('system/script/add',{'name':tag,'source':source,'policy':policy,'comment':tag},'POST')['ret']
+  scheduler=a.call('system/scheduler/add',{'name':tag,'interval':'1s','on-event':'/system/script/run '+tag,'policy':policy,'comment':tag},'POST')['ret']
+  result=wait(lambda:a.call('system/script/environment/print',{'.proplist':'value','.query':['name=sdwanOverlayRetireTestCount']},'POST'),timeout=10);assert len(result)==1 and int(result[0]['value'])>=1;report['standby_retired_count']=int(result[0]['value'])
   current={x['.id']:x for x in udp(a)};assert primary_ids<=current.keys();assert all(int(current[id]['orig-bytes'])>=value for id,value in primary_bytes.items());traffic.assert_sessions(retained=[ordinary,branch]);record('explicit standby retirement removes the previous owned outer tuples in either direction while primary UDP counters and established TCP remain')
   report['pass']=True
  finally:
   try:
+   if scheduler:a.call('system/scheduler/'+scheduler,method='DELETE')
    if script:a.call('system/script/'+script,method='DELETE')
    for entry in a.call('system/script/environment/print',{'.proplist':'.id','.query':['name=sdwanOverlayRetireTestCount']},'POST'):a.call('system/script/environment/'+entry['.id'],method='DELETE')
    if nat:

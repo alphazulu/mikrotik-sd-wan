@@ -40,7 +40,7 @@ Selected completed checks in this iteration:
 | Unified WAN/policy selectors | 6 real routing/TCP cases, 88 IP/list contracts, 18 VPN contracts |
 | Overlay schema/ownership | 123 schema and 24 ownership/VRF/list cases |
 | Overlay lifecycle | 6 install/reapply/off/on/rollback cases and 3 original-JSON guards |
-| Outer UDP roaming | 3 real CGNAT checks; prior tuple retired in 1.444 s, independent UDP/TCP retained |
+| Outer UDP roaming | 4 checks including direct standby removal count; latest NAT-port retirement 1.074 s, independent UDP/TCP retained |
 | Cold external DNS | 5 plain-DNS and 6 actual HTTPS DoH checks |
 | MTU/MSS | 2 real DF-boundary and bidirectional forwarding-SYN checks |
 | Windows GUI | Four offline suites pass; earlier unified GUI inventory checks also passed read-only |
@@ -59,9 +59,10 @@ Remaining release gates:
    counters remain unknown; byte-stable intent is not a hardware flash counter.
 2. Finish the expanded standby cached-source cleanup check, repeat changed
    dynamic-underlay and complete-package rollback paths with the new DNS module.
-3. Run one 48–72 hour soak against the frozen functional source/image, using a
-   single PID, fabric lock and incremental private report. Do not start a second
-   soak or change runtime code underneath it.
+3. Run one 48–72 hour soak against the frozen functional source/image with
+   [the locked driver](NETWORK-SOAK.md). It observes native and local-container
+   phases, three real TCP streams and bounded resources. Do not start a second
+   soak or change runtime code underneath it. A short smoke run is not a soak.
 4. Audit staged source, Git history and image layers against private fingerprints;
    run CI, publish the reviewed release and synchronize reviewed root source.
 

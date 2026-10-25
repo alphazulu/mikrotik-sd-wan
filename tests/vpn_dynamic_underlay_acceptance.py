@@ -56,7 +56,13 @@ def main():
   wait(lambda:a.status().get('vpn_egress',{}).get('vpn1',{}).get('underlay')=='wan2')
   a.call(menu+'/set',{'.id':client,'disabled':'false'},'POST');wait(lambda:healthy('100.64.30.3'))
   traffic.assert_sessions(retained=[branch]);traffic.stream(59412,'sdwan-out-vpn-targets:vpn1')
-  ct=a.call('ip/firewall/connection/print',{'.proplist':'src-address,src-port,dst-address,connection-mark,seen-reply','.query':['protocol=udp','src-port=51911']},'POST');assert any(x.get('src-address')=='100.64.30.3' and x.get('seen-reply')=='true' for x in ct),ct;assert not any(x.get('src-address')=='100.64.30.2' for x in ct),ct
+  def reconnected_transport():
+   # Lease/controller publication and UDP conntrack recreation are asynchronous.
+   # Require the real bidirectional new-source tuple, not one empty API snapshot.
+   outer=a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,src-port,dst-address,dst-port,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,connection-mark,seen-reply','.query':['protocol=udp']},'POST');report['outer_udp_observation']=[x for x in outer if any(x.get(k) in ('51901','51911') for k in ('src-port','dst-port','reply-src-port','reply-dst-port'))]
+   ct=[x for x in outer if x.get('src-port')=='51911' and x.get('dst-address')=='198.18.100.1' and x.get('dst-port')=='51901']
+   return any(x.get('src-address')=='100.64.30.3' and x.get('seen-reply')=='true' for x in ct) and not any(x.get('src-address')=='100.64.30.2' or x.get('reply-dst-address')=='100.64.30.2' for x in ct)
+  wait(reconnected_transport,timeout=10)
   active=json.loads(a.read_file('sdwan-active.json'));assert 'address' not in active['wans'][0] and 'gateway' not in active['wans'][0]
   record(args.kind+' reconnect changes source IPv4, retires stale VPN transport and restores preferred parent without a lease snapshot; the original branch TCP keeps receiving data')
   report['pass']=True
