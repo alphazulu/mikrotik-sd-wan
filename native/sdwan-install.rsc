@@ -22,6 +22,17 @@ $sdwanValidateStrict cfg=$cfg
     :foreach id in=[/system/script/find where name=$ownedName] do={ :if ([/system/script/get $id comment] != "sdwan:v1:strict") do={ :error "foreign strict worker name collision" } }
 }
 :foreach id in=[/system/scheduler/find where name="sdwan-strict-dispatch"] do={ :if ([/system/scheduler/get $id comment] != "sdwan:v1:strict") do={ :error "foreign strict scheduler name collision" } }
+:local overlayEnabled ((($cfg->"overlay")->"enabled") = true)
+:local overlayManaged ($overlayEnabled || ([:len [/routing/ospf/instance/find where comment="sdwan:v1:overlay:instance"]] > 0) || ([:len [/interface/wireguard/peers/find where comment~"^sdwan:v1:overlay:"]] > 0))
+:global sdwanOverlayValidate
+:global sdwanOverlayNetworks
+:global sdwanOverlayInstall
+:if ($overlayManaged) do={
+    :if ([:len [/file/find where name=($dir . "sdwan-overlay.rsc")]] != 1) do={ :error "upload overlay library before installation" }
+    /import file-name=($dir . "sdwan-overlay.rsc")
+    $sdwanOverlayValidate cfg=$cfg
+    :set ($cfg->"local_networks") [$sdwanOverlayNetworks cfg=$cfg]
+}
 :if ([:tostr [/ip/firewall/connection/tracking/get enabled]] = "no") do={ :error "connection tracking must be enabled" }
 :foreach id in=[/ip/firewall/mangle/find where disabled=no] do={
     :local action [/ip/firewall/mangle/get $id action]
@@ -96,7 +107,7 @@ $sdwanValidateStrict cfg=$cfg
 :local attempts 0
 :while (([/system/script/job/print count-only where script="sdwan-controller"] > 0) && ($attempts < 50)) do={ :delay 100ms; :set attempts ($attempts + 1) }
 :if ([/system/script/job/print count-only where script="sdwan-controller"] > 0) do={ :error "SDWAN controller is busy" }
-/tool/netwatch/disable [/tool/netwatch/find where comment~"^sdwan:v1:"]
+:foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if (!([/tool/netwatch/get $id comment] ~ "^sdwan:v1:overlay:")) do={ /tool/netwatch/disable $id } }
 :if ([:len [/file/find where name=($dir . "sdwan-backup.json")]] = 0) do={
     :local backup [:toarray ""]
     :local routes [:toarray ""]
@@ -345,10 +356,11 @@ $sdwanValidateStrict cfg=$cfg
 # Connection marks and route marks are installed only after all required tables exist.
 /import file-name=($dir . "sdwan-dataplane.rsc")
 # Reconcile removed managed rules, routes and probes; preserve all unowned objects.
-:foreach id in=[/routing/rule/find where comment~"^sdwan:v1:"] do={ :if (($wanted->[/routing/rule/get $id comment]) != true) do={ /routing/rule/remove $id } }
-:foreach id in=[/ip/route/find where comment~"^sdwan:v1:"] do={ :if (($wanted->[/ip/route/get $id comment]) != true) do={ /ip/route/remove $id } }
-:foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if (($wanted->[/tool/netwatch/get $id comment]) != true) do={ /tool/netwatch/remove $id } }
-:foreach id in=[/routing/table/find where name~"^sdwan-"] do={ :if (($wantedTables->[/routing/table/get $id name]) != true) do={ /routing/table/remove $id } }
+:foreach id in=[/routing/rule/find where comment~"^sdwan:v1:"] do={ :if ((!([/routing/rule/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/routing/rule/get $id comment]) != true)) do={ /routing/rule/remove $id } }
+:foreach id in=[/ip/route/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/route/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/ip/route/get $id comment]) != true)) do={ /ip/route/remove $id } }
+:foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if ((!([/tool/netwatch/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/tool/netwatch/get $id comment]) != true)) do={ /tool/netwatch/remove $id } }
+:foreach id in=[/routing/table/find where name~"^sdwan-"] do={ :if ((!([/routing/table/get $id name] ~ "^sdwan-ol-")) && (($wantedTables->[/routing/table/get $id name]) != true)) do={ /routing/table/remove $id } }
+:if ($overlayManaged) do={ $sdwanOverlayInstall cfg=$cfg }
 # Promote the complete, reconciled configuration. Editing the staging JSON alone is inert.
 :local raw [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local active [/file/find where name=($dir . "sdwan-active.json")]

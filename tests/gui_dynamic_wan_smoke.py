@@ -59,7 +59,7 @@ def main():
         else:
             text=app.log.get('1.0','end');assert 'Код завершения: 0' in text,text
             r=Router(ROOT,'api://127.0.0.1:18728');assert r.read_file('sdwan-active.json')==before;r.close()
-        result={'pass':True,'live_native_api':not bool(args.inventory),'kinds':['static','dhcp','pppoe'],'dynamic_lease_snapshots_saved':False,'dynamic_fields_readonly':True,'editor_clears_static_snapshot':True,'package_files':9,'router_unchanged':True}
+        result={'pass':True,'live_native_api':not bool(args.inventory),'kinds':['static','dhcp','pppoe'],'dynamic_lease_snapshots_saved':False,'dynamic_fields_readonly':True,'editor_clears_static_snapshot':True,'package_files':10,'router_unchanged':True}
         (ROOT/'runtime/gui-dynamic-wan-validation.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
         print('GUI_DYNAMIC_WAN_OK: static/DHCP/PPPoE selected, fields safe, 9 files exported, router unchanged',flush=True)
         finished=True;app.destroy()

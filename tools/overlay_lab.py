@@ -155,6 +155,27 @@ class Lab:
             finally:router.close()
             print(node+' public WireGuard identities prepared; interfaces remain disabled',flush=True)
         (self.run/'overlay-public-keys.json').write_text(json.dumps(result,indent=2)+'\n');lock.close()
+    def configs(self):
+        sys.path.insert(0,str(SOURCE_ROOT))
+        from sdwan.config import validate
+        keys=json.loads((self.run/'overlay-public-keys.json').read_text())
+        keys={node:{entry['name']:entry for entry in values} for node,values in keys.items()}
+        result={node:self.sdwan_config(node) for node in ('hub','sitea','siteb')}
+        for node,cfg in result.items():
+            site=node!='hub';idx=NODES[node]
+            cfg['revision']='overlay-lab-v1'
+            cfg['overlay']={'enabled':True,'role':'site' if site else 'hub','router_id':f'10.202.0.{idx if site else 254}','local_prefixes':[f'10.201.{idx}.0/24'] if site else [],'remote_prefixes':[f'10.201.{2 if node=="sitea" else 1}.0/24'] if site else ['10.201.1.0/24','10.201.2.0/24'],'mtu':1380,'mss_clamp':True,'tunnels':[]}
+        for site_index,site in enumerate(('sitea','siteb')):
+            for wan in (1,2):
+                link=site_index*2+wan;site_name='hub-wan'+str(wan);hub_name=site+'-wan'+str(wan)
+                local=keys[site][site_name];remote=keys['hub'][hub_name]
+                common={'cost':wan*10,'peer_prefixes':[f'10.201.{2 if site=="sitea" else 1}.0/24']}
+                result[site]['overlay']['tunnels'].append(dict(common,name=site_name,wan='wan'+str(wan),listen_port=local['listen_port'],address=f'10.203.{link}.0/31',peer_address=f'10.203.{link}.1',local_public_key=local['public_key'],peer_public_key=remote['public_key'],endpoint='198.18.100.1',endpoint_port=remote['listen_port']))
+                result['hub']['overlay']['tunnels'].append(dict(name=hub_name,wan='wan1',listen_port=remote['listen_port'],address=f'10.203.{link}.1/31',peer_address=f'10.203.{link}.0',local_public_key=remote['public_key'],peer_public_key=local['public_key'],peer_prefixes=[f'10.201.{site_index+1}.0/24'],cost=wan*10))
+        target=self.root/'config';target.mkdir(exist_ok=True)
+        for node,cfg in result.items():
+            validate(cfg);(target/('overlay-'+node+'.json')).write_text(json.dumps(cfg,indent=2)+'\n');print(node+' overlay config generated (public identities only)',flush=True)
+        return result
     def probes_start(self):
         pidfile=self.run/'probes.pid'
         if pidfile.exists():
@@ -180,7 +201,7 @@ class Lab:
         print(json.dumps({n:{'state':self.running(n),'api':'api://127.0.0.1:'+str(55728+i)} for n,i in NODES.items()},indent=2))
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','up','status','down','baseline','keys','_serve']);p.add_argument('--project-root',type=Path,default=SOURCE_ROOT);p.add_argument('--accel',choices=['auto','kvm','tcg'],default='auto');args=p.parse_args();lab=Lab(args.project_root)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','up','status','down','baseline','keys','configs','_serve']);p.add_argument('--project-root',type=Path,default=SOURCE_ROOT);p.add_argument('--accel',choices=['auto','kvm','tcg'],default='auto');args=p.parse_args();lab=Lab(args.project_root)
     if args.command=='_serve':
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):

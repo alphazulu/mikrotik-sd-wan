@@ -1,8 +1,10 @@
 # Branch overlay implementation notes
 
-Status: model, one-time public key preparation and separate CHR underlay exist.
-The native overlay actuator, UI/project workflow and overlay acceptance remain
-in progress. This document describes the intended contract, not a released VPN.
+Status: the first native overlay slice is installed on three CHRs. All four
+tunnels and eight OSPF neighbor entries are healthy. A real inner TCP stream
+survives WAN failure and failback; all-down activates a remote-LAN blackhole.
+GUI/project workflow, dynamic/ownership/rollback hardening and full acceptance
+remain in progress. This is an unreleased implementation checkpoint.
 
 ## CGNAT and the test fabric
 
@@ -65,9 +67,9 @@ keys or publish router exports. Both branches' peer prefixes cover remote branch
 LANs; each hub peer accepts only its corresponding branch LAN and inner peer IP.
 Include224.0.0.5/32 in allowed-address for OSPF multicast on each separate interface.
 
-## Native integration still to implement
+## Native integration and remaining hardening
 
-Prefer a ninth RSC library `native/sdwan-overlay.rsc`; links.rsc is already ~50KB.
+The ninth RSC library `native/sdwan-overlay.rsc` now exists; links.rsc is ~50KB.
 Add it to FILES/bundle, SDK payload upload allowlist and native recovery archive.
 A new file absent from a legacy installation must be archived as absent, so
 recovery removes it. Review hardcoded package size/minimum manifest checks and
@@ -150,3 +152,23 @@ to6 multi-WAN TCP drain cases. Incoming management and probes stay independent.
 Docs currently describe7.26; relevant responder/instance/template/filter commands
 were separately tested on the isolated7.24.5 hub with disabled temporary objects,
 then removed. No existing OSPF objects were changed.
+
+## Verified vertical slice
+
+The main validator, derived bypass objects, native installer/dataplane/controller,
+SDK payload upload and recovery manifest now include overlay support. The package
+contains9RSC+JSON. Core cleanup preserves the overlay namespace for module-owned
+reconciliation. Initial peer activation happens after outer pinning/NAT/firewall.
+A real failed installation restored the encrypted pre-overlay configuration and
+removed the formerly absent ninth library. The corrected installation is active
+on hub and both sites. Fresh counters are normalized before comparison: RouterOS
+nil done-tests before the first Netwatch run otherwise prevents recovery forever.
+Native /31 membership also needs a canonical subnet rather than a host-bit prefix.
+
+The four real-TCP acceptance checks cover initial OSPF forwarding, data reception
+on the SAME conntrack ID after WAN1 failure, preferred-path failback and all-down
+blackhole. Native API blackhole is an empty flag value, not the text true.
+Further required hardening: partial config/peer/endpoint changes and scoped outer
+UDP conntrack cleanup, strict native health/key bounds and foreign OSPF/interface
+list protection, default-off/disable/re-enable/full rollback, GUI/diagnostics and
+new container parity. Do not treat the smoke/flow checks as full release acceptance.

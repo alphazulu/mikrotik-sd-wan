@@ -9,6 +9,10 @@
 :global sdwanOrderPolicies
 :global sdwanApplyPolicyMatch
 :global sdwanPolicySignature
+:if ((($cfg->"overlay")->"enabled") = true) do={
+    :global sdwanOverlayNetworks
+    :set ($cfg->"local_networks") [$sdwanOverlayNetworks cfg=$cfg]
+}
 :global sdwanRecordEvent
 :global sdwanConntrackRemoved
 :local oldConfig false
@@ -164,7 +168,7 @@
     :set ($wanted->$tag) true
 }
 # Reconcile stale rules before ordering the complete new chain.
-:foreach id in=[/ip/firewall/mangle/find where comment~"^sdwan:v1:"] do={ :if (($wanted->[/ip/firewall/mangle/get $id comment]) != true) do={ /ip/firewall/mangle/remove $id } }
+:foreach id in=[/ip/firewall/mangle/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/firewall/mangle/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/ip/firewall/mangle/get $id comment]) != true)) do={ /ip/firewall/mangle/remove $id } }
 :local anchor [:pick [/ip/firewall/mangle/find where dynamic=no] 0]
 :for i from=([:len $order] - 1) to=0 step=-1 do={
     :local id [:tostr ($order->$i)]

@@ -22,7 +22,7 @@ def validate(c):
         need(not missing,f'{label}: missing fields {sorted(missing)}')
         need(not unknown,f'{label}: unknown fields {sorted(unknown)}')
     required=('schema_version','revision','health','sla_profiles','wans','local_networks','policies','takeover_route_comments','takeover_rule')
-    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container','maintenance'),'config',required)
+    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container','maintenance','overlay'),'config',required)
     if 'maintenance' in c:
         keys(c['maintenance'],('backup_keep',),'maintenance')
         need(type(c['maintenance']['backup_keep']) is int and 1 <= c['maintenance']['backup_keep'] <= 20,'maintenance.backup_keep must be 1..20')
@@ -129,6 +129,8 @@ def validate(c):
         keys(item,('.id','chain','action'),'FastTrack selector')
         need(bool(re.fullmatch(r'\*[0-9A-Fa-f]+',item['.id'])) and item['chain']=='forward' and item['action']=='fasttrack-connection','invalid FastTrack selector')
     need(all(isinstance(t,str) and 0<len(t)<128 and not t.startswith('sdwan:') for t in c['takeover_route_comments']), 'invalid takeover route comments')
+    from .overlay import validate as validate_overlay
+    validate_overlay(c)
     return c
 
 
@@ -157,7 +159,8 @@ def objects(c):
             gateway={'gateway':spec['gateway']+'%'+spec['interface']} if spec.get('kind','static')=='static' else ({'gateway':spec['interface']} if spec['kind'] in ('pppoe','lte') else {})
             add('ip/route',f'sdwan:v1:route:{p["name"]}:{w}',**gateway,distance=str(i+1),**{'routing-table':p['table']})
         if p['source'] and not composite(p): add('routing/rule',f'sdwan:v1:client:{p["name"]}',table=p['table'],**{'src-address':p['source']})
-    for n in c['local_networks']: add('routing/rule',f'sdwan:v1:local:{n}',table='main',**{'dst-address':n})
+    from .overlay import effective_networks
+    for n in effective_networks(c): add('routing/rule',f'sdwan:v1:local:{n}',table='main',**{'dst-address':n})
     from .dataplane import objects as dataplane_objects
     result.update(dataplane_objects(c))
     return result

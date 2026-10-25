@@ -92,3 +92,16 @@ the existing SD-WAN continuation; preserve unrelated owner-paused schedules.
   See OVERLAY-DESIGN.md for the concrete contract, integration and fixture notes.
 - Protected SDK deployments now use independent temporary staging directories,
   preventing concurrent configuration of different routers from sharing payloads.
+
+## Additional accepted scope
+
+The owner also requests optional external VPN egress through existing WireGuard,
+L2TP, SSTP and OpenVPN clients. Destination matching uses an existing MikroTik
+Address List, with VPN-first priorities, declared backups and native SLA-based
+failover/failback in the same SD-WAN engine. Default off; no external controller.
+Implementation and protocol acceptance are pending; see VPN-EGRESS-PLAN.md.
+
+The first native overlay slice is now active on all3 lab routers: four healthy
+tunnels,8 Full neighbor entries, real inner TCP survival across failure/failback
+and exact remote-prefix blackhole with both underlays down. Additional hardening,
+GUI/project workflow, external VPN egress and the final long soak remain pending.

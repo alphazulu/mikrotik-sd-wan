@@ -6,6 +6,12 @@
 :local n 0
 :while (([/system/script/job/print count-only where script="sdwan-controller"] > 0) && ($n < 50)) do={ :delay 100ms; :set n ($n + 1) }
 :if ([/system/script/job/print count-only where script="sdwan-controller"] > 0) do={ :error "controller still busy" }
+:if ([:len [/routing/ospf/instance/find where comment="sdwan:v1:overlay:instance"]] > 0) do={
+    :global sdwanOverlayInstall
+    /import file-name=($dir . "sdwan-overlay.rsc")
+    :local empty [:toarray ""]
+    $sdwanOverlayInstall cfg=$empty
+}
 :global sdwanStrictCancel
 /import file-name=($dir . "sdwan-links.rsc")
 /system/scheduler/remove [/system/scheduler/find where name="sdwan-strict-dispatch" and comment="sdwan:v1:strict"]

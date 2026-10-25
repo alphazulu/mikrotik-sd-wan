@@ -19,12 +19,12 @@ class ContainerBackendTests(unittest.TestCase):
     def test_default_bundle_preserves_all_canonical_files(self):
         with tempfile.TemporaryDirectory() as directory:
             out=cli.bundle(self.cfg,directory)
-            self.assertEqual(len(list(out.iterdir())),9)
+            self.assertEqual(len(list(out.iterdir())),len(cli.FILES)+1)
             for name in cli.FILES:self.assertEqual((out/name).read_bytes(),(ROOT/'native'/name).read_bytes())
     def test_container_bundle_is_single_controller_with_protected_initial_claim(self):
         with tempfile.TemporaryDirectory() as directory:
             c=self.container();validate(c);out=cli.bundle(c,directory)
-            self.assertEqual(len(list(out.iterdir())),9)
+            self.assertEqual(len(list(out.iterdir())),len(cli.FILES)+1)
             controller=(out/'sdwan-controller.rsc').read_text()
             self.assertIn('192.168.244.2',controller)
             self.assertNotIn('172.31.255.2',controller)

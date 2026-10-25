@@ -15,7 +15,7 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 
@@ -44,6 +44,7 @@ def inspect(router,c):
         for row in rows:
             if menu=='ip/firewall/address-list' and row.get('dynamic')=='true':continue
             tag=row.get('comment','')
+            if tag.startswith(PREFIX+'overlay:'):continue  # reconciled by the optional overlay module
             if tag.startswith(PREFIX):
                 if tag in by_tag:raise ValueError(f'duplicate managed comment: {tag}')
                 by_tag[tag]=row
@@ -119,6 +120,12 @@ def preflight(router,c,expected):
     except ValueError as error:
         if not str(error).startswith('Router file not found:'):raise
         active=None
+    from sdwan.overlay import enabled as overlay_enabled
+    if overlay_enabled(c):
+        actions.append({'action':'reconcile local WireGuard/OSPF overlay using prepared public identities; pin every tunnel to its WAN and probe its inner peer; blackhole remote prefixes when unavailable',
+                        'tunnels':[{'name':t['name'],'wan':t['wan'],'cost':t['cost']} for t in c['overlay']['tunnels']],
+                        'local_prefixes':c['overlay']['local_prefixes'],'remote_prefixes':c['overlay']['remote_prefixes']})
+    elif active and overlay_enabled(active):actions.append({'action':'withdraw owned overlay peers, OSPF templates and VPN routes; retain disabled key identities'})
     if active and signature(active)!=signature(c):actions.append({'action':'reclassify managed outbound client connections after selector/group/order changes; incoming WAN API and probes preserved'})
     for identifier in selectors:actions.append({'action':'disable baseline route','menu':'ip/route','id':identifier})
     for item in c.get('disable_fasttrack',[]):actions.append({'action':'disable FastTrack','menu':'ip/firewall/filter','id':item['.id']})

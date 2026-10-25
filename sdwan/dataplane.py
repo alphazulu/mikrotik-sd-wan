@@ -13,7 +13,8 @@ def objects(c):
         result[('ip/route','sdwan:v1:pin-blackhole:'+name)]={'dst-address':'0.0.0.0/0','routing-table':table,'blackhole':'true','distance':'254'}
         add('in:'+name,'sdwan-pre','mark-connection',**{'in-interface':w['interface'],'connection-state':'new','connection-mark':'no-mark','new-connection-mark':'sdwan-in-'+name,'passthrough':'true'})
         add('wan-return:'+name,'sdwan-pre','return',**{'in-interface':w['interface']})
-    for network in c['local_networks']:
+    from .overlay import effective_networks
+    for network in effective_networks(c):
         result[('ip/firewall/address-list','sdwan:v1:local-address:'+network)]={'list':'sdwan-local','address':network}
     for chain in ('sdwan-pre','sdwan-output'):
         add('local-router:'+chain,chain,'return',**{'dst-address-type':'local'})

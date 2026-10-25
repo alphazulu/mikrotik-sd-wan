@@ -35,7 +35,7 @@ def main():
         dialog.vars['kind'].set('static');app.update();assert dialog.vars['apn_profile'].get()=='' and str(dialog.widgets['apn_profile'].cget('state'))=='disabled';dialog.destroy()
         spec=importlib.util.spec_from_file_location('cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         package=cli.bundle(cfg,ROOT/'build/gui-lte');assert {p.name for p in package.iterdir() if p.is_file()}=={'sdwan-config.json',*cli.FILES}
-        out={'pass':True,'network_calls':0,'physical_modem_tested':False,'inventory_source':'CHR with LTE device metadata adapter','primary':'ether2','backup':'sdwan-test-pppoe','apn_profile':lte['apn_profile'],'lease_snapshot_saved':False,'readonly_runtime_fields':True,'editor_clears_apn_for_other_modes':True,'package_files':9}
+        out={'pass':True,'network_calls':0,'physical_modem_tested':False,'inventory_source':'CHR with LTE device metadata adapter','primary':'ether2','backup':'sdwan-test-pppoe','apn_profile':lte['apn_profile'],'lease_snapshot_saved':False,'readonly_runtime_fields':True,'editor_clears_apn_for_other_modes':True,'package_files':10}
         (ROOT/'runtime/gui-lte-validation.json').write_text(json.dumps(out,indent=2)+'\n',encoding='utf-8');print('GUI_LTE_OK: primary/static + backup/LTE, APN reference, readonly runtime fields, safe editor, 9 files',flush=True);finished=True
     finally:app.destroy()
     assert finished

@@ -30,6 +30,8 @@
 :global sdwanRuntimeWANs
 :global sdwanMaintenance
 :global sdwanDrainingMarks
+:global sdwanOverlayLoaded
+:global sdwanOverlayTick
 :onerror err in={
     :local raw [/file/get [/file/find where name=($dir . "sdwan-active.json")] contents]
     :local cfg [:deserialize from=json options=json.no-string-conversion value=$raw]
@@ -413,6 +415,11 @@
         }
     }
     :set sdwanDrainingMarks $retainedMarks
+    :local overlayReport [:toarray ""]
+    :if ((($cfg->"overlay")->"enabled") = true) do={
+        :if ($sdwanOverlayLoaded != 1) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
+        :set overlayReport [$sdwanOverlayTick cfg=$cfg now=$now]
+    }
     :local output [:toarray ""]
     :set ($output->"revision") ($cfg->"revision")
     :set ($output->"uptime_seconds") $now
@@ -424,6 +431,7 @@
     :set ($output->"probe_details") $probeDetails
     :set ($output->"selected") $sdwanSelected
     :set ($output->"maintenance") $maintenance
+    :set ($output->"overlay") $overlayReport
     :set ($output->"default_admission_closed") $defaultAdmissionClosed
     :set ($output->"draining_marks") $sdwanDrainingMarks
     :set ($output->"controller") "RouterOS local script + scheduler"
