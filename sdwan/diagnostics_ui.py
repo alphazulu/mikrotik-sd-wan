@@ -96,7 +96,7 @@ class DiagnosticsPanel(ttk.Frame):
         self.fill(self.wans,rows)
         rows=[]
         for r in report['policies']:
-            match=', '.join(f'{key}={r[key]}' for key in ('source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if r.get(key) and r[key]!='any')
+            match=', '.join(f'{key}={r[key]}' for key in ('source_group','source_list','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if r.get(key) and r[key]!='any')
             rows.append(dict(r,source=r.get('source') or 'Все остальные',priority=r.get('priority','после явных'),match=match or 'Любой поток',wans=' → '.join(r['wans']),_tag='bad' if r['selected']=='none' else 'good'))
         self.fill(self.policies,rows);self.fill(self.sla,[dict(r,_tag='good' if r['state']=='healthy' else 'wait' if r['state']=='recovering' else 'bad') for r in report['sla']])
         self.fill(self.transports,[dict(r,_tag='wait' if r['effective_admin_state']!='enabled' else 'good') for r in report['wans']]);self.fill(self.overlay,[dict(r,_tag='wait' if r['stale'] else 'good' if r['healthy'] else 'bad') for r in report.get('overlay',[])])
@@ -119,7 +119,7 @@ class DiagnosticsPanel(ttk.Frame):
     def explain_flow(self,*,fresh_lists=False):
         try:
             if not self.report:raise ValueError('Сначала обновите диагностику')
-            if not fresh_lists and any(p.get('destination_list') for p in (self.active_config or {}).get('policies',[])):
+            if not fresh_lists and any(p.get('source_list') or p.get('destination_list') for p in (self.active_config or {}).get('policies',[])):
                 self.app.run('address-lists');return
             flow={k:v.get().strip() for k,v in self.flow.items()}
             for key in ('src_port','dst_port'):flow[key]=int(flow[key]) if flow[key] else None

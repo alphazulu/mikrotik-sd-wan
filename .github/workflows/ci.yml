@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           python -m unittest discover -s tests -p 'test_*.py'
-          python -m compileall -q sdwan tools configurator.py vpn_gui.py overlay_gui.py sdwan.py
+          python -m compileall -q sdwan tools configurator.py vpn_gui.py policy_gui.py overlay_gui.py sdwan.py
           python sdwan.py --config config/sdwan.json validate
           python sdwan.py --config config/examples/clients-applications.json validate
           python sdwan.py --config config/examples/container.json validate

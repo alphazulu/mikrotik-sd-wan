@@ -1,5 +1,13 @@
 # Optional external VPN egress in the existing SD-WAN engine
 
+> Current owner steering supersedes the original separate-feature proposal below:
+> an existing VPN Internet exit is an ordinary `kind=vpn` WAN. Source and
+> destination independently accept IPv4/CIDR or a live MikroTik Address List;
+> all selection, priority, failover/failback and drain use common policies.
+> New GUI/SDK output has no `vpn_egress` switch or implicit VPN policy. See
+> [current setup](VPN-EGRESS.md) and [verification](VPN-EGRESS-VALIDATION.md).
+
+
 Status: newly requested by the owner; implementation pending. This extends the
 active probes/drain/branch-overlay iteration; it does not cancel that work.
 Confirmed protocols: WireGuard and PPP VPN clients (L2TP, SSTP, OpenVPN).

@@ -28,10 +28,10 @@ BACKENDS={'Скрипт RouterOS':'routeros','Локальный контейн�
 ROOT=Path(__file__).resolve().parent
 PROBE_FIELDS=[('name','Имя','text'),('type','Тип',['http-get','https-get','tcp-conn','dns']),('host','IP / DNS-имя','text'),('port','Порт (кроме DNS)','int'),('dns_server','DNS-сервер (для DNS)','text')]
 PROBE_FIELDS += [('http_codes','HTTP коды через запятую (необяз.)','codes'),('http_path','HTTP путь / query (необяз.)','text'),('http_expected_body','Ожидаемый body: JSON-строка (необяз.)','jsontext'),('dns_expected_ips','Ожидаемые DNS A адреса (необяз.)','csv')]
-WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte','vpn']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text'),('admin_state','Состояние WAN',['enabled','drain','down']),('drain_timeout_seconds','Drain: таймаут, с (0 = без срока)','int')]
+WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte','vpn']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text'),('admin_state','Состояние WAN',['enabled','drain','down']),('drain_timeout_seconds','Drain: таймаут, с (0 = без срока)','int'),('masquerade','NAT выбранных соединений через WAN','bool'),('allow_selected_forward','Разрешить выбранные соединения в forward','bool')]
 POLICY_FIELDS=[('name','Имя политики','text'),('source','Источник (0.0.0.0/0 = все; пусто = общая)','text'),('table','Таблица маршрутизации','text'),('profile','SLA-профиль','text'),('mode','Режим',['prefer','strict']),('wans','WAN по порядку, через запятую','csv'),('allow_degraded','Разрешить degraded, если нет healthy','bool')]
 GROUP_FIELDS=[('name','Имя группы','text'),('members','IP/подсети через запятую','csv')]
-POLICY_FIELDS += [('priority','Приоритет (меньше = раньше)','int'),('source_group','Группа источников','text'),('destination','Подсеть назначения','text'),('destination_group','Группа назначений','text'),('destination_list','Address List назначения (на роутере)','text'),('in_interface','Входной интерфейс / VLAN','text'),('protocol','Протокол',['any','tcp','udp','icmp']),('src_ports','Порты источника / диапазоны','text'),('dst_ports','Порты назначения / диапазоны','text')]
+POLICY_FIELDS += [('priority','Приоритет (меньше = раньше)','int'),('source_group','Группа источников','text'),('source_list','Address List источника (на роутере)','text'),('destination','IP / подсеть назначения','text'),('destination_group','Группа назначений','text'),('destination_list','Address List назначения (на роутере)','text'),('in_interface','Входной интерфейс / VLAN','text'),('protocol','Протокол',['any','tcp','udp','icmp']),('src_ports','Порты источника / диапазоны','text'),('dst_ports','Порты назначения / диапазоны','text')]
 SLA_FIELDS=[('name','Имя профиля','text'),('rtt_ms','Средний RTT, мс','float'),('jitter_ms','Jitter max-min, мс','float'),('loss_percent','Потери, %','float')]
 HEALTH_LABELS={'interval_seconds':'Интервал проб, с','timeout_ms':'Timeout пробы, мс','packet_count':'ICMP пакетов в окне','packet_interval_ms':'Интервал ICMP пакетов, мс','quorum':'Кворум доступных целей','fail_windows':'Плохих окон для исключения','recover_windows':'Хороших окон для возврата','hold_down_seconds':'Задержка возврата после плохого окна, с','stale_seconds':'Устаревание телеметрии, с'}
 
@@ -51,7 +51,7 @@ class RecordDialog(tk.Toplevel):
         for row,(key,label,kind) in enumerate(fields):
             container=self.body
             if policy:
-                extra=key in ('source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports')
+                extra=key in ('source_group','source_list','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports')
                 container=selectors if extra else basic;row=counts[extra];counts[extra]+=1
             ttk.Label(container,text=label).grid(row=row,column=0,sticky='w',padx=4,pady=5)
             v=value.get(key,False if kind=='bool' else 'any' if key=='protocol' else '')
@@ -59,7 +59,7 @@ class RecordDialog(tk.Toplevel):
             if kind=='jsontext':v=json.dumps(value[key],ensure_ascii=False) if key in value else ''
             var=tk.BooleanVar(value=v) if kind=='bool' else tk.StringVar(value=str(v))
             self.vars[key]=var
-            if isinstance(kind,list):widget=ttk.Combobox(container,textvariable=var,values=kind,state='normal' if key=='destination_list' else 'readonly',width=35)
+            if isinstance(kind,list):widget=ttk.Combobox(container,textvariable=var,values=kind,state='normal' if key in ('source_list','destination_list') else 'readonly',width=35)
             elif kind=='bool':widget=ttk.Checkbutton(container,variable=var)
             else:widget=ttk.Entry(container,textvariable=var,width=42)
             widget.grid(row=row,column=1,sticky='ew',padx=4,pady=5)
@@ -188,7 +188,6 @@ class App(tk.Tk):
         operations=ttk.Frame(self.review,padding=4);operations.pack(fill='x');self.op_buttons=[];self.action_buttons={}
         for label,cmd in [('План изменений','plan'),('Подготовить контейнер','container-prepare'),('Установить на MikroTik','apply'),('Состояние','status'),('Журнал решений','events'),('Откат к исходному','rollback')]:
             button=ttk.Button(operations,text=label,command=lambda c=cmd:self.run(c));button.pack(side='left',padx=4);self.op_buttons.append(button);self.action_buttons[cmd]=button
-        ttk.Button(operations,text='VPN по Address List',command=self.vpn_configure).pack(side='left',padx=4)
         ttk.Button(operations,text='Филиалы WG/OSPF',command=self.overlay_configure).pack(side='left',padx=4)
         self.tabs=ttk.Notebook(self.review);self.tabs.pack(fill='both',expand=True)
         self.diagnostics=DiagnosticsPanel(self.steps,self);self.steps.add(self.diagnostics,text='Диагностика')
@@ -245,18 +244,21 @@ class App(tk.Tk):
         self.log.insert('end','\nКонфигурация создана из прочитанных настроек. Локальные сети: '+', '.join(c['local_networks'])+'\n')
         self.log.insert('end','Включены connection/routing marks: симметричные ответы WAN и DNAT, привязка потоков к WAN и выборочная очистка conntrack при переключении/возврате.\n')
         if c.get('disable_fasttrack'):self.log.insert('end','В план включено отключение FastTrack для корректной работы политик. Исходное состояние сохраняется для отката.\n')
-        if inventory.get('unselected_vpn_defaults'):self.log.insert('end','На роутере есть default route существующего VPN. Перед установкой добавьте этот VPN через «VPN по Address List» либо согласуйте его автоматические маршруты; план не позволит обойти SLA.\n')
+        if inventory.get('unselected_vpn_defaults'):self.log.insert('end','На роутере есть default route существующего VPN. Перед установкой добавьте этот интерфейс через «Добавить / настроить VPN WAN» либо согласуйте его автоматические маршруты; план не позволит обойти SLA.\n')
         if not any(n.get('action') in ('masquerade','src-nat') and n.get('disabled')!='true' for n in inventory.get('ip/firewall/nat',[])):self.log.insert('end','На устройстве не найден исходящий NAT. Генератор сохраняет текущую схему NAT/firewall; её нужно согласовать перед использованием интернета клиентами.\n')
     def render_config(self,c):
-        validate(c);self.data=copy.deepcopy(c)
+        from sdwan.vpn_egress import canonical
+        c=canonical(c);self.data=copy.deepcopy(c)
         for t in self.tabs.tabs():self.tabs.nametowidget(t).destroy()
         self.wans=Table(self.tabs,WAN_FIELDS,c['wans'],wan=True);self.tabs.add(self.wans,text='Каналы WAN')
+        ttk.Button(self.wans,text='Добавить / настроить VPN WAN',command=self.vpn_configure).pack(anchor='w',padx=4,pady=4)
         rows=[dict(name=k,**v) for k,v in c['sla_profiles'].items()]
         self.slas=Table(self.tabs,SLA_FIELDS,rows);self.tabs.add(self.slas,text='SLA-профили')
         self.policies=Table(self.tabs,POLICY_FIELDS,ordered(c));self.tabs.add(self.policies,text='Клиенты и приложения')
+        ttk.Button(self.policies,text='Правило по IP / Address List → WAN',command=self.policy_configure).pack(anchor='w',padx=4,pady=4)
         ttk.Label(self.policies,text='Изменение групп, условий или порядка правил пересоздаёт управляемые исходящие соединения. Входящее управление сохраняется.',wraplength=1100).pack(fill='x',pady=5)
         self.groups=Table(self.tabs,GROUP_FIELDS,[{'name':name,'members':members} for name,members in c.get('groups',{}).items()]);self.tabs.add(self.groups,text='Группы адресов')
-        self.policies.choices=lambda:{'source_group':['']+[r['name'] for r in self.groups.rows],'destination_group':['']+[r['name'] for r in self.groups.rows],'destination_list':['']+(self.inventory or {}).get('address_list_names',[]),'profile':[r['name'] for r in self.slas.rows],**({'in_interface':['']+[r['name'] for r in self.inventory.get('interface',[])]} if self.inventory else {})}
+        self.policies.choices=lambda:{'source_group':['']+[r['name'] for r in self.groups.rows],'destination_group':['']+[r['name'] for r in self.groups.rows],'source_list':['']+(self.inventory or {}).get('address_list_names',[]),'destination_list':['']+(self.inventory or {}).get('address_list_names',[]),'profile':[r['name'] for r in self.slas.rows],**({'in_interface':['']+[r['name'] for r in self.inventory.get('interface',[])]} if self.inventory else {})}
         health=ttk.Frame(self.tabs,padding=12);self.tabs.add(health,text='Контроль и возврат');self.health={}
         for row,(key,label) in enumerate(HEALTH_LABELS.items()):
             v=tk.StringVar(value=str(c['health'][key]));self.health[key]=v;ttk.Label(health,text=label).grid(row=row,column=0,sticky='w',pady=4);ttk.Entry(health,textvariable=v,width=12).grid(row=row,column=1,padx=10)
@@ -313,7 +315,7 @@ class App(tk.Tk):
             from vpn_gui import VPNDialog
             dialog=VPNDialog(self,self.collect(),self.inventory)
             if dialog.result:self.render_config(dialog.result)
-        except (ValueError,KeyError) as error:messagebox.showerror('VPN-egress',str(error),parent=self)
+        except (ValueError,KeyError) as error:messagebox.showerror('VPN WAN',str(error),parent=self)
     def overlay_configure(self):
         if self.busy:return
         try:
@@ -321,6 +323,13 @@ class App(tk.Tk):
             dialog=OverlayDialog(self,self.collect(),Table,RecordDialog)
             if dialog.result:self.render_config(dialog.result)
         except (ValueError,KeyError) as error:messagebox.showerror('Филиальный overlay',str(error),parent=self)
+    def policy_configure(self):
+        if self.busy:return
+        try:
+            from policy_gui import PolicyDialog
+            dialog=PolicyDialog(self,self.collect(),self.inventory or {})
+            if dialog.result:self.render_config(dialog.result)
+        except (ValueError,KeyError) as error:messagebox.showerror('Правило WAN',str(error),parent=self)
     def load(self,path):
         self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
     def collect(self):

@@ -39,8 +39,10 @@
     :local raw [/file/get [/file/find where name=($dir . "sdwan-active.json")] contents]
     :local cfg [:deserialize from=json options=json.no-string-conversion value=$raw]
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
+    :local vpnEnabled false
+    :foreach wan in=($cfg->"wans") do={ :if (($wan->"kind") = "vpn") do={ :set vpnEnabled true } }
     :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 7) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
-    :if ((($cfg->"vpn_egress")->"enabled") = true) do={
+    :if ($vpnEnabled) do={
         :global sdwanVPNLoaded
         :global sdwanVPNTick
         :if (($sdwanVPNLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
@@ -85,7 +87,7 @@
     :set sdwanConfigRaw $raw
     :if ([:typeof $sdwanLinkWarming] != "array") do={ :set sdwanLinkWarming [:toarray ""] }
     :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
-    :if ((($cfg->"vpn_egress")->"enabled") = true) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
+    :if ($vpnEnabled) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
     :local linkChanges [$sdwanReconcileWANs wans=($cfg->"wans") policies=($cfg->"policies") health=$health]
     :foreach wn,change in=$linkChanges do={
         :set sdwanConntrackRemoved ($sdwanConntrackRemoved + ($change->"removed"))
@@ -450,7 +452,7 @@
     :set ($output->"maintenance") $maintenance
     :set ($output->"overlay") $overlayReport
     :local vpnReport [:toarray ""]
-    :if ((($cfg->"vpn_egress")->"enabled") = true) do={
+    :if ($vpnEnabled) do={
         :foreach wn,row in=$sdwanVPNTransport do={ :set ($vpnReport->$wn) {"underlay"=($row->"underlay");"transport_ready"=($row->"ready")} }
     }
     :set ($output->"vpn_egress") $vpnReport

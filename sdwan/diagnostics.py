@@ -67,7 +67,7 @@ def view(status,config=None,*,identity='',version='',router_uptime=None,router_a
 
     for p in ordered(config) if config.get('policies') else []:
         name=p['name'];selected=status.get('selected',{}).get(name,'none');detail=status.get('policies',{}).get(name,{})
-        row={k:copy.deepcopy(p[k]) for k in ('name','source','table','profile','mode','wans','priority','source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if k in p}
+        row={k:copy.deepcopy(p[k]) for k in ('name','source','table','profile','mode','wans','priority','source_group','source_list','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if k in p}
         row.update(selected=selected,reason=REASONS.get(detail.get('reason'),detail.get('reason','Первый доступный WAN в порядке политики' if selected!='none' else 'Нет допустимого WAN')),candidates=[{'wan':w,**copy.deepcopy(status.get('states',{}).get(p['profile']+'/'+w,{}))} for w in p['wans']],last_cleanup=copy.deepcopy(status.get('last_cleanup',{}).get(name,{})))
         shadow=next((x['first'] for x in result['overlaps'] if x['later']==name and x['shadowed']),None)
         row['effective']=shadow is None
@@ -107,7 +107,7 @@ def read(router,*,include_membership=False):
                 states=sorted({n['state'] for n in neighbors if n.get('instance')=='sdwan-overlay' and n.get('interface')==row['interface'] and isinstance(n.get('state'),str)})
                 row['ospf_state']=', '.join(states) if states else 'none'
         except (RuntimeError,ValueError):result['overlay_neighbors_unavailable']=True
-    names={p['destination_list'] for p in (config or {}).get('policies',[]) if p.get('destination_list')}
+    names={p[field] for p in (config or {}).get('policies',[]) for field in ('source_list','destination_list') if p.get(field)}
     if names and include_membership:
         from .address_lists import snapshot
         try:result['address_lists']=snapshot(router,names)

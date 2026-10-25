@@ -846,7 +846,7 @@
 }
 # Policy helpers share the existing package; no external decision process.
 :global sdwanPolicyExtended do={
-    :foreach field in={"source_group";"destination";"destination_group";"destination_list";"in_interface";"src_ports";"dst_ports"} do={ :if ([:len [:tostr ($policy->$field)]] > 0) do={ :return true } }
+    :foreach field in={"source_group";"source_list";"destination";"destination_group";"destination_list";"in_interface";"src_ports";"dst_ports"} do={ :if ([:len [:tostr ($policy->$field)]] > 0) do={ :return true } }
     :local proto [:tostr ($policy->"protocol")]
     :return (($proto != "") && ($proto != "any"))
 }
@@ -877,7 +877,7 @@
     :local rows [:toarray ""]
     :foreach item in=[$sdwanOrderPolicies policies=($cfg->"policies")] do={
         :local row [:toarray ""]
-        :foreach field in={"name";"source";"source_group";"destination";"destination_group";"destination_list";"in_interface";"protocol";"src_ports";"dst_ports";"priority"} do={
+        :foreach field in={"name";"source";"source_group";"source_list";"destination";"destination_group";"destination_list";"in_interface";"protocol";"src_ports";"dst_ports";"priority"} do={
             :local v [:tostr ($item->$field)]
             :if (($field = "protocol") && ($v = "")) do={ :set v "any" }
             :set ($row->$field) $v
@@ -890,12 +890,14 @@
 :global sdwanValidatePolicyLists do={
     :foreach policy in=($cfg->"policies") do={
         :foreach key,value in=$policy do={
-            :if ($key = "destination_list") do={
+            :if (($key = "source_list") || ($key = "destination_list")) do={
                 :if ([:typeof $value] != "str") do={ :error "Address List selector must be a string" }
                 :if (([:len $value] > 64) || ([:pick $value 0 1] = "!") || ($value ~ "^[[:space:]]|[[:space:]]\$")) do={ :error "invalid external Address List selector" }
                 :local controls "\00\01\02\03\04\05\06\07\08\09\0A\0B\0C\0D\0E\0F\10\11\12\13\14\15\16\17\18\19\1A\1B\1C\1D\1E\1F\7F"
                 :for index from=0 to=32 do={ :if ([:typeof [:find $value [:pick $controls $index ($index + 1)]]] != "nil") do={ :error "control character in Address List selector" } }
-                :if (([:len $value] > 0) && ([:len [:tostr ($policy->"destination_group")]] > 0)) do={ :error "Address List and destination group are ambiguous" }
+                :local group "destination_group"
+                :if ($key = "source_list") do={ :set group "source_group" }
+                :if (([:len $value] > 0) && ([:len [:tostr ($policy->$group)]] > 0)) do={ :error "Address List and same-side group are ambiguous" }
             }
         }
     }
@@ -906,6 +908,7 @@
     :if ($source = "") do={ :set source "0.0.0.0/0" }
     /ip/firewall/mangle/set $rule src-address=$source
     :if ([:len [:tostr ($policy->"source_group")]] > 0) do={ /ip/firewall/mangle/set $rule src-address-list=("sdwan-group-" . ($policy->"source_group")) }
+    :if ([:len [:tostr ($policy->"source_list")]] > 0) do={ /ip/firewall/mangle/set $rule src-address-list=($policy->"source_list") }
     :if ([:len [:tostr ($policy->"destination")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address=($policy->"destination") }
     :if ([:len [:tostr ($policy->"destination_group")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address-list=("sdwan-group-" . ($policy->"destination_group")) }
     :if ([:len [:tostr ($policy->"destination_list")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address-list=($policy->"destination_list") }

@@ -5,6 +5,7 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from configurator import App
 from vpn_gui import VPNDialog
+from policy_gui import PolicyDialog
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);args=p.parse_args();profile=args.lab_root/'runtime/overlay-lab';credential=json.loads((profile/'runtime/credentials.json').read_text())['sitea'];app=App();r=None;d=None
@@ -23,9 +24,13 @@ def main():
   print('PASS live API discovers four public VPN bindings and keeps them separate from physical WAN selection')
   app.render_config(json.loads(before))
   with patch.object(tk.Toplevel,'wait_window',return_value=None),patch.object(tk.Toplevel,'grab_set',return_value=None):d=VPNDialog(app,app.collect(),app.inventory)
-  assert not d.enabled.get();d.enabled.set(True);d.vars['list'].set('future-empty-live-list');d.accept();assert d.result
-  app.render_config(d.result);c=app.collect();assert c['vpn_egress']['enabled'] and next(p['wans'] for p in c['policies'] if not p['source'])==next(p['wans'] for p in json.loads(before)['policies'] if not p['source']);assert c['wans'][-1]['kind']=='vpn'
-  print('PASS live-discovered VPN builds a valid opt-in configuration while preserving physical default')
+  d.accept();assert d.result
+  app.render_config(d.result);c=app.collect();assert 'vpn_egress' not in c and c['policies']==json.loads(before)['policies'];assert c['wans'][-1]['kind']=='vpn'
+  print('PASS live-discovered VPN joins ordinary WANs without creating a routing policy or separate feature switch')
+  with patch.object(tk.Toplevel,'wait_window',return_value=None),patch.object(tk.Toplevel,'grab_set',return_value=None):d=PolicyDialog(app,c,app.inventory)
+  d.modes['source'].set('Address List MikroTik');d.values['source'].set('future-empty-live-users');d.modes['destination'].set('IP / подсеть');d.values['destination'].set('203.0.113.7');d.wans.set_order([c['wans'][-1]['name'],'wan2','wan1']);d.accept();assert d.result
+  app.render_config(d.result);policy=next(p for p in app.collect()['policies'] if p['name']==d.vars['name'].get());assert policy['source_list']=='future-empty-live-users' and policy['destination']=='203.0.113.7/32' and policy['wans'][0]==c['wans'][-1]['name']
+  print('PASS common live GUI policy combines an existing/future source Address List with a destination IP and VPN/physical priority')
   app.run('diagnostics');wait(lambda:not app.busy and app.diagnostics.report is not None);assert 'address_lists' not in app.diagnostics.report;assert r.read_file('sdwan-active.json')==before
   print('PASS GUI creation and diagnostic refresh leave router configuration unchanged and do not copy Address List membership')
  finally:

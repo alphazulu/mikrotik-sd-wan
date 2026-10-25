@@ -206,7 +206,11 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
     if unknown:raise ValueError('Недостаточно данных для проверки конфликтов. Разрешите чтение и подключитесь заново: '+', '.join(sorted(unknown)))
     if inventory.get('active_config_error') and any(r.get('comment','').startswith('sdwan:') for r in inventory.get('ip/route',[])):raise ValueError('Не удалось прочитать действующий SD-WAN. Исправьте права/формат перед созданием новой конфигурации.')
     selected=validate_wan_choices(inventory,choices)
-    active=inventory.get('active_config');base=copy.deepcopy(active) if active else {
+    active=inventory.get('active_config')
+    if active:
+        from .vpn_egress import canonical
+        active=canonical(active)
+    base=copy.deepcopy(active) if active else {
       'schema_version':1,'revision':'discovered','health':{'interval_seconds':5,'timeout_ms':1000,'packet_count':20,'packet_interval_ms':50,'quorum':2,'fail_windows':3,'recover_windows':6,'hold_down_seconds':60,'stale_seconds':20},
       'sla_profiles':{'default':{'rtt_ms':150,'jitter_ms':30,'loss_percent':2},'voice':{'rtt_ms':80,'jitter_ms':15,'loss_percent':1}},
       'wans':[],'local_networks':[],'policies':[],'takeover_route_comments':[],'takeover_rule':{'src-address':'','table':''}}
@@ -248,7 +252,9 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
     base['wans']=wans
     if not retained_vpns:base.pop('vpn_egress',None)
     defaults=next((copy.deepcopy(p) for p in base['policies'] if not p.get('source')),{'name':'default','source':'','table':'main','profile':'default','mode':'prefer','allow_degraded':False})
-    defaults.update(wans=order,mode='prefer')
+    if retained_vpns and any(name in {w['name'] for w in retained_vpns} for name in defaults.get('wans',[])):
+        if not set(defaults['wans'])<={w['name'] for w in wans}:raise ValueError('Общая политика использует исключённый WAN; исправьте её порядок перед генерацией.')
+    else:defaults.update(wans=order,mode='prefer')
     policies=[defaults]
     if keep_policies and active:
         for p in active['policies']:

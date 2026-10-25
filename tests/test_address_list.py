@@ -12,7 +12,8 @@ def config():
 class AddressListTests(unittest.TestCase):
  def test_uses_existing_list_without_materializing_or_owning_its_entries(self):
   cfg=validate(config());native=objects(cfg)
-  for tag in ('sdwan:v1:classify:targets:wan2','sdwan:v1:guard:targets'):self.assertEqual(native['ip/firewall/mangle',tag]['dst-address-list'],'VPN destinations')
+  jump=native['ip/firewall/mangle','sdwan:v1:policy-jump:targets'];self.assertEqual(jump['dst-address-list'],'VPN destinations')
+  guard=native['ip/firewall/mangle','sdwan:v1:guard:targets'];self.assertEqual(jump['jump-target'],guard['chain']);self.assertEqual(guard['connection-mark'],'no-mark')
   self.assertFalse(any(values.get('list')=='VPN destinations' for (menu,_),values in native.items() if menu=='ip/firewall/address-list'))
  def test_current_cidr_membership_and_empty_list_match_exactly(self):
   cfg=config();flow=dict(source='192.168.50.101',destination='203.0.113.20')

@@ -92,25 +92,53 @@
 # Explicit priorities first, legacy source policies next, default always last.
 :foreach p in=[$sdwanOrderPolicies policies=($cfg->"policies")] do={
     :local pn ($p->"name")
+    :local policyChain ("sdwan-p-" . $pn)
+    :local jumpTag ("sdwan:v1:policy-jump:" . $pn)
+    /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$jumpTag]
+    :local jumpID [$ensure tag=$jumpTag chain="sdwan-pre"]
+    /ip/firewall/mangle/set $jumpID action=jump jump-target=$policyChain connection-mark=no-mark connection-state=established,related,new disabled=no
+    $sdwanApplyPolicyMatch rule=$jumpID policy=$p
+    :set ($wanted->$jumpTag) true; :set order ($order,$jumpID)
     :foreach wn in=($p->"wans") do={
         :local mark ("sdwan-out-" . $pn . ":" . $wn)
         :set ($marks->$mark) true
         :local tag ("sdwan:v1:classify:" . $pn . ":" . $wn)
         # Fresh selector objects cannot retain constraints from an earlier edit.
         /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
-        :local id [$ensure tag=$tag chain=sdwan-pre]
+        :local id [$ensure tag=$tag chain=$policyChain]
         /ip/firewall/mangle/set $id action=mark-connection connection-mark=no-mark connection-state=established,related,new new-connection-mark=$mark passthrough=yes disabled=yes
-        $sdwanApplyPolicyMatch rule=$id policy=$p
         :set ($wanted->$tag) true; :set order ($order,$id)
     }
-    # The guard has exactly the same selectors, including protocol/ports/groups.
+    # Only matching unmarked flows reach this chain; its last rule fails closed.
     :local tag ("sdwan:v1:guard:" . $pn)
     /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
-    :local id [$ensure tag=$tag chain=sdwan-pre]
+    :local id [$ensure tag=$tag chain=$policyChain]
     /ip/firewall/mangle/set $id action=mark-routing connection-mark=no-mark new-routing-mark=($p->"table") passthrough=no
-    $sdwanApplyPolicyMatch rule=$id policy=$p
     /ip/firewall/mangle/enable $id
     :set ($wanted->$tag) true; :set order ($order,$id)
+}
+# Optional egress NAT/accept is a property of any WAN, with exact policy marks.
+# Legacy VPN-wide flags remain readable but are not emitted by new configuration.
+:local wanFlag do={
+    :foreach key,value in=$wan do={ :if ($key = $flag) do={ :return $value } }
+    :if (($wan->"kind") = "vpn") do={ :return ((($cfg->"vpn_egress")->$flag) = true) }
+    :return false
+}
+/ip/firewall/nat/remove [/ip/firewall/nat/find where comment~"^sdwan:v1:egress:"]
+/ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:egress:"]
+:global sdwanForwardAnchor
+:foreach p in=($cfg->"policies") do={
+    :foreach wn in=($p->"wans") do={
+        :foreach w in=($cfg->"wans") do={ :if (($w->"name") = $wn) do={
+            :local mark ("sdwan-out-" . ($p->"name") . ":" . $wn)
+            :local tag ("sdwan:v1:egress:" . ($p->"name") . ":" . $wn)
+            :if ([$wanFlag cfg=$cfg wan=$w flag="masquerade"]) do={ /ip/firewall/nat/add chain=srcnat out-interface=($w->"interface") connection-mark=$mark action=masquerade comment=$tag }
+            :if ([$wanFlag cfg=$cfg wan=$w flag="allow_selected_forward"]) do={
+                :local before [$sdwanForwardAnchor]
+                :if ([:len $before] = 0) do={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag } else={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag place-before=$before }
+            }
+        } }
+    }
 }
 # Existing marked flows retain their WAN until explicitly removed during a policy transition.
 :foreach p in=($cfg->"policies") do={

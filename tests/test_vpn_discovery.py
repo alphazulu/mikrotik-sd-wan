@@ -13,7 +13,7 @@ class VPNDiscoveryTests(unittest.TestCase):
   inv['candidates']=candidates(inv);return inv,link
  def test_existing_vpn_and_its_policy_survive_physical_wizard_regeneration(self):
   inv,_=self.fixture(active=True);result=build(inv)
-  self.assertEqual([w['name'] for w in result['wans']],['wan1','wan2','vpn1']);self.assertEqual(result['policies'][0]['wans'],['wan1','wan2']);self.assertEqual(next(p for p in result['policies'] if p.get('destination_list'))['wans'],['vpn1','wan1']);self.assertNotIn('10.204.3.2/32',result['local_networks']);self.assertTrue(result['vpn_egress']['enabled'])
+  self.assertEqual([w['name'] for w in result['wans']],['wan1','wan2','vpn1']);self.assertEqual(result['policies'][0]['wans'],['wan1','wan2']);self.assertEqual(next(p for p in result['policies'] if p.get('destination_list'))['wans'],['vpn1','wan1']);self.assertNotIn('10.204.3.2/32',result['local_networks']);self.assertNotIn('vpn_egress',result)
  def test_reset_policies_explicitly_drops_optional_vpn_without_saving_lease_network(self):
   inv,_=self.fixture(active=True);result=build(inv,keep_policies=False);self.assertEqual(len(result['wans']),2);self.assertNotIn('vpn_egress',result);self.assertNotIn('10.204.3.2/32',result['local_networks'])
  def test_unselected_vpn_default_allows_draft_then_explicit_vpn_adoption(self):

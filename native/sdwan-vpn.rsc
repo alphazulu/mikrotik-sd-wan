@@ -100,8 +100,9 @@
     :global sdwanVPNEndpointCheck
     :global sdwanVPNBinding
     :local opts ($cfg->"vpn_egress")
-    :local on (($opts->"enabled") = true)
-    :if (([:typeof $opts] != "nil") && ([:typeof $opts] != "nothing")) do={
+    :local legacy false
+    :foreach key,value in=$cfg do={ :if ($key = "vpn_egress") do={ :set legacy true } }
+    :if ($legacy) do={
         :if ([:typeof $opts] != "array") do={ :error "invalid vpn_egress settings" }
         :foreach key,value in=$opts do={
             :if ((($key != "enabled") && ($key != "masquerade") && ($key != "allow_selected_forward")) || ([:typeof $value] != "bool")) do={ :error "invalid vpn_egress flag" }
@@ -112,7 +113,7 @@
     :local ports [:toarray ""]
     :foreach w in=($cfg->"wans") do={
         :if (($w->"kind") = "vpn") do={
-            :if (!$on) do={ :error "VPN WAN requires explicit vpn_egress.enabled=true" }
+            :if ($legacy && (($opts->"enabled") != true)) do={ :error "legacy VPN switch explicitly disables declared WANs" }
             :local parents ($w->"underlays")
             :if (([:typeof $parents] != "array") || ([:len $parents] < 1)) do={ :error "VPN requires physical underlays" }
             :local seen [:toarray ""]
@@ -135,13 +136,6 @@
             :local listTag ("sdwan:v1:vpn:endpoint:" . ($w->"name"))
             :foreach id in=[/ip/firewall/address-list/find where list=$listName and dynamic=no] do={ :if ([/ip/firewall/address-list/get $id comment] != $listTag) do={ :error "foreign VPN endpoint Address List collision" } }
             :local binding [$sdwanVPNBinding spec=$w]
-        }
-    }
-    :foreach policy in=($cfg->"policies") do={
-        :foreach wn in=($policy->"wans") do={
-            :if (($physical->$wn) != true) do={
-                :if ((($policy->"source") = "") || ([:len [:tostr ($policy->"destination_list")]] = 0)) do={ :error "VPN belongs only to destination Address List policies" }
-            }
         }
     }
     :return true
@@ -190,7 +184,8 @@
 # Install only the optional transport objects and explicitly approved NAT/ACLs.
 :global sdwanVPNInstall do={
     :local wanted [:toarray ""]
-    :local on ((($cfg->"vpn_egress")->"enabled") = true)
+    :local on false
+    :foreach w in=($cfg->"wans") do={ :if (($w->"kind") = "vpn") do={ :set on true } }
     :if ($on) do={
         :foreach w in=($cfg->"wans") do={ :if (($w->"kind") = "vpn") do={
             :set ($wanted->("sdwan:v1:vpn:endpoint:" . ($w->"name"))) true
@@ -212,20 +207,7 @@
             :if ([:len $entry] > 1) do={ :error "duplicate owned VPN endpoint" }
             :if (([:len $entry] = 1) && ([:tostr [/ip/firewall/address-list/get $entry address]] != $endpoint)) do={ /ip/firewall/address-list/remove $entry; :set entry "" }
             :if ([:len $entry] = 0) do={ /ip/firewall/address-list/add list=("sdwan-vpn-endpoint-" . $wn) address=$endpoint comment=$endpointTag }
-            :foreach p in=($cfg->"policies") do={
-                :foreach selected in=($p->"wans") do={
-                    :if ($selected = $wn) do={
-                        :local mark ("sdwan-out-" . ($p->"name") . ":" . $wn)
-                        :local tag ("sdwan:v1:vpn:egress:" . ($p->"name") . ":" . $wn)
-                        :if ((($cfg->"vpn_egress")->"masquerade") = true) do={ /ip/firewall/nat/add chain=srcnat out-interface=($w->"interface") connection-mark=$mark action=masquerade comment=$tag }
-                        :if ((($cfg->"vpn_egress")->"allow_selected_forward") = true) do={
-                            :global sdwanForwardAnchor
-                            :local before [$sdwanForwardAnchor]
-                            :if ([:len $before] = 0) do={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag } else={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag place-before=$before }
-                        }
-                    }
-                }
-            }
+
         }
     }
     :return true

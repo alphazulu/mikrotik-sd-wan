@@ -117,7 +117,7 @@ python3 tools/audit_public_tree.py
 ## Разрабатываемая сетевая итерация
 
 В текущей ветке добавлены строгие DNS/HTTP-пробы, drain, филиальный WireGuard/OSPF
-overlay и опциональный VPN-egress через Address List. Для филиалов есть
+overlay и опциональные VPN WAN с общими политиками по IP/Address List источника и назначения. Для филиалов есть
 [GUI и обмен публичными ключами](docs/OVERLAY-GUI.md); для внешних VPN —
 [отдельный мастер](docs/VPN-EGRESS.md). Контроллер остаётся на MikroTik.
 Это этап разработки: полная приёмка нового контейнера, hardening и один длительный

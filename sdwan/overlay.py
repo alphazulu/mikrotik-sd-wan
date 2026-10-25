@@ -88,10 +88,13 @@ def validate(cfg):
     _need(h['stale_seconds']>=2*h['interval_seconds'],'stale_seconds must cover two inner intervals')
     tunnels=overlay['tunnels'];_need(isinstance(tunnels,list) and 1<=len(tunnels)<=16,'1..16 independent tunnels required')
     wan_names={w['name'] for w in cfg['wans']};names=set();ports=set();subnets=[];keys=set()
+    other_tables={w['probe_table'] for w in cfg['wans']}|{p['table'] for p in cfg['policies']}
     for tunnel in tunnels:
         _keys(tunnel,('name','wan','listen_port','address','peer_address','local_public_key','peer_public_key','peer_prefixes','cost'),('endpoint','endpoint_port','keepalive_seconds'))
         name=tunnel['name'];_need(isinstance(name,str) and NAME.fullmatch(name) and name not in names,'invalid/duplicate tunnel name');names.add(name)
-        _need(tunnel['wan'] in wan_names,'unknown underlay WAN')
+        _need(probe_table(tunnel) not in other_tables,'overlay table collides with policy or WAN probe table')
+        _need(isinstance(tunnel['wan'],str) and tunnel['wan'] in wan_names,'unknown underlay WAN')
+        _need(next(w for w in cfg['wans'] if w['name']==tunnel['wan']).get('kind','static')!='vpn','overlay requires a physical underlay WAN')
         _integer(tunnel['listen_port'],1024,65535,'listen_port');_need(tunnel['listen_port'] not in ports,'duplicate local WireGuard listen port');ports.add(tunnel['listen_port'])
         try:address=ipaddress.IPv4Interface(tunnel['address'])
         except (ValueError,TypeError):raise ValueError('overlay: invalid tunnel IPv4 interface') from None
@@ -111,7 +114,8 @@ def validate(cfg):
             if endpoint_ip is not None:_ip(endpoint)
             _integer(tunnel.get('endpoint_port'),1024,65535,'endpoint_port');_integer(tunnel.get('keepalive_seconds',25),10,60,'keepalive_seconds')
         else:
-            _need('endpoint' not in tunnel and 'endpoint_port' not in tunnel and tunnel.get('keepalive_seconds',0)==0,'hub is responder-only; endpoints/keepalives belong on CGNAT sites')
+            _need('endpoint' not in tunnel and 'endpoint_port' not in tunnel,'hub is responder-only; endpoints belong on CGNAT sites')
+            _integer(tunnel.get('keepalive_seconds',0),0,0,'hub keepalive_seconds')
     for tunnel in tunnels:
         endpoint=tunnel.get('endpoint','')
         try:ip=ipaddress.IPv4Address(endpoint)

@@ -20,6 +20,8 @@ PREFIX='sdwan:v1:'
 
 
 def bundle(c,output):
+    from sdwan.vpn_egress import canonical
+    c=canonical(c)
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
     (output/'sdwan-config.json').write_text(json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n',encoding='utf-8',newline='\n')
     for name in FILES:
@@ -39,7 +41,7 @@ def bundle(c,output):
 
 def inspect(router,c):
     live={}
-    for menu in ('ip/route','routing/rule','tool/netwatch','ip/firewall/mangle','ip/firewall/address-list'):
+    for menu in ('ip/route','routing/rule','tool/netwatch','ip/firewall/mangle','ip/firewall/address-list','ip/firewall/nat','ip/firewall/filter'):
         rows=router.call(menu); by_tag={}
         for row in rows:
             if menu=='ip/firewall/address-list' and row.get('dynamic')=='true':continue
@@ -69,6 +71,8 @@ def inspect(router,c):
 
 
 def preflight(router,c,expected):
+    from sdwan.vpn_egress import canonical
+    c=canonical(c)
     identity=router.call('system/identity')['name']
     if identity!=expected:raise ValueError(f'Router identity {identity!r} differs from expected {expected!r}')
     res=router.call('system/resource')
@@ -133,7 +137,8 @@ def preflight(router,c,expected):
     elif active and overlay_enabled(active):actions.append({'action':'withdraw owned overlay peers, OSPF templates and VPN routes; retain disabled key identities'})
     if active and signature(active)!=signature(c):actions.append({'action':'reclassify managed outbound client connections after selector/group/order changes; incoming WAN API and probes preserved'})
     from sdwan.vpn_egress import vpn_wans
-    for w in vpn_wans(c):actions.append({'action':'use existing VPN exit; adopt automatic defaults; pin outer transport to physical underlays; select with the common SLA and conntrack engine','wan':w['name'],'vpn_type':w['vpn_type'],'underlays':w['underlays'],'masquerade':c['vpn_egress'].get('masquerade',False),'allow_selected_forward':c['vpn_egress'].get('allow_selected_forward',False)})
+    from sdwan.vpn_egress import wan_flag
+    for w in vpn_wans(c):actions.append({'action':'adopt existing VPN WAN transport and suppress automatic/pushed defaults; select with ordinary WAN policies and common SLA/conntrack','wan':w['name'],'vpn_type':w['vpn_type'],'underlays':w['underlays'],'masquerade':wan_flag(c,w,'masquerade'),'allow_selected_forward':wan_flag(c,w,'allow_selected_forward'),'credentials_changed':False})
     for identifier in selectors:actions.append({'action':'disable baseline route','menu':'ip/route','id':identifier})
     for item in c.get('disable_fasttrack',[]):actions.append({'action':'disable FastTrack','menu':'ip/firewall/filter','id':item['.id']})
     for w in c['wans']:

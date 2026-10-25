@@ -21,29 +21,174 @@
     :foreach prefix in=$result do={ :if (($seen->$prefix) != true) do={ :set ($seen->$prefix) true; :set unique ($unique,$prefix) } }
     :return $unique
 }
+# Shared install-only schema checks. Explicit JSON null is never a default.
+:global sdwanOverlayKeys do={
+    :if ([:typeof $value] != "array") do={ :error "overlay settings must be an object" }
+    :local present [:toarray ""]
+    :foreach key,item in=$value do={
+        :if (([:typeof $key] != "str") || ([:typeof ($allowed->$key)] = "nothing") || ([:typeof $item] = "nil") || ([:typeof $item] = "nothing")) do={ :error "unknown or null overlay option" }
+        :set ($present->$key) true
+    }
+    :foreach key in=$required do={ :if (($present->$key) != true) do={ :error "missing overlay option" } }
+    :return true
+}
+:global sdwanOverlayIP do={
+    :if ([:typeof $value] != "str") do={ :error "overlay IPv4 address must be text" }
+    :local ip [:toip $value]
+    :if (([:typeof $ip] != "ip") || ([:tostr $ip] != $value) || ($ip = 0.0.0.0) || ($ip >= 224.0.0.0) || (($ip >= 127.0.0.0) && ($ip < 128.0.0.0)) || (($ip >= 169.254.0.0) && ($ip < 169.255.0.0))) do={ :error "invalid overlay unicast IPv4 address" }
+    :return $ip
+}
 :global sdwanOverlayPrefix do={
-    :local text [:tostr $value]
+    :if ([:typeof $value] != "str") do={ :error "overlay prefix must be text" }
+    :local text $value
     :if ((!($text ~ "^[0-9.]+/[0-9]+\$")) || ([:len $text] > 18)) do={ :error "invalid overlay IPv4 prefix" }
     :local slash [:find $text "/"]
     :local ip [:toip [:pick $text 0 $slash]]
     :local bits [:tonum [:pick $text ($slash + 1) [:len $text]]]
-    :if (([:typeof $ip] != "ip") || ([:typeof $bits] != "num") || ($bits < 1) || ($bits > 32) || ($ip < 1.0.0.0) || ($ip >= 224.0.0.0) || (($ip >= 127.0.0.0) && ($ip < 128.0.0.0))) do={ :error "forbidden overlay IPv4 prefix" }
-    # Input is digits/dots/slash only, so this cannot inject script/filter text.
+    :if (([:typeof $ip] != "ip") || ([:typeof $bits] != "num") || ($bits < 1) || ($bits > 32) || (([:tostr $ip] . "/" . $bits) != $text)) do={ :error "invalid canonical overlay prefix" }
+    # Only canonical digits/dots/slash reach :parse; no untrusted script text.
     :local mask (255.255.255.255 << (32 - $bits))
     :local network ($ip & $mask)
     :if (($allowHost != true) && ($network != $ip)) do={ :error "overlay site prefix must be canonical" }
     :local prefix [[:parse (":return " . [:tostr $network] . "/" . $bits)]]
-    :if ((0.0.0.0 in $prefix) || (127.0.0.1 in $prefix) || (169.254.0.1 in $prefix) || (224.0.0.0 in $prefix)) do={ :error "overlay prefix contains a forbidden range" }
+    :if ($allowHost != true) do={
+        :if (($network < 1.0.0.0) || (($network >= 127.0.0.0) && ($network < 128.0.0.0)) || (($network >= 169.254.0.0) && ($network < 169.255.0.0)) || ($network >= 224.0.0.0) || (127.0.0.0 in $prefix) || (169.254.0.0 in $prefix) || (224.0.0.0 in $prefix)) do={ :error "overlay prefix overlaps a forbidden range" }
+    }
     :return $prefix
 }
-:global sdwanOverlayValidate do={
+:global sdwanOverlayOverlap do={
+    :local l [:tostr $left]
+    :local r [:tostr $right]
+    :local a [:toip [:pick $l 0 [:find $l "/"]]]
+    :local b [:toip [:pick $r 0 [:find $r "/"]]]
+    :return (($a in $right) || ($b in $left))
+}
+:global sdwanOverlayPrefixes do={
     :global sdwanOverlayPrefix
+    :global sdwanOverlayOverlap
+    :if (([:typeof $value] != "array") || ([:len $value] > 64) || (([:len $value] = 0) && ($allowEmpty != true))) do={ :error "overlay prefixes must be a bounded nonempty list" }
+    :local result [:toarray ""]
+    :foreach key,item in=$value do={ :if ([:typeof $key] != "num") do={ :error "overlay prefixes must be a list" } }
+    :if ([:len $value] = 0) do={ :return $result }
+    :for index from=0 to=([:len $value] - 1) do={
+        :local item ($value->$index)
+        :if ([:typeof $item] != "str") do={ :error "overlay prefix list contains a null or non-text item" }
+        :local prefix [$sdwanOverlayPrefix value=$item]
+        :foreach previous in=$result do={ :if ([$sdwanOverlayOverlap left=$prefix right=$previous]) do={ :error "duplicate or overlapping overlay prefixes" } }
+        :set result ($result,$prefix)
+    }
+    :return $result
+}
+:global sdwanOverlayPublicKey do={
+    # Canonical 32-byte base64:43 data characters, one pad, zero pad bits.
+    :if (([:typeof $value] != "str") || ([:len $value] != 44) || (!($value ~ "^[A-Za-z0-9+/]+=\$")) || (!([:pick $value 42 43] ~ "^[AEIMQUYcgkosw048]\$")) || ($value = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")) do={ :error "invalid canonical nonzero overlay public key" }
+    :return true
+}
+# Bounded install-only list resolution. include -> exclude -> explicit members
+# matches RouterOS order, including nested lists and the four built-in lists.
+:global sdwanOverlayListHas do={
+    :global sdwanOverlayListHas
+    :global sdwanOverlayListCache
+    :global sdwanOverlayListCalls
+    :if (([:typeof $depth] != "num") || ($depth > 64)) do={ :error "overlay list nesting exceeds preflight budget" }
+    :set sdwanOverlayListCalls ($sdwanOverlayListCalls + 1)
+    :if ($sdwanOverlayListCalls > 4096) do={ :error "overlay interface-list resolution budget exceeded" }
+    :if ($listName = "all") do={ :return true }
+    :if ($listName = "none") do={ :return false }
+    :if (($listName = "static") || ($listName = "dynamic")) do={
+        :local ids [/interface/find where name=$iface]
+        :if ([:len $ids] != 1) do={ :error "overlay interface disappeared" }
+        :local isDynamic ([:tostr [/interface/get $ids dynamic]] = "true")
+        :if ($listName = "dynamic") do={ :return $isDynamic }
+        :return (!$isDynamic)
+    }
+    :local cacheKey ($iface . ":" . $listName)
+    :if ([:typeof ($sdwanOverlayListCache->$cacheKey)] = "bool") do={ :return ($sdwanOverlayListCache->$cacheKey) }
+    :if (($seen->$listName) = true) do={ :error "cyclic interface-list prevents overlay ownership validation" }
+    :set ($seen->$listName) true
+    :local rows [/interface/list/print as-value where name=$listName]
+    :if ([:len $rows] != 1) do={ :error "unknown interface-list in overlay preflight" }
+    :local row [:pick $rows 0]
+    :local result false
+    :foreach child in=[:toarray ($row->"include")] do={
+        :if ([:len [:tostr $child]] > 0) do={ :if ([$sdwanOverlayListHas listName=[:tostr $child] iface=$iface seen=$seen depth=($depth + 1)]) do={ :set result true } }
+    }
+    :foreach child in=[:toarray ($row->"exclude")] do={
+        :if ([:len [:tostr $child]] > 0) do={ :if ([$sdwanOverlayListHas listName=[:tostr $child] iface=$iface seen=$seen depth=($depth + 1)]) do={ :set result false } }
+    }
+    :foreach member in=[/interface/list/member/print as-value where list=$listName and interface=$iface] do={ :if (($member->"disabled") != true) do={ :set result true } }
+    :set ($sdwanOverlayListCache->$cacheKey) $result
+    :return $result
+}
+:global sdwanOverlayMainVRF do={
+    :global sdwanOverlayListHas
+    :foreach row in=[/ip/vrf/print as-value] do={
+        :if (($row->"disabled") != true) do={
+            :local matches false
+            :foreach ref in=[:toarray ($row->"interfaces")] do={
+                :if ([:tostr $ref] = $iface) do={ :set matches true } else={
+                    :if ([:len [/interface/list/find where name=[:tostr $ref]]] > 0) do={ :if ([$sdwanOverlayListHas listName=[:tostr $ref] iface=$iface seen=[:toarray ""] depth=(0)]) do={ :set matches true } }
+                }
+            }
+            :if ($matches) do={ :if (($row->"name") != "main") do={ :error "overlay interfaces and underlay WANs require main VRF" }; :return true }
+        }
+    }
+    :error "overlay interface has no main VRF assignment"
+}
+# RouterOS7.24.5 drops null elements while deserializing JSON lists. Inspect
+# the original JSON as well; quotes/escapes ensure an Address List named "null"
+# or a hostname containing that text is never treated as a JSON null token.
+:global sdwanOverlayJSON do={
+    :if ([:typeof $value] != "str") do={ :error "overlay preflight requires original JSON text" }
+    :if (!($value ~ "null")) do={ :return true }
+    :local quoted false
+    :local escaped false
+    :for i from=0 to=([:len $value] - 1) do={
+        :local char [:pick $value $i ($i + 1)]
+        :if ($quoted) do={
+            :if ($escaped) do={ :set escaped false } else={
+                :if ($char = "\\") do={ :set escaped true } else={ :if ($char = "\"") do={ :set quoted false } }
+            }
+        } else={
+            :if ($char = "\"") do={ :set quoted true } else={ :if ([:pick $value $i ($i + 4)] = "null") do={ :error "JSON null is not an overlay configuration value" } }
+        }
+    }
+    :return true
+}
+:global sdwanOverlayValidate do={
+    :global sdwanOverlayListHas
+    :global sdwanOverlayMainVRF
+    :global sdwanOverlayListCache [:toarray ""]
+    :global sdwanOverlayListCalls 0
+    :global sdwanOverlayJSON
+    :if ([:typeof $rawJSON] = "str") do={ :local checkedJSON [$sdwanOverlayJSON value=$rawJSON] }
+    :global sdwanOverlayKeys
+    :global sdwanOverlayIP
+    :global sdwanOverlayPrefix
+    :global sdwanOverlayPrefixes
+    :global sdwanOverlayOverlap
+    :global sdwanOverlayPublicKey
+    :global sdwanOverlayHealth
     :local overlay ($cfg->"overlay")
+    :local declared false
+    :foreach key,value in=$cfg do={ :if ($key = "overlay") do={ :set declared true } }
+    :if ($declared) do={
+        :local ok [$sdwanOverlayKeys value=$overlay required=({"enabled"}) allowed=({"enabled"=true;"role"=true;"router_id"=true;"local_prefixes"=true;"remote_prefixes"=true;"tunnels"=true;"mtu"=true;"mss_clamp"=true;"health"=true})]
+        :if ([:typeof ($overlay->"enabled")] != "bool") do={ :error "overlay enabled must be boolean" }
+        :if ((($overlay->"enabled") = false) && ([:len $overlay] != 1)) do={ :error "disabled overlay must contain only enabled=false" }
+    }
     :local on (($overlay->"enabled") = true)
-    :foreach row in=[/interface/list/print as-value where name="sdwan-overlay"] do={ :if (($row->"comment") != "sdwan:v1:overlay:list") do={ :error "foreign overlay interface-list name" } }
+    :foreach row in=[/interface/list/print as-value where name="sdwan-overlay"] do={
+        :if (($row->"comment") != "sdwan:v1:overlay:list") do={ :error "foreign overlay interface-list name" }
+        :if (([:len ($row->"include")] > 0) || ([:len ($row->"exclude")] > 0)) do={ :error "overlay interface-list must contain only owned explicit members" }
+    }
+    :foreach row in=[/ip/firewall/address-list/print as-value where list="sdwan-overlay-sites"] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign entry in reserved overlay site Address List" } }
     :foreach row in=[/interface/list/member/print as-value where list="sdwan-overlay"] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign overlay interface-list member" } }
     # Reserved instance/filter names are never adopted from another application.
-    :foreach row in=[/routing/ospf/instance/print as-value where name="sdwan-overlay"] do={ :if (($row->"comment") != "sdwan:v1:overlay:instance") do={ :error "foreign overlay OSPF instance name" } }
+    :foreach row in=[/routing/ospf/instance/print as-value where name="sdwan-overlay"] do={
+        :if (($row->"comment") != "sdwan:v1:overlay:instance") do={ :error "foreign overlay OSPF instance name" }
+        :if ((([:tostr ($row->"vrf")] != "") && ([:tostr ($row->"vrf")] != "main")) || (([:tostr ($row->"routing-table")] != "") && ([:tostr ($row->"routing-table")] != "main"))) do={ :error "owned overlay OSPF instance requires main VRF/table" }
+    }
     :foreach row in=[/routing/ospf/area/print as-value where name="sdwan-overlay-backbone"] do={ :if (($row->"comment") != "sdwan:v1:overlay:area") do={ :error "foreign overlay OSPF area name" } }
     :foreach row in=[/routing/filter/rule/print as-value where chain="sdwan-overlay-out"] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign overlay output filter rule" } }
     :foreach row in=[/routing/ospf/instance/print as-value] do={ :if ((($row->"out-filter-chain") = "sdwan-overlay-out") && (($row->"comment") != "sdwan:v1:overlay:instance")) do={ :error "foreign OSPF instance references overlay filter" } }
@@ -55,65 +200,134 @@
         :foreach row in=[/ip/address/print as-value where interface=$iface] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign address on owned overlay interface" } }
     }
     :if (!$on) do={ :return true }
+    :local ok [$sdwanOverlayKeys value=$overlay required=({"enabled";"role";"router_id";"local_prefixes";"remote_prefixes";"tunnels"}) allowed=({"enabled"=true;"role"=true;"router_id"=true;"local_prefixes"=true;"remote_prefixes"=true;"tunnels"=true;"mtu"=true;"mss_clamp"=true;"health"=true})]
     :if ((($overlay->"role") != "site") && (($overlay->"role") != "hub")) do={ :error "invalid overlay role" }
-    :if (([:typeof ($overlay->"tunnels")] != "array") || ([:len ($overlay->"tunnels")] < 1) || ([:len ($overlay->"tunnels")] > 16)) do={ :error "overlay tunnel budget exceeded" }
-    :if ([:typeof [:toip ($overlay->"router_id")]] != "ip") do={ :error "invalid overlay router ID" }
-    :local health ($overlay->"health")
-    :if (([:typeof $health] != "nil") && ([:typeof $health] != "nothing")) do={
-        :if ([:typeof $health] != "array") do={ :error "invalid overlay health settings" }
-        :local ranges {"interval_seconds"={1;60};"timeout_ms"={100;2000};"packet_count"={2;20};"packet_interval_ms"={10;500};"fail_windows"={1;10};"recover_windows"={1;20};"hold_down_seconds"={0;300};"stale_seconds"={2;300};"rtt_ms"={1;5000};"jitter_ms"={1;5000};"loss_percent"={0;99}}
-        :foreach key,value in=$health do={ :local range ($ranges->$key); :if (([:typeof $range] != "array") || ([:typeof $value] != "num") || ($value < ($range->0)) || ($value > ($range->1))) do={ :error "invalid overlay health range" } }
+    :local routerID [$sdwanOverlayIP value=($overlay->"router_id")]
+    :foreach key,value in=$overlay do={
+        :if (($key = "mtu") && (([:typeof $value] != "num") || ($value < 1280) || ($value > 1420))) do={ :error "invalid overlay MTU" }
+        :if (($key = "mss_clamp") && ([:typeof $value] != "bool")) do={ :error "overlay MSS clamp must be boolean" }
+        :if ($key = "health") do={
+            :local ignored [$sdwanOverlayKeys value=$value required=[:toarray ""] allowed=({"interval_seconds"=true;"timeout_ms"=true;"packet_count"=true;"packet_interval_ms"=true;"fail_windows"=true;"recover_windows"=true;"hold_down_seconds"=true;"stale_seconds"=true;"rtt_ms"=true;"jitter_ms"=true;"loss_percent"=true})]
+            :local ranges {"interval_seconds"={1;60};"timeout_ms"={100;2000};"packet_count"={2;20};"packet_interval_ms"={10;500};"fail_windows"={1;10};"recover_windows"={1;20};"hold_down_seconds"={0;300};"stale_seconds"={2;300};"rtt_ms"={1;5000};"jitter_ms"={1;5000};"loss_percent"={0;99}}
+            :foreach field,item in=$value do={ :local range ($ranges->$field); :if (([:typeof $item] != "num") || ($item < ($range->0)) || ($item > ($range->1))) do={ :error "invalid overlay health range" } }
+        }
     }
-    :local mtu ($overlay->"mtu")
-    :if (([:typeof $mtu] != "nil") && ([:typeof $mtu] != "nothing")) do={ :if (([:typeof $mtu] != "num") || ($mtu < 1280) || ($mtu > 1420)) do={ :error "invalid overlay MTU" } }
-    :foreach field in={"local_prefixes";"remote_prefixes"} do={
-        :if (([:typeof ($overlay->$field)] != "array") || ([:len ($overlay->$field)] > 64)) do={ :error "invalid overlay prefix list" }
-        :foreach value in=($overlay->$field) do={ :local prefix [$sdwanOverlayPrefix value=$value] }
-    }
+    :local h [$sdwanOverlayHealth overlay=$overlay]
+    :if (((($h->"packet_count") - 1) * ($h->"packet_interval_ms") + ($h->"timeout_ms")) >= (($h->"interval_seconds") * 1000)) do={ :error "overlay probe train exceeds interval" }
+    :if (($h->"stale_seconds") < (2 * ($h->"interval_seconds"))) do={ :error "overlay stale budget must cover two intervals" }
+    :local localNets [$sdwanOverlayPrefixes value=($overlay->"local_prefixes") allowEmpty=(($overlay->"role") = "hub")]
+    :local remoteNets [$sdwanOverlayPrefixes value=($overlay->"remote_prefixes")]
+    :foreach a in=$localNets do={ :foreach b in=$remoteNets do={ :if ([$sdwanOverlayOverlap left=$a right=$b]) do={ :error "overlay site prefixes overlap" } } }
+    :local allNets ($localNets,$remoteNets)
+    :local tunnels ($overlay->"tunnels")
+    :if (([:typeof $tunnels] != "array") || ([:len $tunnels] < 1) || ([:len $tunnels] > 16)) do={ :error "overlay tunnel budget exceeded" }
     :local names [:toarray ""]
     :local ports [:toarray ""]
-    :foreach tunnel in=($overlay->"tunnels") do={
-        :local tn [:tostr ($tunnel->"name")]
-        :if ((!($tn ~ "^[a-z][a-z0-9_-]*\$")) || ([:len $tn] > 20) || (($names->$tn) = true)) do={ :error "invalid overlay tunnel name" }
+    :local keys [:toarray ""]
+    :foreach index,tunnel in=$tunnels do={ :if ([:typeof $index] != "num") do={ :error "overlay tunnels must be a list" } }
+    :for index from=0 to=([:len $tunnels] - 1) do={
+        :local tunnel ($tunnels->$index)
+        :if ([:typeof $tunnel] != "array") do={ :error "overlay tunnel must be an object" }
+        :local ignored [$sdwanOverlayKeys value=$tunnel required=({"name";"wan";"listen_port";"address";"peer_address";"local_public_key";"peer_public_key";"peer_prefixes";"cost"}) allowed=({"name"=true;"wan"=true;"listen_port"=true;"address"=true;"peer_address"=true;"local_public_key"=true;"peer_public_key"=true;"peer_prefixes"=true;"cost"=true;"endpoint"=true;"endpoint_port"=true;"keepalive_seconds"=true})]
+        :local tn ($tunnel->"name")
+        :if (([:typeof $tn] != "str") || (!($tn ~ "^[a-z][a-z0-9_-]*\$")) || ([:len $tn] > 20) || (($names->$tn) = true)) do={ :error "invalid overlay tunnel name" }
         :set ($names->$tn) true
         :local port ($tunnel->"listen_port")
         :if (([:typeof $port] != "num") || ($port < 1024) || ($port > 65535) || (($ports->[:tostr $port]) = true)) do={ :error "invalid overlay UDP port" }
         :set ($ports->[:tostr $port]) true
+        :local ignored [$sdwanOverlayPublicKey value=($tunnel->"local_public_key")]
+        :local ignored [$sdwanOverlayPublicKey value=($tunnel->"peer_public_key")]
+        :if ((($tunnel->"local_public_key") = ($tunnel->"peer_public_key")) || (($keys->($tunnel->"local_public_key")) = true)) do={ :error "overlay local/peer identities must be distinct" }
+        :set ($keys->($tunnel->"local_public_key")) true
         :local iface ("sdwan-wg-" . $tn)
+        :local ifaceVRF [$sdwanOverlayMainVRF iface=$iface]
         :local iid [/interface/wireguard/find where name=$iface]
         :if (([:len $iid] != 1) || ([/interface/wireguard/get $iid comment] != ("sdwan:v1:overlay:interface:" . $tn)) || ([/interface/wireguard/get $iid public-key] != ($tunnel->"local_public_key"))) do={ :error "prepare or rediscover the matching overlay public identity" }
         :foreach row in=[/interface/wireguard/print as-value where listen-port=$port] do={ :if (($row->"name") != $iface) do={ :error "overlay listen port belongs to another interface" } }
-        :local peer [:toip ($tunnel->"peer_address")]
         :local subnet [$sdwanOverlayPrefix value=($tunnel->"address") allowHost=(true)]
-        :local ownAddress [:tostr ($tunnel->"address")]
-        :local ownIP [:toip [:pick $ownAddress 0 [:find $ownAddress "/"]]]
-        :if (([:typeof $peer] != "ip") || ($peer = $ownIP) || (!($peer in $subnet))) do={ :error "overlay peer must be on its link subnet" }
-        :local address [:tostr ($tunnel->"address")]
+        :local address ($tunnel->"address")
         :local slash [:find $address "/"]
         :local bits [:tonum [:pick $address ($slash + 1) [:len $address]]]
         :if (($bits != 30) && ($bits != 31)) do={ :error "overlay link must use /30 or /31" }
+        :local ownIP [$sdwanOverlayIP value=[:pick $address 0 $slash]]
+        :local peer [$sdwanOverlayIP value=($tunnel->"peer_address")]
+        :if (($peer = $ownIP) || (!($peer in $subnet))) do={ :error "overlay peer must be on its link subnet" }
+        :if ($bits = 30) do={
+            :local network ($ownIP & 255.255.255.252)
+            :local broadcast ($network | 0.0.0.3)
+            :if (($ownIP = $network) || ($ownIP = $broadcast) || ($peer = $network) || ($peer = $broadcast)) do={ :error "overlay /30 must use two usable host addresses" }
+        }
+        :foreach previous in=$allNets do={ :if ([$sdwanOverlayOverlap left=$subnet right=$previous]) do={ :error "overlay link overlaps site or other link" } }
+        :set allNets ($allNets,$subnet)
         :local wanFound false
-        :foreach wan in=($cfg->"wans") do={ :if (($wan->"name") = ($tunnel->"wan")) do={ :set wanFound true; :if (($wan->"interface") = $iface) do={ :error "overlay cannot be its own underlay" } } }
+        :if ([:typeof ($tunnel->"wan")] != "str") do={ :error "overlay WAN name must be text" }
+        :foreach wan in=($cfg->"wans") do={ :if (($wan->"name") = ($tunnel->"wan")) do={ :set wanFound true; :if ((($wan->"interface") = $iface) || (($wan->"kind") = "vpn")) do={ :error "overlay requires a physical underlay WAN" } } }
         :if (!$wanFound) do={ :error "unknown overlay underlay WAN" }
         :if (([:typeof ($tunnel->"cost")] != "num") || (($tunnel->"cost") < 1) || (($tunnel->"cost") > 65535)) do={ :error "invalid overlay OSPF cost" }
-        :foreach value in=($tunnel->"peer_prefixes") do={ :local prefix [$sdwanOverlayPrefix value=$value] }
-        :if (($overlay->"role") = "site") do={
-            :if (([:len [:tostr ($tunnel->"endpoint")]] = 0) || ([:typeof ($tunnel->"endpoint_port")] != "num")) do={ :error "CGNAT site requires a reachable hub endpoint" }
+        :local peerNets [$sdwanOverlayPrefixes value=($tunnel->"peer_prefixes")]
+        :foreach net in=$peerNets do={
+            :local text [:tostr $net]
+            :local sep [:find $text "/"]
+            :local ip [:toip [:pick $text 0 $sep]]
+            :local length [:tonum [:pick $text ($sep + 1) [:len $text]]]
+            :local covered false
+            :foreach remote in=$remoteNets do={ :local r [:tostr $remote]; :local prefixLength [:tonum [:pick $r ([:find $r "/"] + 1) [:len $r]]]; :if (($ip in $remote) && ($length >= $prefixLength)) do={ :set covered true } }
+            :if (!$covered) do={ :error "overlay peer prefixes outside declared remote networks" }
         }
-        :local table ("sdwan-ol-" . $tn)
-        :if (([:len [/routing/table/find where name=$table]] > 0) && ([:len [/ip/route/find where comment=("sdwan:v1:overlay:guard:" . $tn)]] != 1)) do={ :error "overlay table has no ownership proof" }
+        :if (($overlay->"role") = "site") do={
+            :local endpoint ($tunnel->"endpoint")
+            :if (([:typeof $endpoint] != "str") || ([:len $endpoint] < 1) || ([:len $endpoint] > 253)) do={ :error "site requires a hub endpoint" }
+            :local endpointIP [:toip $endpoint]
+            :if ([:typeof $endpointIP] = "ip") do={ :local ignored [$sdwanOverlayIP value=$endpoint] } else={
+                :if ((!($endpoint ~ "^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]\$")) && (!($endpoint ~ "^[A-Za-z0-9]\$"))) do={ :error "invalid overlay hub hostname" }
+                :if ([:typeof [:find $endpoint ".."]] != "nil") do={ :error "invalid overlay hub hostname" }
+            }
+            :local endpointPort ($tunnel->"endpoint_port")
+            :if (([:typeof $endpointPort] != "num") || ($endpointPort < 1024) || ($endpointPort > 65535)) do={ :error "invalid overlay endpoint port" }
+            :foreach key,item in=$tunnel do={ :if (($key = "keepalive_seconds") && (([:typeof $item] != "num") || ($item < 10) || ($item > 60))) do={ :error "invalid overlay keepalive" } }
+        } else={
+            :foreach key,item in=$tunnel do={
+                :if (($key = "endpoint") || ($key = "endpoint_port")) do={ :error "overlay hub is responder-only" }
+                :if (($key = "keepalive_seconds") && (([:typeof $item] != "num") || ($item != 0))) do={ :error "overlay hub keepalive must be zero" }
+            }
+        }
+        :local probeTable ("sdwan-ol-" . $tn)
+        :if (([:len [/routing/table/find where name=$probeTable]] > 0) && ([:len [/ip/route/find where comment=("sdwan:v1:overlay:guard:" . $tn)]] != 1)) do={ :error "overlay table has no ownership proof" }
+        :foreach wan in=($cfg->"wans") do={
+            :if (($wan->"probe_table") = $probeTable) do={ :error "overlay table collides with WAN probe table" }
+            :if (($wan->"name") = ($tunnel->"wan")) do={ :local underlayVRF [$sdwanOverlayMainVRF iface=($wan->"interface")] }
+        }
+        :foreach policy in=($cfg->"policies") do={ :if (($policy->"table") = $probeTable) do={ :error "overlay table collides with policy table" } }
+        :foreach row in=[/ip/route/print as-value where routing-table=$probeTable] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign route in owned overlay probe table" } }
+        :foreach row in=[/routing/rule/print as-value where table=$probeTable] do={ :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={ :error "foreign rule references owned overlay probe table" } }
         # Prevent a broad foreign OSPF template from also activating on WG.
-        :foreach row in=[/routing/ospf/interface-template/print as-value where disabled=no] do={
-            :if (!(($row->"comment") ~ "^sdwan:v1:overlay:")) do={
+        :foreach row in=[/routing/ospf/interface-template/print as-value] do={
+            :if (([:tostr ($row->"disabled")] != "true") && (!(($row->"comment") ~ "^sdwan:v1:overlay:"))) do={
                 :local matchInterface ([:len ($row->"interfaces")] = 0)
                 :foreach ref in=($row->"interfaces") do={
-                    :if (([:tostr $ref] = $iface) || ([:tostr $ref] = "all") || ([:tostr $ref] = "static")) do={ :set matchInterface true }
-                    :if ([:len [/interface/list/member/find where list=$ref and interface=$iface]] > 0) do={ :set matchInterface true }
+                    :if ([:tostr $ref] = $iface) do={ :set matchInterface true } else={
+                        :if ([:len [/interface/list/find where name=[:tostr $ref]]] > 0) do={ :if ([$sdwanOverlayListHas listName=[:tostr $ref] iface=$iface seen=[:toarray ""] depth=(0)]) do={ :set matchInterface true } }
+                    }
                 }
                 :local matchNetwork ([:len ($row->"networks")] = 0)
-                :foreach network in=($row->"networks") do={ :onerror ipv6 in={ :local net [[:parse (":return " . [:tostr $network])]]; :if ($peer in $net) do={ :set matchNetwork true } } do={} }
+                :local linkMask 255.255.255.254
+                :if ($bits = 30) do={ :set linkMask 255.255.255.252 }
+                :local networkIP ($ownIP & $linkMask)
+                :foreach network in=($row->"networks") do={ :onerror ipv6 in={ :local net [[:parse (":return " . [:tostr $network])]]; :if ($networkIP in $net) do={ :set matchNetwork true } } do={} }
                 :if ($matchInterface && $matchNetwork) do={ :error "foreign OSPF template would match the overlay interface" }
             }
+        }
+    }
+    # All link prefixes are known now; endpoints cannot recurse into a later link.
+    :foreach tunnel in=$tunnels do={
+        :local endpoint [:toip ($tunnel->"endpoint")]
+        :if ([:typeof $endpoint] = "ip") do={ :foreach net in=$allNets do={ :if ($endpoint in $net) do={ :error "overlay endpoint recurses through overlay" } } }
+        :foreach wan in=($cfg->"wans") do={ :if (($wan->"interface") = ("sdwan-wg-" . ($tunnel->"name"))) do={ :error "owned overlay interface cannot be any WAN" } }
+    }
+    :foreach wan in=($cfg->"wans") do={
+        :if (([:typeof ($wan->"kind")] = "nothing") || (($wan->"kind") = "static")) do={
+            :local ip [:toip ($wan->"address")]
+            :foreach net in=$allNets do={ :if ($ip in $net) do={ :error "overlay prefixes overlap an underlay WAN address" } }
         }
     }
     :return true

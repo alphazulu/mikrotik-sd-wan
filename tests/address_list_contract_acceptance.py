@@ -9,11 +9,12 @@ from sdwan.policies import validate_selectors
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);args=p.parse_args();v=VPNLab(args.lab_root);lock=(v.run/'lab.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);r=v.routers['sitea'];created=[];files=[];name='address-list-contract';cases=[]
  values=['','existing targets','кириллица','!negated',' leading','trailing ','x'*65,'я'*33,None,False,1]+['x'+chr(i)+'y' for i in list(range(32))+[127]]
- for n,value in enumerate(values):
-  cfg={'policies':[dict(name='targets',priority=10,source='0.0.0.0/0',destination_list=value)]}
-  try:validate_selectors(cfg);expected=True
-  except ValueError:expected=False
-  cases.append(dict(case=n,expected=expected,config_json=json.dumps(cfg,separators=(',',':'))))
+ for field in ('source_list','destination_list'):
+  for n,value in enumerate(values):
+   cfg={'policies':[dict(name='targets',priority=10,source='0.0.0.0/0',**{field:value})]}
+   try:validate_selectors(cfg);expected=True
+   except ValueError:expected=False
+   cases.append(dict(case=field+':'+str(n),expected=expected,config_json=json.dumps(cfg,separators=(',',':'))))
  try:
   assert not r.call('system/script/print',{'.proplist':'name','.query':['name='+name]},'POST')
   for filename,body in [('address-list-contract.rsc',(ROOT/'native/sdwan-links.rsc').read_text()),('address-list-contract.json',json.dumps(cases,separators=(',',':')))]:r.upload(filename,body);files.append(filename)

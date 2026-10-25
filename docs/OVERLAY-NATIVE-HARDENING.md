@@ -1,13 +1,24 @@
 # Native overlay preflight parity: open development gate
 
-The API/GUI Python model rejects malformed overlay settings. A new **44-case**
-CHR comparison with `sdwanOverlayValidate` found **35 native mismatches**. This
-gate is open; the current branch must not be described as fully accepted or
-released. Cases execute read-only preflight against existing lab identities,
-without applying malformed network settings. The private report is
-`overlay-lab/runtime/overlay-contract-validation.json`.
+The original44-case comparison found35 native mismatches. The native validator
+now agrees on an expanded117-case contract: strict keys/types/explicit null,
+health budgets, canonical unicast/prefixes, overlaps, tunnel host addresses,
+public keys, endpoint/keepalive/role constraints and underlay recursion. An additional24-case ownership suite passes nested list precedence, disabled/
+nonoverlapping OSPF, owned list contents, foreign addresses/peers, reserved probe
+tables/rules and WG/underlay VRF boundaries. Full lifecycle acceptance remains
+in progress.
+Malformed configurations are validated without installation. The private report
+is `overlay-lab/runtime/overlay-contract-validation.json`.
 
-Required native work before the final soak:
+RouterOS7.24.5 drops `null` elements when deserializing JSON arrays. Installation
+therefore passes **both** parsed configuration and the original JSON to
+`sdwanOverlayValidate cfg=$cfg rawJSON=$cfgJSON`. A quote/escape-aware lexical check
+rejects actual null tokens without rejecting quoted text such as
+`null.example.test`. A parsed object alone cannot recover dropped elements.
+The read-only contract tests import only validation functions, leaving the active
+controller and actuator functions unchanged.
+
+Implemented schema checks (covered by the expanded contract):
 
 - Enumerate top-level and per-tunnel fields. Require the exact `enabled` boolean,
   required fields, and `enabled=false` without hidden extra settings. Reject
@@ -32,7 +43,7 @@ lengths. Public-key validation can use RouterOS conversion or a strict44-charact
 base64 check, including canonical final padding bits and rejection of the zero key.
 Do not request actual private keys to test these rules.
 
-Repeat after implementation:
+Repeat after validator changes:
 
 ```text
 python tests/overlay_contract_acceptance.py --lab-root PRIVATE_ROOT
@@ -40,6 +51,6 @@ python tests/overlay_contract_acceptance.py --lab-root PRIVATE_ROOT
 
 The test uses small batches below the RouterOS file-content limit and the same
 nonblocking fabric lock as the other CHR checks. Do not run it during an existing
-fabric mutation. Fix the native validator, then require all44cases to agree with
+fabric mutation. Fix the native validator, then require every contract case to agree with
 Python before closing this gate. Add cases if the implementation uncovers further
 schema or ownership boundaries; a passing subset does not close full acceptance.

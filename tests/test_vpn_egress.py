@@ -14,12 +14,10 @@ class VPNTests(unittest.TestCase):
   c=config();validate_config(c);validate(c);c['vpn_egress']['enabled']=False
   with self.assertRaisesRegex(ValueError,'explicit'):validate(c)
   self.assertFalse(enabled({}))
- def test_parent_cycles_and_vpn_default_rejected(self):
-  for change in ('cycle','default'):
-   c=config()
-   if change=='cycle':c['wans'][-1]['underlays']=['vpn1']
-   else:c['policies'][0]['wans']=['vpn1']
-   with self.assertRaises(ValueError):validate(c)
+ def test_transport_cycles_rejected_but_common_default_policy_accepts_vpn(self):
+  c=config();c['wans'][-1]['underlays']=['vpn1']
+  with self.assertRaises(ValueError):validate(c)
+  c=config();c['policies'][0]['wans']=['vpn1','wan2'];validate_config(c)
  def test_credentials_and_untyped_flags_cannot_enter_feature_contract(self):
   for patch in [{'password':'secret'},{'masquerade':1},{'enabled':'yes'}]:
    c=config();c['vpn_egress'].update(patch)

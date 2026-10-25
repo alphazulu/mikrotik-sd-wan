@@ -52,8 +52,8 @@ $sdwanStrictCancel
     /import file-name=($dir . "sdwan-vpn.rsc")
     $sdwanVPNRestore entries=($backup->"vpn_clients")
 }
-/ip/firewall/nat/remove [/ip/firewall/nat/find where comment~"^sdwan:v1:vpn:"]
-/ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:vpn:"]
+/ip/firewall/nat/remove [/ip/firewall/nat/find where comment~"^sdwan:v1:(vpn|egress):"]
+/ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:(vpn|egress):"]
 /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment~"^sdwan:v1:"]
 /ip/firewall/address-list/remove [/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"]
 :foreach id in=[/ip/firewall/connection/find where connection-mark~"^sdwan-"] do={

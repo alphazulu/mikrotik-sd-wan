@@ -28,8 +28,8 @@ class DataplaneTests(unittest.TestCase):
             route=rules[('ip/route','sdwan:v1:pin-blackhole:'+wan['name'])]
             self.assertEqual(route['blackhole'],'true');self.assertEqual(route['routing-table'],wan['probe_table'])
     def test_no_enabled_wan_classifier_does_not_fall_through_to_default(self):
-        rule=objects(self.config)[('ip/firewall/mangle','sdwan:v1:guard:strict103')]
-        self.assertEqual(rule['src-address'],'192.168.50.103/32')
+        rules=objects(self.config);rule=rules[('ip/firewall/mangle','sdwan:v1:guard:strict103')];jump=rules[('ip/firewall/mangle','sdwan:v1:policy-jump:strict103')]
+        self.assertEqual(jump['src-address'],'192.168.50.103/32');self.assertEqual(jump['jump-target'],rule['chain'])
         self.assertEqual(rule['new-routing-mark'],'sdwan-strict103')
         self.assertEqual(rule['passthrough'],'false')
     def test_generated_rules_do_not_open_input_services(self):

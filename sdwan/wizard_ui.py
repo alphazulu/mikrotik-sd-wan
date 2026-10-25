@@ -36,7 +36,7 @@ class SetupWizard:
         self.apn_box=ttk.Entry(details,textvariable=self.apn_profile,state='readonly',width=32);self.apn_box.grid(row=1,column=2,columnspan=3,sticky='w',padx=5)
         ttk.Label(details,text='Приоритет 1 — основной. Для static выберите IP и шлюз. Для DHCP/PPPoE/LTE показаны текущие параметры; они обновляются самим MikroTik и не сохраняются как постоянные. PPPoE WAN — логический интерфейс.',wraplength=1100).grid(row=2,columnspan=8,sticky='w',pady=(8,0))
         self.keep=tk.BooleanVar(value=True);self.existing=tk.BooleanVar(value=True)
-        self.keep_box=ttk.Checkbutton(self.target_page,text='Сохранить существующие правила клиентов этого MikroTik',variable=self.keep);self.keep_box.pack(anchor='w',pady=4)
+        self.keep_box=ttk.Checkbutton(self.target_page,text='Сохранить существующие политики и VPN WAN этого MikroTik',variable=self.keep);self.keep_box.pack(anchor='w',pady=4)
         self.existing_box=ttk.Checkbutton(self.target_page,text='Использовать контрольные цели из действующего SD-WAN на этом MikroTik',variable=self.existing);self.existing_box.pack(anchor='w',pady=4)
         self.target_note=tk.StringVar(value='Для нового устройства задайте контрольные цели. Для настроенного SD-WAN они будут прочитаны с MikroTik.')
         ttk.Label(self.target_page,textvariable=self.target_note,wraplength=1100).pack(anchor='w',pady=8)

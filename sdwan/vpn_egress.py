@@ -1,4 +1,7 @@
-"""Opt-in external VPN egress contract; no credentials or runtime policy loop here."""
+"""VPN WAN transport metadata and legacy configuration compatibility.
+
+VPN interfaces use ordinary WAN policies; no separate selection/runtime engine.
+"""
 import ipaddress
 import re
 from .overlay import public_key
@@ -9,7 +12,7 @@ PPP_PROPERTIES='.id,name,disabled,running,connect-to,port,protocol,add-default-r
 WG_PROPERTIES='.id,name,disabled,running,listen-port,public-key'
 PEER_PROPERTIES='.id,interface,public-key,disabled,endpoint-address,endpoint-port,current-endpoint-address,current-endpoint-port,allowed-address'
 
-def enabled(cfg):return cfg.get('vpn_egress',{}).get('enabled',False)
+def enabled(cfg):return bool(vpn_wans(cfg))
 def vpn_wans(cfg):return [w for w in cfg.get('wans',[]) if w.get('kind')=='vpn']
 def menu(kind):return MENUS[kind]
 def yes(value):return value in (True,'true','yes','1')
@@ -22,12 +25,10 @@ def validate(cfg):
  links=vpn_wans(cfg)
  for w in cfg.get('wans',[]):
   if w.get('kind')!='vpn' and any(f in w for f in ('vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key','underlays')):raise ValueError('VPN metadata belongs only to VPN WANs')
- if links and not enabled(cfg):raise ValueError('VPN channels require explicit vpn_egress.enabled=true')
- if not enabled(cfg):return cfg
+ if links and 'vpn_egress' in cfg and not setting.get('enabled',False):raise ValueError('Legacy vpn_egress explicitly disables declared VPN WANs; migrate or remove that block')
+ if not links:return cfg
  physical={w['name'] for w in cfg['wans'] if w.get('kind')!='vpn'}
  if not physical:raise ValueError('VPN egress requires physical underlay WANs')
- default=next(p for p in cfg['policies'] if not p['source'])
- if not set(default['wans'])<=physical:raise ValueError('Default Internet policy must use physical WANs; VPN exits belong in destination policies')
  bindings={};ports=set()
  for wan in links:
   kind=wan.get('vpn_type')
@@ -53,9 +54,49 @@ def validate(cfg):
   if key in bindings and bindings[key]!=parents:raise ValueError('Shared VPN endpoint requires the same underlay order')
   bindings[key]=parents
   if any(t.get('wan')==wan['name'] or t.get('listen_port')==wan.get('vpn_listen_port') or 'sdwan-wg-'+t.get('name','')==wan['interface'] for t in cfg.get('overlay',{}).get('tunnels',[])):raise ValueError('Branch overlay and external VPN identities/underlays must be distinct')
- for policy in cfg['policies']:
-  if any(name not in physical for name in policy['wans']) and not policy.get('destination_list'):raise ValueError('VPN egress policy requires a destination_list selector')
  return cfg
+
+def wan_flag(cfg,wan,flag):
+ """Explicit WAN setting wins; legacy VPN-wide flags are input compatibility."""
+ if flag in wan:return wan[flag]
+ return bool(cfg.get('vpn_egress',{}).get(flag,False)) if wan.get('kind')=='vpn' else False
+
+def canonical(cfg):
+ """Save/export the common WAN model without a separate VPN feature switch."""
+ import copy
+ from .config import validate as validate_config
+ validate_config(cfg);result=copy.deepcopy(cfg)
+ for p in result['policies']:
+  for field in ('source','destination'):
+   if p.get(field):p[field]=str(ipaddress.IPv4Network(p[field],strict=True))
+ if 'vpn_egress' in result:
+  for w in vpn_wans(result):
+   for flag in ('masquerade','allow_selected_forward'):
+    if flag in result['vpn_egress']:w.setdefault(flag,result['vpn_egress'][flag])
+  result.pop('vpn_egress')
+ return result
+
+def add_wan(cfg,link,*,name,underlays,masquerade=False,allow_selected_forward=False,routes=()):
+ """Add/update a transport in the common WAN table, preserving ALL policies."""
+ from .config import validate as validate_config
+ result=canonical(cfg);existing=next((w for w in result['wans'] if w['interface']==link['interface']),None)
+ if existing and (existing.get('kind')!='vpn' or existing['name']!=name):raise ValueError('Интерфейс уже назначен другому WAN')
+ if any(w['name']==name and w is not existing for w in result['wans']):raise ValueError('Имя WAN уже занято')
+ import copy
+ physical=next((w for w in result['wans'] if w.get('kind')!='vpn'),None)
+ if physical is None:raise ValueError('Сначала выберите физические WAN для транспорта туннеля')
+ w=copy.deepcopy(existing or physical)
+ for field in ('address','gateway','apn_profile','vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key'):w.pop(field,None)
+ w.update({k:v for k,v in link.items() if k in ('interface','vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key')})
+ w.update(name=name,kind='vpn',probe_table='sdwan-probe-'+name,underlays=list(underlays),masquerade=masquerade,allow_selected_forward=allow_selected_forward)
+ if existing:result['wans'][result['wans'].index(existing)]=w
+ else:w['admin_state']='enabled';result['wans'].append(w)
+ from .wan import interface_route
+ selectors={row['.id']:row for row in result.get('takeover_routes',[])}
+ for row in routes:
+  if row.get('dst-address')=='0.0.0.0/0' and row.get('routing-table','main')=='main' and not yes(row.get('dynamic')) and not row.get('comment','').startswith('sdwan:') and interface_route(row,link['interface']):selectors[row['.id']]={'.id':row['.id'],'dst-address':'0.0.0.0/0','routing-table':'main','gateway':row['gateway']}
+ if selectors:result['takeover_routes']=list(selectors.values())
+ return validate_config(result)
 
 def binding(router,wan):
  """Read only public interface/endpoint/routing metadata, never secrets."""

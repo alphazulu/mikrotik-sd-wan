@@ -68,3 +68,17 @@ Native LTE использует interface gateway и текущий dynamic IPv4
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в
 репозиторий. Методика повторения проверок: [TESTING.md](TESTING.md).
+
+## Цепочки политик в текущей ветке
+
+Общие точки входа `prerouting`/`output`/`postrouting` передают обработку в SD-WAN.
+В `sdwan-pre` селекторы каждой политики находятся на одном `action=jump`
+(`sdwan:v1:policy-jump:<policy>`), ведущем в `sdwan-p-<policy>`. Внутри находятся
+классификаторы `sdwan:v1:classify:<policy>:<wan>` и guard этой же политики.
+Восстановление routing mark из connection mark остаётся общим. Отсутствие
+доступных WAN закрывает маршрут guard, сохраняя семантику первого совпадения.
+
+`jump-target` и `return` описаны в
+[официальной справке mangle](https://manual.mikrotik.com/docs/cli-reference/ip/firewall/mangle/).
+Фактическая проверка текущей схемы выполнена на CHR7.24.5: IP/оба Address List,
+физический/VPN резерв, возврат и независимые TCP-сессии.

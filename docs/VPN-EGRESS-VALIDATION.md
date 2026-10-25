@@ -109,3 +109,20 @@ resource checks and the single final48–72h soak. Duplicate source addresses re
 an independently validated VRF layout; VRF support is not claimed here. The
 emulated SSTP interoperability fixture does not replace verification of an
 operator's production TLS/certificate configuration.
+
+## Unified WAN steering (current development branch)
+
+VPN exits now belong only to `wans`; all selection is in ordinary `policies`.
+The GUI no longer creates a feature switch or an implicit destination policy.
+Legacy configurations remain readable and migrate on SDK/GUI output.
+
+Verified after this change:256 Python tests;88 native/Python source/destination
+Address List contract cases;18 VPN native/Python cases;5 offline and4 read-only
+live Windows GUI checks;6 real-CHR checks in
+`tests/unified_wan_acceptance.py`. The CHR checks cover source IP, destination IP,
+source list, both lists with AND, mixed VPN/physical queues, source-list updates,
+per-policy SLA failover/failback with scoped conntrack cleanup, readable per-policy
+jump chains, independent branch/Internet TCP survival, and VPN as the general
+Internet default with physical tunnel transport pinning.
+
+Overlay native validation and final full-branch acceptance/soak remain open.

@@ -59,7 +59,9 @@ def validate(c):
     need(isinstance(wans,list) and 1 <= len(wans) <= 16, '1..16 WANs required')
     names=set(); interfaces=set(); tables=set(); addresses=set(); strict_probes=0
     for w in wans:
-        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile','admin_state','drain_timeout_seconds','vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key','underlays'),'WAN',('name','interface','probe_table','icmp_target','probes'))
+        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile','admin_state','drain_timeout_seconds','vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key','underlays','masquerade','allow_selected_forward'),'WAN',('name','interface','probe_table','icmp_target','probes'))
+        for flag in ('masquerade','allow_selected_forward'):
+            if flag in w:need(type(w[flag]) is bool,'WAN '+flag+' must be boolean')
         kind=addressing_kind(w)
         need(w.get('admin_state','enabled') in ('enabled','drain','down'), 'WAN admin_state must be enabled, drain or down')
         timeout=w.get('drain_timeout_seconds',300)

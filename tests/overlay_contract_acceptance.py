@@ -27,9 +27,46 @@ def main():
  for t in c['overlay']['tunnels']:
   for field in ('endpoint','endpoint_port','keepalive_seconds'):t.pop(field,None)
  add('hub responder only',c);c=copy.deepcopy(c);c['overlay']['tunnels'][0]['endpoint']='';add('hub forbids even empty endpoint option',c)
+ # Boundary coverage after the original44-case native hardening gate.
+ for field in ('enabled','role','router_id','local_prefixes','remote_prefixes','tunnels'):
+  c=copy.deepcopy(before);c['overlay'].pop(field);add('missing required '+field,c)
+ for field in ('role','router_id','local_prefixes','remote_prefixes','tunnels'):
+  c=copy.deepcopy(before);c['overlay'][field]=None;add('null required '+field,c)
+ for prefix in ('169.254.240.0/20','169.254.12.3/32','168.0.0.0/7','126.0.0.0/7','128.0.0.0/1','0.1.0.0/16','10.201.1.0/024','10.201.1/24'):
+  c=copy.deepcopy(before);c['overlay']['local_prefixes']=[prefix];add('prefix boundary '+prefix,c)
+ for ip in ('255.255.255.255','::1','010.202.0.1','10.202.0'):
+  c=copy.deepcopy(before);c['overlay']['router_id']=ip;add('router ID boundary '+ip,c)
+ for label,patch in [('null tunnel',None),('cost boolean',{'cost':True}),('null key',{'peer_public_key':None}),('key excess padding',{'peer_public_key':'A'*42+'=='}),('key noncanonical padding bits',{'peer_public_key':'A'*42+'B='}),('null endpoint',{'endpoint':None}),('null keepalive',{'keepalive_seconds':None}),('boolean endpoint port',{'endpoint_port':True}),('network local on /30',{'address':'10.203.10.0/30','peer_address':'10.203.10.1'}),('broadcast local on /30',{'address':'10.203.10.3/30','peer_address':'10.203.10.1'}),('peer outside link',{'peer_address':'10.204.255.1'}),('peer same local',{'peer_address':before['overlay']['tunnels'][0]['address'].split('/')[0]}),('noncanonical link mask',{'address':'10.203.10.0/031'}),('local loopback link',{'address':'127.0.0.0/31','peer_address':'127.0.0.1'}),('local link-local link',{'address':'169.254.10.0/31','peer_address':'169.254.10.1'}),('broader peer than remote',{'peer_prefixes':['10.201.0.0/16']}),('contained duplicate peer',{'peer_prefixes':['10.201.2.0/24','10.201.2.0/25']}),('one character DNS',{'endpoint':'h'}),('two character DNS',{'endpoint':'ab'}),('DNS consecutive dots',{'endpoint':'hub..example.test'}),('DNS trailing dash',{'endpoint':'hub-'}),('numeric invalid IP DNS hostname',{'endpoint':'999.999.999.999'}),('recursive later link endpoint',{'endpoint':before['overlay']['tunnels'][1]['peer_address']}),('tunnel WAN nontext',{'wan':[]})]:
+  c=copy.deepcopy(before)
+  if patch is None:c['overlay']['tunnels'][0]=None
+  else:c['overlay']['tunnels'][0].update(patch)
+  add(label,c)
+ for field in ('name','wan','listen_port','address','peer_address','local_public_key','peer_public_key','peer_prefixes','cost'):
+  c=copy.deepcopy(before);c['overlay']['tunnels'][0].pop(field);add('missing tunnel '+field,c)
+ c=copy.deepcopy(before);c['overlay']['local_prefixes'].append('10.201.1.0/25');add('contained local overlap',c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'][1]['address']=c['overlay']['tunnels'][0]['address'];c['overlay']['tunnels'][1]['peer_address']=c['overlay']['tunnels'][0]['peer_address'];add('duplicate tunnel subnet',c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'][1]['listen_port']=c['overlay']['tunnels'][0]['listen_port'];add('duplicate local port',c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'][1]['local_public_key']=c['overlay']['tunnels'][0]['local_public_key'];add('duplicate local identity',c)
+ c=copy.deepcopy(before);c['wans'][0]['kind']='vpn';add('VPN cannot be overlay underlay',c)
+ c=copy.deepcopy(before);c['wans'][0]['address']=before['overlay']['tunnels'][0]['peer_address'];add('underlay address overlaps link',c)
+ c=copy.deepcopy(before);c['overlay']['role']='hub';c['overlay']['local_prefixes']=[]
+ for t in c['overlay']['tunnels']:
+  for field in ('endpoint','endpoint_port','keepalive_seconds'):t.pop(field,None)
+ for value in (0,False,None,1):
+  d=copy.deepcopy(c);d['overlay']['tunnels'][0]['keepalive_seconds']=value;add('hub keepalive '+str(value),d)
+ for field in ('local_prefixes','remote_prefixes'):
+  c=copy.deepcopy(before);c['overlay'][field].insert(0,None);add('null item in '+field,c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'][0]['peer_prefixes'].insert(0,None);add('null peer prefix item',c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'].append(None);add('trailing null tunnel',c)
+ c=copy.deepcopy(before);c['overlay']['tunnels'][0]['endpoint']='null.example.test';add('quoted null is ordinary DNS text',c)
+ for owner in ('wan','policy'):
+  c=copy.deepcopy(before)
+  if owner=='wan':c['wans'][0]['probe_table']='sdwan-ol-'+c['overlay']['tunnels'][0]['name']
+  else:c['policies'][0]['table']='sdwan-ol-'+c['overlay']['tunnels'][0]['name']
+  add('table collision with '+owner,c)
  try:
   assert not r.call('system/script/print',{'.proplist':'.id','.query':['name='+name]},'POST') and not r.file_entry(name+'.json'),'Previous contract test must not be duplicated'
-  for filename,body in [(name+'.rsc',(ROOT/'native/sdwan-overlay.rsc').read_text())]:r.upload(filename,body);files.append(filename)
+  for filename,body in [(name+'.rsc',(ROOT/'native/sdwan-overlay.rsc').read_text().split(':global sdwanOverlayInstall do={',1)[0])]:r.upload(filename,body);files.append(filename)
   source='''/system/scheduler/disable [/system/scheduler/find where name="overlay-contract-acceptance"]
 :global sdwanOverlayContractJSON
 :onerror failure in={
@@ -41,7 +78,7 @@ def main():
  :local cfg [:deserialize from=json options=json.no-string-conversion value=($item->"config_json")]
  :local accepted true
  :local reason ""
- :onerror rejected in={ :local ignored [$sdwanOverlayValidate cfg=$cfg] } do={ :set accepted false; :set reason $rejected }
+ :onerror rejected in={ :local ignored [$sdwanOverlayValidate cfg=$cfg rawJSON=($item->"config_json")] } do={ :set accepted false; :set reason $rejected }
  :set ($results->[:len $results]) {"case"=($item->"case");"expected"=($item->"expected");"accepted"=$accepted;"pass"=($accepted = ($item->"expected"));"reason"=$reason}
 }
 :set sdwanOverlayContractJSON [:serialize to=json value=$results options=json.no-string-conversion]

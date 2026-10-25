@@ -1,7 +1,8 @@
 :local dir ""
 :if ([:len [/file/find where name="flash"]] > 0) do={ :set dir "flash/" }
 # Import after uploading sdwan-config.json and sdwan-controller.rsc.
-:local cfg [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]]
+:local cfgJSON [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
+:local cfg [:deserialize from=json options=json.no-string-conversion value=$cfgJSON]
 :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
 :if (([:len [/file/find where name=($dir . "sdwan-dataplane.rsc")]] != 1) || ([:len [/file/find where name=($dir . "sdwan-links.rsc")]] != 1)) do={ :error "upload dataplane and links libraries before installation" }
 :global sdwanResolveWANs
@@ -26,17 +27,22 @@ $sdwanValidatePolicyLists cfg=$cfg
 :foreach id in=[/system/scheduler/find where name="sdwan-strict-dispatch"] do={ :if ([/system/scheduler/get $id comment] != "sdwan:v1:strict") do={ :error "foreign strict scheduler name collision" } }
 :local overlayEnabled ((($cfg->"overlay")->"enabled") = true)
 :local overlayManaged ($overlayEnabled || ([:len [/routing/ospf/instance/find where comment="sdwan:v1:overlay:instance"]] > 0) || ([:len [/interface/wireguard/peers/find where comment~"^sdwan:v1:overlay:"]] > 0))
+:foreach key,value in=$cfg do={ :if ($key = "overlay") do={ :set overlayManaged true } }
 :global sdwanOverlayValidate
 :global sdwanOverlayNetworks
 :global sdwanOverlayInstall
 :if ($overlayManaged) do={
     :if ([:len [/file/find where name=($dir . "sdwan-overlay.rsc")]] != 1) do={ :error "upload overlay library before installation" }
     /import file-name=($dir . "sdwan-overlay.rsc")
-    $sdwanOverlayValidate cfg=$cfg
+    $sdwanOverlayValidate cfg=$cfg rawJSON=$cfgJSON
     :set ($cfg->"local_networks") [$sdwanOverlayNetworks cfg=$cfg]
 }
 :local vpnManaged (((($cfg->"vpn_egress")->"enabled") = true) || ([:len [/ip/firewall/mangle/find where comment~"^sdwan:v1:vpn:"]] > 0))
-:foreach w in=($cfg->"wans") do={ :if (($w->"kind") = "vpn") do={ :set vpnManaged true } }
+:local vpnEnabled false
+:foreach w in=($cfg->"wans") do={
+    :if (($w->"kind") = "vpn") do={ :set vpnManaged true; :set vpnEnabled true }
+    :foreach key,value in=$w do={ :if ((($key = "masquerade") || ($key = "allow_selected_forward")) && ([:typeof $value] != "bool")) do={ :error "WAN egress flags must be boolean" } }
+}
 :global sdwanVPNValidate
 :global sdwanVPNCapture
 :global sdwanVPNAdopt
@@ -442,7 +448,7 @@ $sdwanValidatePolicyLists cfg=$cfg
 :foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if ((!([/tool/netwatch/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/tool/netwatch/get $id comment]) != true)) do={ /tool/netwatch/remove $id } }
 :foreach id in=[/routing/table/find where name~"^sdwan-"] do={ :if ((!([/routing/table/get $id name] ~ "^sdwan-ol-")) && (($wantedTables->[/routing/table/get $id name]) != true)) do={ /routing/table/remove $id } }
 :if ($overlayManaged) do={ $sdwanOverlayInstall cfg=$cfg }
-:if ($vpnManaged) do={ $sdwanVPNInstall cfg=$cfg; :local resolved [$sdwanVPNTick cfg=$cfg]; :if ((($cfg->"vpn_egress")->"enabled") = true) do={ $sdwanVPNOrder cfg=$cfg } }
+:if ($vpnManaged) do={ $sdwanVPNInstall cfg=$cfg; :local resolved [$sdwanVPNTick cfg=$cfg]; :if ($vpnEnabled) do={ $sdwanVPNOrder cfg=$cfg } }
 # Promote the complete, reconciled configuration. Editing the staging JSON alone is inert.
 :local raw [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local active [/file/find where name=($dir . "sdwan-active.json")]

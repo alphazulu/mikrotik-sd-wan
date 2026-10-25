@@ -27,15 +27,15 @@ class VPNTraffic:
    for iface in ifaces:
     row=r.call('interface/wireguard/peers/print',{'.proplist':'.id,allowed-address','.query':['interface='+iface]},'POST')[0];value=row['allowed-address'];old=value if isinstance(value,str) else ','.join(value);self.changed.append((r,row['.id'],old));r.call('interface/wireguard/peers/set',{'.id':row['.id'],'allowed-address':old+',198.19.100.1/32,198.19.100.2/32'},'POST')
    for target in ('198.19.100.1','198.19.100.2'):self.add(r,'ip/route',{'dst-address':target+'/32','gateway':ifaces[0],'routing-table':'main','distance':'1'})
-  self.add(self.h,'ip/firewall/mangle',{'chain':'prerouting','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
-  self.add(self.h,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface':'sdwan-wg-sitea-wan1','action':'accept','place-before':'0'})
-  self.add(self.a,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface-list':'WAN','action':'accept','place-before':'0'})
+  self.add(self.h,'ip/firewall/mangle',{'chain':'prerouting','src-address':'10.201.2.0/24','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
+  self.add(self.h,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.0/24','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface':'sdwan-wg-sitea-wan1','action':'accept','place-before':'0'})
+  self.add(self.a,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.0/24','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface-list':'WAN','action':'accept','place-before':'0'})
   self.add(self.a,'ip/firewall/nat',{'chain':'srcnat','src-address':'10.201.2.1','dst-address':'10.201.1.2','protocol':'tcp','dst-port':str(self.base+9),'out-interface':'ether4','action':'masquerade'})
   self.add(self.n,'ip/firewall/nat',{'chain':'dstnat','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'dst-nat','to-addresses':'10.78.3.2'})
   self.add(self.n,'ip/firewall/filter',{'chain':'forward','dst-address':'10.78.3.2','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   time.sleep(1) # allow RouterOS to publish the updated peer/address classifiers
  def connections(self):return self.a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,dst-address,dst-port,connection-mark,tcp-state,seen-reply,orig-bytes,repl-bytes,srcnat,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,timeout'},'POST')
- def stream(self,port,mark,target='198.19.100.1'):
+ def stream(self,port,mark,target='198.19.100.1',source='10.201.2.1'):
   port=self.base+(port-59410)
   stop=self.stop
   class Handler(http.server.BaseHTTPRequestHandler):
@@ -47,10 +47,10 @@ class VPNTraffic:
     except (OSError,ConnectionError):pass
   server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True;self.servers.append(server);threading.Thread(target=server.serve_forever,daemon=True).start()
   name=self.prefix+'-'+str(port);self.tasks.append(name)
-  script=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address=10.201.2.1 output=none idle-timeout=60s }}','policy':'read,write,policy,test'})
+  script=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address={source} output=none idle-timeout=60s }}','policy':'read,write,policy,test'})
   self.b.call('system/script/run',{'number':script},'POST');end=time.monotonic()+20
   while time.monotonic()<end:
-   rows=[x for x in self.connections() if x.get('src-address')=='10.201.2.1' and x.get('dst-port')==str(port)]
+   rows=[x for x in self.connections() if x.get('src-address')==source and x.get('dst-port')==str(port)]
    for row in rows:
     if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return row['.id']
    time.sleep(.2)
