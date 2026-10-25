@@ -273,3 +273,57 @@ fn missing_router_status_does_not_claim_or_send_heartbeat() {
     service_until(s, &stopped).unwrap();
     job.join().unwrap();
 }
+#[test]
+fn configuration_epoch_mismatch_never_claims_or_sends_heartbeat() {
+    let temp = Temp::new();
+    let stopped = Arc::new(AtomicBool::new(false));
+    let flag = stopped.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = listener.local_addr().unwrap();
+    let heartbeat = UdpSocket::bind("127.0.0.1:0").unwrap();
+    heartbeat.set_nonblocking(true).unwrap();
+    let worker = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        for stage in 0..4 {
+            let words = command(&mut stream).unwrap();
+            match stage {
+                0 => {
+                    assert_eq!(words[0], "/login");
+                    sentence(&mut stream, &["!done"]);
+                }
+                1 => {
+                    assert_eq!(words[0], "/system/identity/print");
+                    sentence(&mut stream, &["!re", "=name=fixture"]);
+                    sentence(&mut stream, &["!done"]);
+                }
+                2 => {
+                    assert!(words.iter().any(|s| s == "?name=sdwanStatusJSON"));
+                    sentence(
+                        &mut stream,
+                        &[
+                            "!re",
+                            r#"=value={"revision":"test","uptime_seconds":1,"states":{"default/wan":{"state":"healthy"}}}"#,
+                        ],
+                    );
+                    sentence(&mut stream, &["!done"]);
+                }
+                _ => {
+                    assert!(words.iter().any(|s| s == "?name=sdwanContainerConfigJSON"));
+                    let bad = CONFIG.replace("test", "different-epoch");
+                    sentence(&mut stream, &["!re", &format!("=value={bad}")]);
+                    sentence(&mut stream, &["!done"]);
+                    flag.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+    let mut cfg = settings(endpoint, temp.file("password", "fixture"));
+    cfg.mode = Mode::Active;
+    cfg.heartbeat_port = heartbeat.local_addr().unwrap().port();
+    service_until(cfg, &stopped).unwrap();
+    worker.join().unwrap();
+    assert_eq!(
+        heartbeat.recv(&mut [0; 8]).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+}

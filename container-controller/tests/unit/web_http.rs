@@ -264,6 +264,18 @@ fn header_codes_body_limits_deadlines_and_serialization_failures() {
 }
 #[test]
 fn server_denies_other_source_families_throttles_and_survives_malformed_requests() {
+    struct AcceptFailure {
+        listener: TcpListener,
+        failed: Arc<AtomicBool>,
+    }
+    impl Listener for AcceptFailure {
+        fn accept(&self) -> io::Result<(TcpStream, std::net::SocketAddr)> {
+            if self.failed.load(Ordering::Relaxed) {
+                return Err(io::Error::other("scripted accept failure"));
+            }
+            self.listener.accept()
+        }
+    }
     for (address, allow) in [
         ("127.0.0.1:0", false),
         ("[::1]:0", true),
@@ -275,9 +287,14 @@ fn server_denies_other_source_families_throttles_and_survives_malformed_requests
         let store = Arc::new(Mutex::new(Store::new("default".into(), 10, 12)));
         let stopped = Arc::new(AtomicBool::new(false));
         let flag = stopped.clone();
+        let failed = Arc::new(AtomicBool::new(false));
+        let fail_accept = failed.clone();
         let job = std::thread::spawn(move || {
             serve(
-                listener,
+                AcceptFailure {
+                    listener,
+                    failed: fail_accept,
+                },
                 store,
                 "fixture".into(),
                 if allow {
@@ -320,7 +337,7 @@ fn server_denies_other_source_families_throttles_and_survives_malformed_requests
         if allow && addr.is_ipv4() {
             assert!(throttled);
         }
-        stopped.store(true, Ordering::Relaxed);
+        failed.store(true, Ordering::Relaxed);
         job.join().unwrap();
     }
     struct Failed;
@@ -385,4 +402,62 @@ fn optional_content_length_https_origin_and_writer_failures_are_tested() {
     assert!(String::from_utf8(unauthenticated.out)
         .unwrap()
         .starts_with("HTTP/1.0 401"));
+}
+#[test]
+fn concrete_request_reply_and_header_writers_cover_all_outcomes() {
+    let store = Arc::new(Mutex::new(Store::new("default".into(), 10, 12)));
+    let mut memory = Memory {
+        input: std::io::Cursor::new(
+            b"GET /api/status HTTP/1.1\r\nHost: localhost\r\n\r\n".to_vec(),
+        ),
+        ..Default::default()
+    };
+    assert_eq!(request(&mut memory).unwrap().target, "/api/status");
+    for code in [200, 400, 401, 403, 404, 405, 408, 429, 431, 503, 418] {
+        let mut out = Memory::default();
+        headers(&mut out, code, "text/plain", true).unwrap();
+        let text = String::from_utf8(out.out).unwrap();
+        assert!(text.starts_with(&format!("HTTP/1.0 {code}")));
+        for marker in [
+            "HTTP/1.0",
+            "WWW-Authenticate:",
+            "Allow: GET",
+            "Retry-After:",
+            "Content-Disposition:",
+        ] {
+            if let Some(position) = text.find(marker) {
+                let mut fail = Memory {
+                    fail_at: Some(position),
+                    ..Default::default()
+                };
+                assert!(
+                    headers(&mut fail, code, "text/plain", true).is_err(),
+                    "missing writer error for {marker}"
+                );
+            }
+        }
+    }
+    let mut reply = Memory::default();
+    respond(
+        &mut reply,
+        Request {
+            target: "/missing".into(),
+            authorization: Some("Bearer fixture".into()),
+        },
+        "fixture",
+        &store,
+    )
+    .unwrap();
+    assert!(String::from_utf8(reply.out)
+        .unwrap()
+        .starts_with("HTTP/1.0 404"));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let (_peer, _) = listener.accept().unwrap();
+    let mut limited = Deadline {
+        stream: &mut client,
+        end: Instant::now() + Duration::from_secs(1),
+        bytes: BODY_LIMIT,
+    };
+    assert!(limited.write(b"x").is_err());
 }

@@ -351,3 +351,42 @@ fn explicit_event_lists_addresses_and_all_epoch_keys_are_handled() {
     next.revision.0 = "other".into();
     assert!(s.epoch_changed(&next));
 }
+#[test]
+fn the_same_small_text_bound_accepts_valid_utf8_and_rejects_overflow() {
+    assert_eq!(serde_json::from_str::<Text<3>>(r#""ok""#).unwrap().0, "ok");
+    assert!(serde_json::from_str::<Text<3>>(r#""long""#).is_err());
+}
+#[test]
+fn bounded_map_and_list_decoders_check_success_limits_and_truncated_input() {
+    let one: Map<u8, 1> = serde_json::from_str(r#"{"a":1}"#).unwrap();
+    assert_eq!(one.0["a"], 1);
+    for raw in [r#"{"a":1,"b":2}"#, r#"{"a":"wrong-type"}"#, "{", "[", "[1]"] {
+        assert!(serde_json::from_str::<Map<u8, 1>>(raw).is_err(), "{raw}");
+    }
+    let long_key = serde_json::json!({"x".repeat(65):1}).to_string();
+    assert!(serde_json::from_str::<Map<u8, 1>>(&long_key).is_err());
+    assert!(serde_json::from_str::<Map<u8, 1>>("[]")
+        .unwrap()
+        .0
+        .is_empty());
+    assert_eq!(
+        serde_json::from_str::<List<u8, 1>>("[1]").unwrap().0,
+        vec![1]
+    );
+    assert!(serde_json::from_str::<List<u8, 1>>("[").is_err());
+    for field in [
+        "samples",
+        "selected",
+        "states",
+        "maintenance",
+        "vpn_egress",
+        "overlay",
+    ] {
+        let empty = format!(r#"{{"uptime_seconds":1,"revision":"test","{field}":[]}}"#);
+        assert!(Update::parse(&empty).is_ok());
+        let nonempty = format!(r#"{{"uptime_seconds":1,"revision":"test","{field}":[1]}}"#);
+        assert!(Update::parse(&nonempty).is_err());
+        let truncated = format!(r#"{{"uptime_seconds":1,"revision":"test","{field}":["#);
+        assert!(Update::parse(&truncated).is_err());
+    }
+}

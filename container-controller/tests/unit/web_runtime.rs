@@ -264,3 +264,89 @@ fn real_mount_adapter_is_bounded_without_accessing_host_secrets() {
     assert!(read_mount(&path, 6).is_err());
     std::fs::remove_file(path).unwrap();
 }
+#[test]
+fn one_startup_factory_covers_success_and_each_cleanup_stage() {
+    struct Factory {
+        fail_at: usize,
+        calls: usize,
+    }
+    impl Spawn for Factory {
+        fn spawn(
+            &mut self,
+            name: &str,
+            job: impl FnOnce() + Send + 'static,
+        ) -> io::Result<JoinHandle<()>> {
+            self.calls += 1;
+            if self.calls == self.fail_at {
+                return Err(io::Error::other("scripted thread failure"));
+            }
+            Threads.spawn(name, job)
+        }
+    }
+    for scenario in 0..=10 {
+        let mut cfg = enabled();
+        let address = cfg.listen;
+        if scenario == 0 {
+            cfg.enabled = false;
+        }
+        if scenario == 1 {
+            cfg.sample_seconds = 1;
+        }
+        let occupied = if scenario == 7 {
+            Some(TcpListener::bind(address).unwrap())
+        } else {
+            None
+        };
+        let mut factory = Factory {
+            fail_at: if scenario == 8 {
+                1
+            } else if scenario == 9 {
+                2
+            } else {
+                0
+            },
+            calls: 0,
+        };
+        let mut loads = 0;
+        let load = |path: &std::path::Path, _limit: u64| -> io::Result<String> {
+            loads += 1;
+            if scenario == 2 || (scenario == 5 && loads == 2) {
+                return Err(io::Error::other("scripted missing mount"));
+            }
+            if path == std::path::Path::new("/secrets/web-token") {
+                Ok(match scenario {
+                    3 => "short".into(),
+                    4 => "G".repeat(64),
+                    _ => "a".repeat(64),
+                })
+            } else {
+                Ok(if scenario == 6 {
+                    "a".repeat(64)
+                } else {
+                    "fixture-password".into()
+                })
+            }
+        };
+        let result = Runtime::start_with_spawner(
+            cfg,
+            observer("127.0.0.1:1".parse().unwrap()),
+            load,
+            &mut factory,
+        );
+        if scenario == 0 {
+            assert!(result.unwrap().is_none());
+            assert_eq!(loads, 0);
+        } else if scenario == 10 {
+            let runtime = result.unwrap();
+            assert!(runtime.is_some());
+            drop(runtime);
+        } else {
+            assert!(result.is_err(), "scenario {scenario}");
+        }
+        drop(occupied);
+        assert!(
+            TcpListener::bind(address).is_ok(),
+            "listener leaked in scenario {scenario}"
+        );
+    }
+}
