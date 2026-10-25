@@ -5,12 +5,12 @@ Native execution lives in sdwan-links.rsc.
 """
 import ipaddress
 
-KINDS=('static','dhcp','pppoe','lte')
+KINDS=('static','dhcp','pppoe','lte','vpn')
 
 
 def addressing_kind(wan):
     kind=wan.get('kind','static')
-    if kind not in KINDS:raise ValueError('WAN kind must be static, dhcp, pppoe or lte')
+    if kind not in KINDS:raise ValueError('WAN kind must be static, dhcp, pppoe, lte or vpn')
     if kind=='static':
         for field in ('address','gateway'):
             value=wan.get(field)
@@ -40,6 +40,16 @@ def inferred_kind(interface,dhcp_clients,pppoe_clients,lte_interfaces=()):
     return 'pppoe' if ppp else ('dhcp' if dhcp else 'static')
 
 
+def interface_route(route,iface):
+    """Public route metadata binds a next hop to a logical interface."""
+    if route.get('vrf-interface')==iface:return True
+    for field in ('gateway','immediate-gw'):
+        for value in str(route.get(field,'')).split(','):
+            value=value.split('@')[0]
+            if value==iface or value.endswith('%'+iface):return True
+    return False
+
+
 def adopted_dynamic_route(route,wans):
     """Match provider routes by protocol/interface, never by an ephemeral ID."""
     def yes(value):return value in (True,'true','yes','1')
@@ -48,6 +58,7 @@ def adopted_dynamic_route(route,wans):
         iface=wan['interface'];kind=wan.get('kind','static')
         if kind=='dhcp' and yes(route.get('dhcp')) and route.get('vrf-interface')==iface:return True
         if kind=='pppoe' and route.get('gateway','').split('@')[0]==iface:return True
+        if kind=='vpn' and yes(route.get('vpn')) and interface_route(route,iface):return True
         if kind=='lte' and yes(route.get('modem')):
             gw=route.get('gateway','').split('@')[0]
             if gw==iface or gw.rsplit('%',1)[-1]==iface or route.get('vrf-interface')==iface:return True

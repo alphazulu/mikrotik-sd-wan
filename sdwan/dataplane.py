@@ -26,7 +26,7 @@ def objects(c):
             result[('ip/firewall/address-list',f'sdwan:v1:group:{group}:{index}') ]={'list':'sdwan-group-'+group,'address':member}
     for p in ordered(c):
         selectors={'src-address':p['source'] or '0.0.0.0/0'}
-        for field,native in [('source_group','src-address-list'),('destination','dst-address'),('destination_group','dst-address-list'),('in_interface','in-interface'),('src_ports','src-port'),('dst_ports','dst-port')]:
+        for field,native in [('source_group','src-address-list'),('destination','dst-address'),('destination_group','dst-address-list'),('destination_list','dst-address-list'),('in_interface','in-interface'),('src_ports','src-port'),('dst_ports','dst-port')]:
             if p.get(field):selectors[native]=('sdwan-group-' if field.endswith('_group') else '')+p[field]
         if p.get('protocol','any')!='any':selectors['protocol']=p['protocol']
         if p['source']:

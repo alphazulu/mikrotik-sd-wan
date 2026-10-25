@@ -31,12 +31,19 @@
 :global sdwanMaintenance
 :global sdwanDrainingMarks
 :global sdwanOverlayLoaded
+:global sdwanVPNTick
 :global sdwanOverlayTick
+:global sdwanVPNTransport
 :onerror err in={
     :local raw [/file/get [/file/find where name=($dir . "sdwan-active.json")] contents]
     :local cfg [:deserialize from=json options=json.no-string-conversion value=$raw]
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
     :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 7) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :if ((($cfg->"vpn_egress")->"enabled") = true) do={
+        :global sdwanVPNLoaded
+        :global sdwanVPNTick
+        :if (($sdwanVPNLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
+    }
     :local health ($cfg->"health")
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
     :if ([:typeof $sdwanWanDown] != "array") do={ :set sdwanWanDown [:toarray ""] }
@@ -76,6 +83,7 @@
     :set sdwanConfigRaw $raw
     :if ([:typeof $sdwanLinkWarming] != "array") do={ :set sdwanLinkWarming [:toarray ""] }
     :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
+    :if ((($cfg->"vpn_egress")->"enabled") = true) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
     :local linkChanges [$sdwanReconcileWANs wans=($cfg->"wans") policies=($cfg->"policies") health=$health]
     :foreach wn,change in=$linkChanges do={
         :set sdwanConntrackRemoved ($sdwanConntrackRemoved + ($change->"removed"))
@@ -432,6 +440,11 @@
     :set ($output->"selected") $sdwanSelected
     :set ($output->"maintenance") $maintenance
     :set ($output->"overlay") $overlayReport
+    :local vpnReport [:toarray ""]
+    :if ((($cfg->"vpn_egress")->"enabled") = true) do={
+        :foreach wn,row in=$sdwanVPNTransport do={ :set ($vpnReport->$wn) {"underlay"=($row->"underlay");"transport_ready"=($row->"ready")} }
+    }
+    :set ($output->"vpn_egress") $vpnReport
     :set ($output->"default_admission_closed") $defaultAdmissionClosed
     :set ($output->"draining_marks") $sdwanDrainingMarks
     :set ($output->"controller") "RouterOS local script + scheduler"

@@ -172,3 +172,13 @@ Further required hardening: partial config/peer/endpoint changes and scoped oute
 UDP conntrack cleanup, strict native health/key bounds and foreign OSPF/interface
 list protection, default-off/disable/re-enable/full rollback, GUI/diagnostics and
 new container parity. Do not treat the smoke/flow checks as full release acceptance.
+
+
+## Windows access to the existing CHR lab
+
+Hyper-V/WSL can reserve Windows TCP ports in the55728range. Existing Linux/QEMU
+API endpoints55728..55732 remain available. For the Windows GUI use the added
+loopback aliases45728hub,45729siteA,45730siteB,45731NATA,45732NATB. On a running
+fabric, `python tools/overlay_lab.py windows-api --project-root PRIVATE_ROOT`
+adds/reuses those forwards on the existing NICs. It does not restart guests or
+create another fabric. New launches include the aliases automatically.

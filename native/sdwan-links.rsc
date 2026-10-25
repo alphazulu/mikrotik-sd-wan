@@ -203,6 +203,20 @@
                     }
                 }
             }
+            :if ($mode = "vpn") do={
+                :global sdwanVPNBinding
+                :onerror vpnError in={
+                :local binding [$sdwanVPNBinding spec=$spec]
+                :local aids [/ip/address/find where interface=$iface and disabled=no and invalid=no]
+                :set reason "VPN IPv4 session unavailable or ambiguous"
+                :if ([:len $aids] = 1) do={
+                    :local full [:tostr [/ip/address/get $aids address]]
+                    :set address [:pick $full 0 [:find $full "/"]]
+                    :set gateway $iface
+                    :set nextHop $iface
+                }
+                } do={ :set reason "VPN binding unavailable or changed" }
+            }
             :if ($mode = "lte") do={
                 :onerror lteError in={
                     :local binding [$sdwanLTEBinding iface=$iface profile=($spec->"apn_profile")]
@@ -220,7 +234,7 @@
                 } do={ :set reason ("LTE " . $lteError) }
             }
             :local validGateway ([:typeof [:toip $gateway]] = "ip")
-            :if (($mode = "lte") && ($gateway = $iface) && ($nextHop = $iface)) do={ :set validGateway true }
+            :if ((($mode = "lte") || ($mode = "vpn")) && ($gateway = $iface) && ($nextHop = $iface)) do={ :set validGateway true }
             :if ((([:typeof [:toip $address]] = "ip") && $validGateway) && ($address != "0.0.0.0") && ($gateway != "0.0.0.0")) do={
                 :foreach aid in=[/ip/address/find where interface=$iface and disabled=no and invalid=no] do={
                     :local full [:tostr [/ip/address/get $aid address]]
@@ -295,7 +309,7 @@
     :local rows [:toarray ""]
     :foreach spec in=($cfg->"wans") do={
         :local row [:toarray ""]
-        :foreach field in={"name";"interface";"kind";"address";"gateway";"probe_table";"icmp_target";"apn_profile";"probes"} do={ :set ($row->$field) ($spec->$field) }
+        :foreach field in={"name";"interface";"kind";"address";"gateway";"probe_table";"icmp_target";"apn_profile";"probes";"vpn_type";"vpn_endpoint";"vpn_peer_public_key";"vpn_listen_port";"underlays"} do={ :set ($row->$field) ($spec->$field) }
         :set ($rows->[:len $rows]) $row
     }
     :set ($signature->"wans") $rows
@@ -793,7 +807,7 @@
 }
 # Policy helpers share the existing package; no external decision process.
 :global sdwanPolicyExtended do={
-    :foreach field in={"source_group";"destination";"destination_group";"in_interface";"src_ports";"dst_ports"} do={ :if ([:len [:tostr ($policy->$field)]] > 0) do={ :return true } }
+    :foreach field in={"source_group";"destination";"destination_group";"destination_list";"in_interface";"src_ports";"dst_ports"} do={ :if ([:len [:tostr ($policy->$field)]] > 0) do={ :return true } }
     :local proto [:tostr ($policy->"protocol")]
     :return (($proto != "") && ($proto != "any"))
 }
@@ -824,7 +838,7 @@
     :local rows [:toarray ""]
     :foreach item in=[$sdwanOrderPolicies policies=($cfg->"policies")] do={
         :local row [:toarray ""]
-        :foreach field in={"name";"source";"source_group";"destination";"destination_group";"in_interface";"protocol";"src_ports";"dst_ports";"priority"} do={
+        :foreach field in={"name";"source";"source_group";"destination";"destination_group";"destination_list";"in_interface";"protocol";"src_ports";"dst_ports";"priority"} do={
             :local v [:tostr ($item->$field)]
             :if (($field = "protocol") && ($v = "")) do={ :set v "any" }
             :set ($row->$field) $v
@@ -834,6 +848,20 @@
     :set ($value->"policies") $rows
     :return [:serialize to=json value=$value options=json.no-string-conversion]
 }
+:global sdwanValidatePolicyLists do={
+    :foreach policy in=($cfg->"policies") do={
+        :foreach key,value in=$policy do={
+            :if ($key = "destination_list") do={
+                :if ([:typeof $value] != "str") do={ :error "Address List selector must be a string" }
+                :if (([:len $value] > 64) || ([:pick $value 0 1] = "!") || ($value ~ "^[[:space:]]|[[:space:]]\$")) do={ :error "invalid external Address List selector" }
+                :local controls "\00\01\02\03\04\05\06\07\08\09\0A\0B\0C\0D\0E\0F\10\11\12\13\14\15\16\17\18\19\1A\1B\1C\1D\1E\1F\7F"
+                :for index from=0 to=32 do={ :if ([:typeof [:find $value [:pick $controls $index ($index + 1)]]] != "nil") do={ :error "control character in Address List selector" } }
+                :if (([:len $value] > 0) && ([:len [:tostr ($policy->"destination_group")]] > 0)) do={ :error "Address List and destination group are ambiguous" }
+            }
+        }
+    }
+    :return true
+}
 :global sdwanApplyPolicyMatch do={
     :local source [:tostr ($policy->"source")]
     :if ($source = "") do={ :set source "0.0.0.0/0" }
@@ -841,6 +869,7 @@
     :if ([:len [:tostr ($policy->"source_group")]] > 0) do={ /ip/firewall/mangle/set $rule src-address-list=("sdwan-group-" . ($policy->"source_group")) }
     :if ([:len [:tostr ($policy->"destination")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address=($policy->"destination") }
     :if ([:len [:tostr ($policy->"destination_group")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address-list=("sdwan-group-" . ($policy->"destination_group")) }
+    :if ([:len [:tostr ($policy->"destination_list")]] > 0) do={ /ip/firewall/mangle/set $rule dst-address-list=($policy->"destination_list") }
     :if ([:len [:tostr ($policy->"in_interface")]] > 0) do={ /ip/firewall/mangle/set $rule in-interface=($policy->"in_interface") }
     :local proto [:tostr ($policy->"protocol")]
     :if (($proto != "") && ($proto != "any")) do={ /ip/firewall/mangle/set $rule protocol=$proto }

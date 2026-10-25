@@ -28,10 +28,10 @@ BACKENDS={'Скрипт RouterOS':'routeros','Локальный контейн�
 ROOT=Path(__file__).resolve().parent
 PROBE_FIELDS=[('name','Имя','text'),('type','Тип',['http-get','https-get','tcp-conn','dns']),('host','IP / DNS-имя','text'),('port','Порт (кроме DNS)','int'),('dns_server','DNS-сервер (для DNS)','text')]
 PROBE_FIELDS += [('http_codes','HTTP коды через запятую (необяз.)','codes'),('http_path','HTTP путь / query (необяз.)','text'),('http_expected_body','Ожидаемый body: JSON-строка (необяз.)','jsontext'),('dns_expected_ips','Ожидаемые DNS A адреса (необяз.)','csv')]
-WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text'),('admin_state','Состояние WAN',['enabled','drain','down']),('drain_timeout_seconds','Drain: таймаут, с (0 = без срока)','int')]
+WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte','vpn']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text'),('admin_state','Состояние WAN',['enabled','drain','down']),('drain_timeout_seconds','Drain: таймаут, с (0 = без срока)','int')]
 POLICY_FIELDS=[('name','Имя политики','text'),('source','Источник (0.0.0.0/0 = все; пусто = общая)','text'),('table','Таблица маршрутизации','text'),('profile','SLA-профиль','text'),('mode','Режим',['prefer','strict']),('wans','WAN по порядку, через запятую','csv'),('allow_degraded','Разрешить degraded, если нет healthy','bool')]
 GROUP_FIELDS=[('name','Имя группы','text'),('members','IP/подсети через запятую','csv')]
-POLICY_FIELDS += [('priority','Приоритет (меньше = раньше)','int'),('source_group','Группа источников','text'),('destination','Подсеть назначения','text'),('destination_group','Группа назначений','text'),('in_interface','Входной интерфейс / VLAN','text'),('protocol','Протокол',['any','tcp','udp','icmp']),('src_ports','Порты источника / диапазоны','text'),('dst_ports','Порты назначения / диапазоны','text')]
+POLICY_FIELDS += [('priority','Приоритет (меньше = раньше)','int'),('source_group','Группа источников','text'),('destination','Подсеть назначения','text'),('destination_group','Группа назначений','text'),('destination_list','Address List назначения (на роутере)','text'),('in_interface','Входной интерфейс / VLAN','text'),('protocol','Протокол',['any','tcp','udp','icmp']),('src_ports','Порты источника / диапазоны','text'),('dst_ports','Порты назначения / диапазоны','text')]
 SLA_FIELDS=[('name','Имя профиля','text'),('rtt_ms','Средний RTT, мс','float'),('jitter_ms','Jitter max-min, мс','float'),('loss_percent','Потери, %','float')]
 HEALTH_LABELS={'interval_seconds':'Интервал проб, с','timeout_ms':'Timeout пробы, мс','packet_count':'ICMP пакетов в окне','packet_interval_ms':'Интервал ICMP пакетов, мс','quorum':'Кворум доступных целей','fail_windows':'Плохих окон для исключения','recover_windows':'Хороших окон для возврата','hold_down_seconds':'Задержка возврата после плохого окна, с','stale_seconds':'Устаревание телеметрии, с'}
 
@@ -39,7 +39,7 @@ HEALTH_LABELS={'interval_seconds':'Интервал проб, с','timeout_ms':'
 class RecordDialog(tk.Toplevel):
     def __init__(self,parent,title,fields,value=None,wan=False):
         super().__init__(parent);self.title(title);self.transient(parent);self.result=None;self.fields=fields;self.vars={};self.widgets={};self.wan=wan
-        value=copy.deepcopy(value or {})
+        value=copy.deepcopy(value or {});self.initial=value
         if wan:
             value.setdefault('kind','static');value.setdefault('admin_state','enabled')
         self.body=ttk.Frame(self,padding=12);self.body.pack(fill='both',expand=True)
@@ -51,7 +51,7 @@ class RecordDialog(tk.Toplevel):
         for row,(key,label,kind) in enumerate(fields):
             container=self.body
             if policy:
-                extra=key in ('source_group','destination','destination_group','in_interface','protocol','src_ports','dst_ports')
+                extra=key in ('source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports')
                 container=selectors if extra else basic;row=counts[extra];counts[extra]+=1
             ttk.Label(container,text=label).grid(row=row,column=0,sticky='w',padx=4,pady=5)
             v=value.get(key,False if kind=='bool' else 'any' if key=='protocol' else '')
@@ -59,7 +59,7 @@ class RecordDialog(tk.Toplevel):
             if kind=='jsontext':v=json.dumps(value[key],ensure_ascii=False) if key in value else ''
             var=tk.BooleanVar(value=v) if kind=='bool' else tk.StringVar(value=str(v))
             self.vars[key]=var
-            if isinstance(kind,list):widget=ttk.Combobox(container,textvariable=var,values=kind,state='readonly',width=35)
+            if isinstance(kind,list):widget=ttk.Combobox(container,textvariable=var,values=kind,state='normal' if key=='destination_list' else 'readonly',width=35)
             elif kind=='bool':widget=ttk.Checkbutton(container,variable=var)
             else:widget=ttk.Entry(container,textvariable=var,width=42)
             widget.grid(row=row,column=1,sticky='ew',padx=4,pady=5)
@@ -67,7 +67,7 @@ class RecordDialog(tk.Toplevel):
         if policy:ttk.Label(self.body,text='Все условия внутри правила соединяются И. Группы содержат IP/подсети. Порты: 80,443,10000-20000.\nПри пересечении правил задайте каждому явный приоритет. Пустой источник оставьте только общей политике.',wraplength=650).grid(row=1,columnspan=2,sticky='w',pady=8)
         self.probes=copy.deepcopy(value.get('probes',[]))
         if wan:
-            ttk.Label(self.body,text='DHCP/PPPoE/LTE: IP и шлюз определяются на MikroTik. Для LTE укажите имя APN профиля, назначенного этому интерфейсу.\nВыберите уже настроенный клиент на MikroTik; для PPPoE укажите логический интерфейс.',wraplength=580).grid(row=len(fields),columnspan=2,sticky='w',pady=5)
+            ttk.Label(self.body,text='DHCP/PPPoE/LTE/VPN: IP и шлюз определяются на MikroTik. Для LTE укажите имя APN профиля, назначенного этому интерфейсу.\nВыберите уже настроенный клиент на MikroTik; для PPPoE укажите логический интерфейс.',wraplength=580).grid(row=len(fields),columnspan=2,sticky='w',pady=5)
             self.vars['kind'].trace_add('write',self.addressing_changed);self.addressing_changed()
             f=ttk.LabelFrame(self.body,text='Контрольные цели доступности',padding=6);f.grid(row=len(fields)+1,columnspan=2,sticky='ew',pady=8)
             self.probe_table=Table(f,PROBE_FIELDS,self.probes);self.probe_table.pack(fill='both',expand=True)
@@ -86,6 +86,8 @@ class RecordDialog(tk.Toplevel):
     def accept(self):
         try:
             d={}
+            if self.wan and self.vars['kind'].get()=='vpn':
+                d.update({k:v for k,v in self.initial.items() if k in ('vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key','underlays')})
             for key,_,kind in self.fields:
                 val=self.vars[key].get()
                 if key in STRICT_FIELDS and val=='':continue
@@ -186,6 +188,7 @@ class App(tk.Tk):
         operations=ttk.Frame(self.review,padding=4);operations.pack(fill='x');self.op_buttons=[];self.action_buttons={}
         for label,cmd in [('План изменений','plan'),('Подготовить контейнер','container-prepare'),('Установить на MikroTik','apply'),('Состояние','status'),('Журнал решений','events'),('Откат к исходному','rollback')]:
             button=ttk.Button(operations,text=label,command=lambda c=cmd:self.run(c));button.pack(side='left',padx=4);self.op_buttons.append(button);self.action_buttons[cmd]=button
+        ttk.Button(operations,text='VPN по Address List',command=self.vpn_configure).pack(side='left',padx=4)
         self.tabs=ttk.Notebook(self.review);self.tabs.pack(fill='both',expand=True)
         self.diagnostics=DiagnosticsPanel(self.steps,self);self.steps.add(self.diagnostics,text='Диагностика')
         self.log=tk.Text(self,height=8,font=('Consolas',10),wrap='word');self.log.pack(fill='both',padx=8,pady=6)
@@ -241,6 +244,7 @@ class App(tk.Tk):
         self.log.insert('end','\nКонфигурация создана из прочитанных настроек. Локальные сети: '+', '.join(c['local_networks'])+'\n')
         self.log.insert('end','Включены connection/routing marks: симметричные ответы WAN и DNAT, привязка потоков к WAN и выборочная очистка conntrack при переключении/возврате.\n')
         if c.get('disable_fasttrack'):self.log.insert('end','В план включено отключение FastTrack для корректной работы политик. Исходное состояние сохраняется для отката.\n')
+        if inventory.get('unselected_vpn_defaults'):self.log.insert('end','На роутере есть default route существующего VPN. Перед установкой добавьте этот VPN через «VPN по Address List» либо согласуйте его автоматические маршруты; план не позволит обойти SLA.\n')
         if not any(n.get('action') in ('masquerade','src-nat') and n.get('disabled')!='true' for n in inventory.get('ip/firewall/nat',[])):self.log.insert('end','На устройстве не найден исходящий NAT. Генератор сохраняет текущую схему NAT/firewall; её нужно согласовать перед использованием интернета клиентами.\n')
     def render_config(self,c):
         validate(c);self.data=copy.deepcopy(c)
@@ -251,7 +255,7 @@ class App(tk.Tk):
         self.policies=Table(self.tabs,POLICY_FIELDS,ordered(c));self.tabs.add(self.policies,text='Клиенты и приложения')
         ttk.Label(self.policies,text='Изменение групп, условий или порядка правил пересоздаёт управляемые исходящие соединения. Входящее управление сохраняется.',wraplength=1100).pack(fill='x',pady=5)
         self.groups=Table(self.tabs,GROUP_FIELDS,[{'name':name,'members':members} for name,members in c.get('groups',{}).items()]);self.tabs.add(self.groups,text='Группы адресов')
-        self.policies.choices=lambda:{'source_group':['']+[r['name'] for r in self.groups.rows],'destination_group':['']+[r['name'] for r in self.groups.rows],'profile':[r['name'] for r in self.slas.rows],**({'in_interface':['']+[r['name'] for r in self.inventory.get('interface',[])]} if self.inventory else {})}
+        self.policies.choices=lambda:{'source_group':['']+[r['name'] for r in self.groups.rows],'destination_group':['']+[r['name'] for r in self.groups.rows],'destination_list':['']+(self.inventory or {}).get('address_list_names',[]),'profile':[r['name'] for r in self.slas.rows],**({'in_interface':['']+[r['name'] for r in self.inventory.get('interface',[])]} if self.inventory else {})}
         health=ttk.Frame(self.tabs,padding=12);self.tabs.add(health,text='Контроль и возврат');self.health={}
         for row,(key,label) in enumerate(HEALTH_LABELS.items()):
             v=tk.StringVar(value=str(c['health'][key]));self.health[key]=v;ttk.Label(health,text=label).grid(row=row,column=0,sticky='w',pady=4);ttk.Entry(health,textvariable=v,width=12).grid(row=row,column=1,padx=10)
@@ -301,6 +305,14 @@ class App(tk.Tk):
         ttk.Spinbox(retention,from_=1,to=20,textvariable=self.backup_keep,width=5).pack(side='left',padx=6)
         ttk.Label(settings,text='Очистка запускается один раз после подтверждения установки. При pending/recovery или непонятном журнале ничего не удаляется.',wraplength=1000).pack(anchor='w',pady=5)
         self.title('MikroTik SD-WAN — '+str(self.path))
+    def vpn_configure(self):
+        if self.busy:return
+        try:
+            if not self.inventory or not self.connection_matches():raise ValueError('Сначала подключитесь и получите настройки MikroTik.')
+            from vpn_gui import VPNDialog
+            dialog=VPNDialog(self,self.collect(),self.inventory)
+            if dialog.result:self.render_config(dialog.result)
+        except (ValueError,KeyError) as error:messagebox.showerror('VPN-egress',str(error),parent=self)
     def load(self,path):
         self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
     def collect(self):
@@ -396,15 +408,15 @@ class App(tk.Tk):
                             if not telemetry_settings(config)['enabled']:raise ValueError('Веб-интерфейс выключен.')
                             check_ready(router,config,expected)
                             token=router.read_file(paths(config)['web_token']);self.messages.put(('web-token',(values,token)));return
-                        elif command=='diagnostics':
+                        elif command in ('diagnostics','address-lists'):
                             from sdwan.diagnostics import read
-                            snapshot,active=read(router);self.messages.put(('diagnostics',(values,snapshot,active)));return
+                            snapshot,active=read(router,include_membership=command=='address-lists');self.messages.put(('diagnostics-lists' if command=='address-lists' else 'diagnostics',(values,snapshot,active)));return
                         elif command=='status':print(json.dumps(router.status(),indent=2,ensure_ascii=False))
                         elif command=='events':print(json.dumps([r for r in router.call('log') if r.get('message','').startswith('SDWAN ')],indent=2,ensure_ascii=False))
                         elif command=='rollback':cli.rollback(router,expected)
                     self.messages.put(('operation',(output.getvalue(),0)))
                 except Exception as e:
-                    if command=='diagnostics':self.messages.put(('diagnostics_error',(values,str(e))))
+                    if command in ('diagnostics','address-lists'):self.messages.put(('diagnostics_error',(values,str(e))))
                     else:self.messages.put(('operation',(output.getvalue()+str(e),1)))
                 finally:
                     if router:router.close()
@@ -427,9 +439,11 @@ class App(tk.Tk):
                     (run/f'discovery-{stamp}.json').write_text(json.dumps(inventory,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
                     self.log.insert('end','\nНастройки прочитаны. Ни одна настройка MikroTik не изменена.\n')
                     for warning in inventory['warnings']:self.log.insert('end',warning+'\n')
-            elif kind=='diagnostics':
+            elif kind in ('diagnostics','diagnostics-lists'):
                 values,snapshot,active=payload
-                if self.connection_matches() and values==self.connection_values():self.diagnostics.update_snapshot(snapshot,active)
+                if self.connection_matches() and values==self.connection_values():
+                    self.diagnostics.update_snapshot(snapshot,active)
+                    if kind=='diagnostics-lists':self.diagnostics.explain_flow(fresh_lists=True)
             elif kind=='diagnostics_error':
                 values,error=payload
                 if values==self.connection_values():self.diagnostics.clear('Не удалось обновить диагностику: '+error)

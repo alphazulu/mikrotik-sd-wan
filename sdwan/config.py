@@ -22,7 +22,7 @@ def validate(c):
         need(not missing,f'{label}: missing fields {sorted(missing)}')
         need(not unknown,f'{label}: unknown fields {sorted(unknown)}')
     required=('schema_version','revision','health','sla_profiles','wans','local_networks','policies','takeover_route_comments','takeover_rule')
-    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container','maintenance','overlay'),'config',required)
+    keys(c,required+('takeover_routes','disable_fasttrack','groups','controller_backend','container','maintenance','overlay','vpn_egress'),'config',required)
     if 'maintenance' in c:
         keys(c['maintenance'],('backup_keep',),'maintenance')
         need(type(c['maintenance']['backup_keep']) is int and 1 <= c['maintenance']['backup_keep'] <= 20,'maintenance.backup_keep must be 1..20')
@@ -59,7 +59,7 @@ def validate(c):
     need(isinstance(wans,list) and 1 <= len(wans) <= 16, '1..16 WANs required')
     names=set(); interfaces=set(); tables=set(); addresses=set(); strict_probes=0
     for w in wans:
-        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile','admin_state','drain_timeout_seconds'),'WAN',('name','interface','probe_table','icmp_target','probes'))
+        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile','admin_state','drain_timeout_seconds','vpn_type','vpn_endpoint','vpn_listen_port','vpn_peer_public_key','underlays'),'WAN',('name','interface','probe_table','icmp_target','probes'))
         kind=addressing_kind(w)
         need(w.get('admin_state','enabled') in ('enabled','drain','down'), 'WAN admin_state must be enabled, drain or down')
         timeout=w.get('drain_timeout_seconds',300)
@@ -131,6 +131,8 @@ def validate(c):
     need(all(isinstance(t,str) and 0<len(t)<128 and not t.startswith('sdwan:') for t in c['takeover_route_comments']), 'invalid takeover route comments')
     from .overlay import validate as validate_overlay
     validate_overlay(c)
+    from .vpn_egress import validate as validate_vpn
+    validate_vpn(c)
     return c
 
 
@@ -144,7 +146,7 @@ def objects(c):
     for w in c['wans']:
         n=w['name']
         static=w.get('kind','static')=='static'
-        gateway={'gateway':w['gateway']+'%'+w['interface']} if static else ({'gateway':w['interface']} if w['kind'] in ('pppoe','lte') else {})
+        gateway={'gateway':w['gateway']+'%'+w['interface']} if static else ({'gateway':w['interface']} if w['kind'] in ('pppoe','lte','vpn') else {})
         source={'src-address':w['address']} if static else {}
         add('ip/route',f'sdwan:v1:pinroute:{n}',**gateway,**{'routing-table':w['probe_table']})
         add('routing/rule',f'sdwan:v1:pinrule:{n}',table=w['probe_table'],**({'src-address':w['address']+'/32'} if static else {}))
@@ -156,7 +158,7 @@ def objects(c):
     for p in c['policies']:
         for i,w in enumerate(p['wans']):
             spec=next(x for x in c['wans'] if x['name']==w)
-            gateway={'gateway':spec['gateway']+'%'+spec['interface']} if spec.get('kind','static')=='static' else ({'gateway':spec['interface']} if spec['kind'] in ('pppoe','lte') else {})
+            gateway={'gateway':spec['gateway']+'%'+spec['interface']} if spec.get('kind','static')=='static' else ({'gateway':spec['interface']} if spec['kind'] in ('pppoe','lte','vpn') else {})
             add('ip/route',f'sdwan:v1:route:{p["name"]}:{w}',**gateway,distance=str(i+1),**{'routing-table':p['table']})
         if p['source'] and not composite(p): add('routing/rule',f'sdwan:v1:client:{p["name"]}',table=p['table'],**{'src-address':p['source']})
     from .overlay import effective_networks

@@ -15,7 +15,7 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 
@@ -44,7 +44,7 @@ def inspect(router,c):
         for row in rows:
             if menu=='ip/firewall/address-list' and row.get('dynamic')=='true':continue
             tag=row.get('comment','')
-            if tag.startswith(PREFIX+'overlay:'):continue  # reconciled by the optional overlay module
+            if tag.startswith((PREFIX+'overlay:',PREFIX+'vpn:')):continue  # reconciled by the optional overlay module
             if tag.startswith(PREFIX):
                 if tag in by_tag:raise ValueError(f'duplicate managed comment: {tag}')
                 by_tag[tag]=row
@@ -75,6 +75,8 @@ def preflight(router,c,expected):
     if isinstance(res,list):res=res[0]
     if res['version'].split()[0]!='7.24.5':raise ValueError('This build is validated for RouterOS 7.24.5 only')
     routes=router.call('ip/route')
+    from sdwan.vpn_egress import validate_pushed_defaults
+    validate_pushed_defaults(routes,c)
     selectors={s['.id']:s for s in c.get('takeover_routes',[])}
     actual={r['.id']:r for r in routes}
     for identifier,selector in selectors.items():
@@ -97,6 +99,9 @@ def preflight(router,c,expected):
         if kind=='static' and not any(row.get('interface')==w['interface'] and row.get('address','').split('/')[0]==w['address'] and row.get('dynamic') not in ('true',True) and row.get('disabled') not in ('true',True) and row.get('invalid') not in ('true',True) for row in addresses):raise ValueError('Static WAN source must already be assigned statically: '+w['interface'])
         if kind=='lte':
             binding=apn_binding(w['interface'],router.call('interface/lte/print',{'.proplist':'.id,name,disabled,running,apn-profiles,apn-profile'},'POST'),router.call('interface/lte/apn/print',{'.proplist':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface'},'POST'),expected_profile=w['apn_profile'],managed_interfaces=[x['interface'] for x in c['wans'] if x.get('kind')=='lte'])
+        elif kind=='vpn':
+            from sdwan.vpn_egress import binding as vpn_binding
+            vpn_binding(router,w)
         elif kind!='static':
             menu='ip/dhcp-client' if kind=='dhcp' else 'interface/pppoe-client'
             field='interface' if kind=='dhcp' else 'name'
@@ -127,6 +132,8 @@ def preflight(router,c,expected):
                         'local_prefixes':c['overlay']['local_prefixes'],'remote_prefixes':c['overlay']['remote_prefixes']})
     elif active and overlay_enabled(active):actions.append({'action':'withdraw owned overlay peers, OSPF templates and VPN routes; retain disabled key identities'})
     if active and signature(active)!=signature(c):actions.append({'action':'reclassify managed outbound client connections after selector/group/order changes; incoming WAN API and probes preserved'})
+    from sdwan.vpn_egress import vpn_wans
+    for w in vpn_wans(c):actions.append({'action':'use existing VPN exit; adopt automatic defaults; pin outer transport to physical underlays; select with the common SLA and conntrack engine','wan':w['name'],'vpn_type':w['vpn_type'],'underlays':w['underlays'],'masquerade':c['vpn_egress'].get('masquerade',False),'allow_selected_forward':c['vpn_egress'].get('allow_selected_forward',False)})
     for identifier in selectors:actions.append({'action':'disable baseline route','menu':'ip/route','id':identifier})
     for item in c.get('disable_fasttrack',[]):actions.append({'action':'disable FastTrack','menu':'ip/firewall/filter','id':item['.id']})
     for w in c['wans']:

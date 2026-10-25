@@ -101,3 +101,28 @@ an additional external VPN server/Internet exit on the hub using distinct owned
 test interfaces/ports/addresses and private runtime credentials. Do not modify
 production or existing branch peers. The standalone container lab remains an
 independent parity target; never create a duplicate fabric or long-running test.
+
+
+## Implementation checkpoint (development branch)
+
+Existing Address List selector is integrated in Python/native validation,
+classification/signatures, GUI and bounded diagnostic snapshots. Four CHR
+membership checks and239 Python units pass. A tenth native VPN module is bundled
+with protected recovery (eleven payload/config files total), loaded only on opt-in
+or cleanup. WireGuard, L2TP/IPsec, SSTP and OpenVPN pass the five common SLA/physical
+transport checks plus three real TCP/conntrack checks, preserving unrelated
+Internet and branch streams. L2TP and OpenVPN protected reapply also preserve
+all three stream identities and resume data within the bounded20s check. Windows GUI opt-in,
+public binding retention and future-list editing pass four offline checks and three live API checks.
+OpenVPN fixture and core acceptance are verified; see private runtime reports
+for the latest result. These results do not replace remaining protection/GUI/live API,
+DNS/rebinding/VRF, native validation, new Rust/container parity and final soak.
+
+User guide: [VPN-EGRESS.md](VPN-EGRESS.md).
+
+Additional native contract checks:17VPN and44Address List cases, including
+explicit null/type/control-byte/UTF-8 length errors. Full binary rollback3,
+server-pushed default adoption/rejection3, duplicate VPN source rejection1,
+and two-VPN/physical/all-down priority matrix7pass. See
+[VPN-EGRESS-VALIDATION.md](VPN-EGRESS-VALIDATION.md). Remaining acceptance is
+explicitly incomplete; do not infer container/long-soak parity from native tests.

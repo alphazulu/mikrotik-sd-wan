@@ -41,7 +41,7 @@ def main():
    saved=json.loads(path.read_text(encoding='utf-8'));assert saved['identity']=='sdwan-edge'
    assert app.password.get() not in path.read_text(encoding='utf-8')
    spec=importlib.util.spec_from_file_location('cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
-   package=cli.bundle(app.collect(),Path(folder)/'package');assert len(list(package.iterdir()))==10
+   package=cli.bundle(app.collect(),Path(folder)/'package');assert len(list(package.iterdir()))==11
   # Local aging and API failures must never leave an apparently fresh snapshot.
   panel.received_at-=cfg['health']['stale_seconds']+1;panel.tick();assert panel.report['telemetry_stale']
   panel.explain_flow();assert 'УСТАРЕЛ' in panel.flow_result.get()
@@ -54,7 +54,7 @@ def main():
   assert r.read_file('sdwan-active.json')==before
   # A changed connection immediately invalidates the snapshot and explainer.
   app.url.set('api://127.0.0.1:18729');assert panel.report is None and not panel.wans.get_children()
-  result={'pass':True,'transport':'native API','wan_rows':3,'policy_rows':7,'group_editor':True,'selector_dialog':True,'priority_move':True,'live_diagnostics':True,'local_age_marks_stale':True,'auto_poll_read_only':True,'api_failure_clears_snapshot':True,'new_flow_explanation':True,'diagnostic_export_without_password':True,'package_files':10,'connection_change_invalidates_snapshot':True,'router_configuration_unchanged':True}
+  result={'pass':True,'transport':'native API','wan_rows':3,'policy_rows':7,'group_editor':True,'selector_dialog':True,'priority_move':True,'live_diagnostics':True,'local_age_marks_stale':True,'auto_poll_read_only':True,'api_failure_clears_snapshot':True,'new_flow_explanation':True,'diagnostic_export_without_password':True,'package_files':11,'connection_change_invalidates_snapshot':True,'router_configuration_unchanged':True}
   (ROOT/'runtime/gui-policies-diagnostics-validation.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
   print('GUI_POLICIES_DIAGNOSTICS_OK: groups/selectors/order, live dashboard/flow explain, safe export, router unchanged',flush=True)
  finally:

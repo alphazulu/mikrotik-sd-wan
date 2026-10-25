@@ -69,7 +69,7 @@ class Lab:
         idx=NODES[node];args=['qemu-system-x86_64','-name','sdwan-overlay-'+node,'-machine','q35','-accel',accel,'-cpu','host' if accel=='kvm' else 'max','-m',str(512 if node.startswith('nat') else 768),'-smp','1','-display','none','-drive',f'file={self.images/(node+".qcow2")},format=qcow2,if=virtio','-serial',f'tcp:127.0.0.1:{55100+idx},server=on,wait=off','-qmp',f'tcp:127.0.0.1:{54100+idx},server=on,wait=off','-pidfile',str(self.run/(node+'.pid')),'-daemonize','-D',str(self.run/(node+'.qemu.log'))]
         def nic(number,backend):
             args.extend(['-netdev',backend+f',id=n{number}','-device',f'virtio-net-pci,netdev=n{number},mac=52:54:00:78:{idx:02x}:{number:02x}'])
-        nic(1,f'user,net=10.78.{idx}.0/24,dhcpstart=10.78.{idx}.15,ipv6=off,hostfwd=tcp:127.0.0.1:{55080+idx}-10.78.{idx}.15:80,hostfwd=tcp:127.0.0.1:{55728+idx}-10.78.{idx}.15:8728,hostfwd=tcp:127.0.0.1:{52222+idx}-10.78.{idx}.15:22,hostfwd=tcp:127.0.0.1:{55291+idx}-10.78.{idx}.15:8291')
+        nic(1,f'user,net=10.78.{idx}.0/24,dhcpstart=10.78.{idx}.15,ipv6=off,hostfwd=tcp:127.0.0.1:{55080+idx}-10.78.{idx}.15:80,hostfwd=tcp:127.0.0.1:{55728+idx}-10.78.{idx}.15:8728,hostfwd=tcp:127.0.0.1:{45728+idx}-10.78.{idx}.15:8728,hostfwd=tcp:127.0.0.1:{52222+idx}-10.78.{idx}.15:22,hostfwd=tcp:127.0.0.1:{55291+idx}-10.78.{idx}.15:8291')
         for number,port in LINKS[node]:nic(number,f'socket,{"listen" if node.startswith("nat") and not (node=="natb" and number==2) else "connect"}=127.0.0.1:{port}')
         if node.startswith('site'):nic(4,f'user,net=10.201.{idx}.0/24,dhcpstart=10.201.{idx}.15,ipv6=off')
         return args
@@ -197,11 +197,27 @@ class Lab:
                 pid=int(pidfile.read_text());command=Path(f'/proc/{pid}/cmdline').read_bytes()
                 if b'overlay_lab.py' in command and b'_serve' in command:os.kill(pid,signal.SIGTERM)
             except (OSError,ValueError):pass
+    def windows_api(self):
+        # Hyper-V can reserve dynamic Windows ports around55728, preventing WSL
+        # localhost forwarding. Add fixed low-range loopback aliases to the SAME
+        # running NIC, without a guest change, VM restart or duplicate fabric.
+        with (self.run/'lab.lock').open('w') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            for node,idx in NODES.items():
+                if self.running(node)!='running':raise RuntimeError('Start the existing overlay lab first: '+node)
+                port=45728+idx;pattern=rf'127\.0\.0\.1\s+{port}\s+10\.78\.{idx}\.15\s+8728\b'
+                info=self.qmp(node,'human-monitor-command',{'command-line':'info usernet'})
+                if not re.search(pattern,info):
+                    with socket.socket() as probe:probe.bind(('127.0.0.1',port))
+                    reply=self.qmp(node,'human-monitor-command',{'command-line':f'hostfwd_add n1 tcp:127.0.0.1:{port}-10.78.{idx}.15:8728'})
+                    info=self.qmp(node,'human-monitor-command',{'command-line':'info usernet'})
+                    if not re.search(pattern,info):raise RuntimeError('Could not add loopback API alias: '+reply)
+                print(node+' Windows API: api://127.0.0.1:'+str(port),flush=True)
     def status(self):
-        print(json.dumps({n:{'state':self.running(n),'api':'api://127.0.0.1:'+str(55728+i)} for n,i in NODES.items()},indent=2))
+        print(json.dumps({n:{'state':self.running(n),'api':'api://127.0.0.1:'+str(55728+i),'api_windows':'api://127.0.0.1:'+str(45728+i)} for n,i in NODES.items()},indent=2))
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','up','status','down','baseline','keys','configs','_serve']);p.add_argument('--project-root',type=Path,default=SOURCE_ROOT);p.add_argument('--accel',choices=['auto','kvm','tcg'],default='auto');args=p.parse_args();lab=Lab(args.project_root)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','up','status','down','baseline','keys','configs','windows-api','_serve']);p.add_argument('--project-root',type=Path,default=SOURCE_ROOT);p.add_argument('--accel',choices=['auto','kvm','tcg'],default='auto');args=p.parse_args();lab=Lab(args.project_root)
     if args.command=='_serve':
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -211,6 +227,6 @@ def main():
             server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True;threading.Thread(target=server.serve_forever,daemon=True).start()
         threading.Event().wait()
     elif args.command=='up':lab.up(args.accel)
-    else:getattr(lab,args.command)()
+    else:getattr(lab,args.command.replace('-','_'))()
 
 if __name__=='__main__':main()

@@ -3,7 +3,7 @@ import ipaddress
 import json
 import re
 
-MATCH_FIELDS=('source_group','destination','destination_group','in_interface','protocol','src_ports','dst_ports')
+MATCH_FIELDS=('source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports')
 EXTRA_FIELDS=MATCH_FIELDS+('priority',)
 
 
@@ -46,6 +46,8 @@ def overlaps(c,a,b):
 
 
 def covers(c,a,b):
+    # An opaque live list cannot prove coverage of another selector/list.
+    if a.get("destination_list") and a.get("destination_list")!=b.get("destination_list"):return False
     for side in (True,False):
         outer=list(ipaddress.collapse_addresses(networks(c,a,side)))
         if not all(any(n.subnet_of(other) for other in outer) for n in networks(c,b,side)):return False
@@ -92,6 +94,10 @@ def validate_selectors(c):
         for field in ('source_group','destination_group'):
             if p.get(field) and p[field] not in groups:raise ValueError('unknown '+field+': '+p[field])
         if p.get('destination'):ipaddress.IPv4Network(p['destination'],strict=True)
+        if p.get('destination_list'):
+            name=p['destination_list']
+            if not 1<=len(name.encode('utf-8'))<=64 or name!=name.strip() or name.startswith('!') or any(ord(ch)<32 or ord(ch)==127 for ch in name):raise ValueError('invalid destination Address List name')
+            if p.get('destination_group'):raise ValueError('destination_list and destination_group are mutually exclusive')
         if p.get('in_interface'):
             if not re.fullmatch(r'[^\x00-\x1f\x7f]{1,64}',p['in_interface']):raise ValueError('invalid input interface')
             if p['in_interface'] in {w['interface'] for w in c['wans']}:raise ValueError('policy input interface must not be a selected WAN')
@@ -108,7 +114,7 @@ def signature(c):
     return json.dumps({'groups':c.get('groups',{}),'policies':[{k:p.get(k,'any' if k=='protocol' else '') for k in ('name','source',*EXTRA_FIELDS)} for p in ordered(c)]},sort_keys=True,separators=(',',':'))
 
 
-def match_flow(c,source,destination,protocol='tcp',src_port=None,dst_port=None,in_interface='',router_addresses=()):
+def match_flow(c,source,destination,protocol='tcp',src_port=None,dst_port=None,in_interface='',router_addresses=(),address_lists=None):
     src=ipaddress.IPv4Address(source);dst=ipaddress.IPv4Address(destination)
     if protocol not in ('tcp','udp','icmp'):raise ValueError('protocol must be tcp/udp/icmp')
     for value in (src_port,dst_port):
@@ -116,11 +122,16 @@ def match_flow(c,source,destination,protocol='tcp',src_port=None,dst_port=None,i
     if in_interface in {w['interface'] for w in c['wans']}:return {'bypass':True,'reason':'Входящий WAN: ответ закрепляется за интерфейсом входа'}
     local={w['address'] for w in c['wans'] if w.get('address')}|set(router_addresses)
     if str(dst) in local:return {'bypass':True,'reason':'IP самого MikroTik: локальная доставка'}
-    if any(dst in ipaddress.IPv4Network(n) for n in c['local_networks']):return {'bypass':True,'reason':'Локальная сеть: lookup main'}
+    from .overlay import effective_networks
+    if any(dst in ipaddress.IPv4Network(n) for n in effective_networks(c)):return {'bypass':True,'reason':'Локальная сеть: lookup main'}
     for p in ordered(c):
         if not any(src in n for n in networks(c,p)) or not any(dst in n for n in networks(c,p,False)):continue
         if p.get('in_interface') and p['in_interface']!=in_interface:continue
         if p.get('protocol','any') not in ('any',protocol):continue
         if any(p.get(key) and (port is None or not any(lo<=port<=hi for lo,hi in port_ranges(p[key]))) for key,port in (('src_ports',src_port),('dst_ports',dst_port))):continue
+        if p.get('destination_list'):
+            name=p['destination_list']
+            if address_lists is None or name not in address_lists:raise ValueError('Нужен свежий состав Address List «'+name+'» для объяснения этого соединения')
+            if not any(dst in ipaddress.IPv4Network(n,strict=False) for n in address_lists[name]):continue
         return {'bypass':False,'policy':p['name'],'profile':p['profile'],'mode':p['mode'],'priority':p.get('priority'),'reason':'first matching selector in configured order'}
     raise ValueError('No matching default policy')

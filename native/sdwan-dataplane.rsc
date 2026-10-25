@@ -35,7 +35,7 @@
     :return $id
 }
 # Address list is confined to the SDWAN namespace.
-/ip/firewall/address-list/remove [/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"]
+:foreach id in=[/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"] do={ :if (!([/ip/firewall/address-list/get $id comment] ~ "^sdwan:v1:vpn:")) do={ /ip/firewall/address-list/remove $id } }
 :foreach network in=($cfg->"local_networks") do={ /ip/firewall/address-list/add list=sdwan-local address=$network comment=("sdwan:v1:local-address:" . $network) }
 # Mark incoming connections before DNAT; never mark their inbound packets for a WAN route.
 :foreach w in=($cfg->"wans") do={
@@ -168,7 +168,7 @@
     :set ($wanted->$tag) true
 }
 # Reconcile stale rules before ordering the complete new chain.
-:foreach id in=[/ip/firewall/mangle/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/firewall/mangle/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/ip/firewall/mangle/get $id comment]) != true)) do={ /ip/firewall/mangle/remove $id } }
+:foreach id in=[/ip/firewall/mangle/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/firewall/mangle/get $id comment] ~ "^sdwan:v1:(overlay|vpn):")) && (($wanted->[/ip/firewall/mangle/get $id comment]) != true)) do={ /ip/firewall/mangle/remove $id } }
 :local anchor [:pick [/ip/firewall/mangle/find where dynamic=no] 0]
 :for i from=([:len $order] - 1) to=0 step=-1 do={
     :local id [:tostr ($order->$i)]

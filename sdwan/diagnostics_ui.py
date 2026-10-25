@@ -107,9 +107,11 @@ class DiagnosticsPanel(ttk.Frame):
             elif self.report['overlaps']:text+='\nПересечения с явным порядком: '+json.dumps(self.report['overlaps'],ensure_ascii=False)
         self.detail.configure(state='normal');self.detail.delete('1.0','end');self.detail.insert('1.0',text);self.detail.configure(state='disabled')
 
-    def explain_flow(self):
+    def explain_flow(self,*,fresh_lists=False):
         try:
             if not self.report:raise ValueError('Сначала обновите диагностику')
+            if not fresh_lists and any(p.get('destination_list') for p in (self.active_config or {}).get('policies',[])):
+                self.app.run('address-lists');return
             flow={k:v.get().strip() for k,v in self.flow.items()}
             for key in ('src_port','dst_port'):flow[key]=int(flow[key]) if flow[key] else None
             result=explain(self.active_config,self.report,**flow)

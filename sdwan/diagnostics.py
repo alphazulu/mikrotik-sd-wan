@@ -60,7 +60,7 @@ def view(status,config=None,*,identity='',version='',router_uptime=None,router_a
 
     for p in ordered(config) if config.get('policies') else []:
         name=p['name'];selected=status.get('selected',{}).get(name,'none');detail=status.get('policies',{}).get(name,{})
-        row={k:copy.deepcopy(p[k]) for k in ('name','source','table','profile','mode','wans','priority','source_group','destination','destination_group','in_interface','protocol','src_ports','dst_ports') if k in p}
+        row={k:copy.deepcopy(p[k]) for k in ('name','source','table','profile','mode','wans','priority','source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if k in p}
         row.update(selected=selected,reason=REASONS.get(detail.get('reason'),detail.get('reason','Первый доступный WAN в порядке политики' if selected!='none' else 'Нет допустимого WAN')),candidates=[{'wan':w,**copy.deepcopy(status.get('states',{}).get(p['profile']+'/'+w,{}))} for w in p['wans']],last_cleanup=copy.deepcopy(status.get('last_cleanup',{}).get(name,{})))
         shadow=next((x['first'] for x in result['overlaps'] if x['later']==name and x['shadowed']),None)
         row['effective']=shadow is None
@@ -74,7 +74,7 @@ def view(status,config=None,*,identity='',version='',router_uptime=None,router_a
     return result
 
 
-def read(router):
+def read(router,*,include_membership=False):
     status=router.status();identity=router.call('system/identity')['name']
     try:config=json.loads(router.read_file('sdwan-active.json'))
     except ValueError as error:
@@ -83,12 +83,18 @@ def read(router):
     addresses=[x['address'].split('/')[0] for x in router.call('ip/address/print',{'.proplist':'address,disabled,invalid'},'POST') if x.get('disabled') not in (True,'true','yes') and x.get('invalid') not in (True,'true','yes')]
     resource=router.call('system/resource')
     if isinstance(resource,list):resource=resource[0]
-    return view(status,config,identity=identity,version=resource.get('version',''),router_uptime=seconds(resource.get('uptime',0)),router_addresses=addresses),config
+    result=view(status,config,identity=identity,version=resource.get('version',''),router_uptime=seconds(resource.get('uptime',0)),router_addresses=addresses)
+    names={p['destination_list'] for p in (config or {}).get('policies',[]) if p.get('destination_list')}
+    if names and include_membership:
+        from .address_lists import snapshot
+        try:result['address_lists']=snapshot(router,names)
+        except RuntimeError:result['address_lists']=None
+    return result,config
 
 
 def explain(config,report,**flow):
     if not config:raise ValueError('На устройстве нет действующей конфигурации SD-WAN')
-    decision=match_flow(config,router_addresses=report.get('router_addresses',()),**flow)
+    decision=match_flow(config,router_addresses=report.get('router_addresses',()),address_lists=report.get('address_lists'),**flow)
     if decision.get('bypass'):return decision
     policy=next((p for p in report['policies'] if p['name']==decision['policy']),{})
     decision.update(selected=policy.get('selected','none'),wan_reason=policy.get('reason',''),telemetry_stale=report.get('telemetry_stale',False),scope='new outbound connection; existing connection marks may differ')

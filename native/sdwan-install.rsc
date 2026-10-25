@@ -9,12 +9,14 @@
 :global sdwanLTEAPNCapture
 :global sdwanLTEAPNApply
 :global sdwanPolicyExtended
+:global sdwanValidatePolicyLists
 :global sdwanProbeNativeType
 :global sdwanConfigureProbe
 /import file-name=($dir . "sdwan-links.rsc")
 :global sdwanValidateStrict
 :global sdwanStrictConfigure
 $sdwanValidateStrict cfg=$cfg
+$sdwanValidatePolicyLists cfg=$cfg
 :global sdwanMaintenance
 :local checkedMaintenance [$sdwanMaintenance wans=($cfg->"wans") now=([:tonsec [/system/resource/get uptime]] / 1000000000)]
 # Refuse collisions before mutating any named worker/scheduler.
@@ -32,6 +34,45 @@ $sdwanValidateStrict cfg=$cfg
     /import file-name=($dir . "sdwan-overlay.rsc")
     $sdwanOverlayValidate cfg=$cfg
     :set ($cfg->"local_networks") [$sdwanOverlayNetworks cfg=$cfg]
+}
+:local vpnManaged (((($cfg->"vpn_egress")->"enabled") = true) || ([:len [/ip/firewall/mangle/find where comment~"^sdwan:v1:vpn:"]] > 0))
+:foreach w in=($cfg->"wans") do={ :if (($w->"kind") = "vpn") do={ :set vpnManaged true } }
+:global sdwanVPNValidate
+:global sdwanVPNCapture
+:global sdwanVPNAdopt
+:global sdwanVPNInstall
+:global sdwanVPNTick
+:global sdwanVPNOrder
+:if ($vpnManaged) do={
+    :if ([:len [/file/find where name=($dir . "sdwan-vpn.rsc")]] != 1) do={ :error "upload VPN library before installation" }
+    /import file-name=($dir . "sdwan-vpn.rsc")
+    $sdwanVPNValidate cfg=$cfg
+}
+:foreach splitPrefix in={0.0.0.0/1;128.0.0.0/1} do={
+    # Dynamic RIB rows are omitted by where disabled=no on7.24.5 even when
+    # get disabled is false. Filter that flag after finding the prefix instead.
+    :foreach rid in=[/ip/route/find where dst-address=$splitPrefix and routing-table=main] do={
+        :local skip false
+        :if ([/ip/route/get $rid disabled] = true) do={ :set skip true }
+        :if (!$skip) do={
+        :local adopted false
+        :if ([/ip/route/get $rid dynamic] && [/ip/route/get $rid vpn]) do={
+            :foreach w in=($cfg->"wans") do={
+                :if ((($w->"kind") = "vpn") && (($w->"vpn_type") = "openvpn")) do={
+                    :local iface ($w->"interface")
+                    :foreach field in={"gateway";"immediate-gw"} do={
+                        :local value [:tostr [/ip/route/get $rid $field]]
+                        :local at [:find $value "@"]
+                        :if ([:typeof $at] != "nil") do={ :set value [:pick $value 0 $at] }
+                        :if ($value = $iface) do={ :set adopted true }
+                        :if ([:len $value] > [:len $iface]) do={ :if ([:pick $value ([:len $value] - [:len $iface] - 1) [:len $value]] = ("%" . $iface)) do={ :set adopted true } }
+                    }
+                }
+            }
+        }
+        :if (!$adopted) do={ :error "unadopted split default would bypass SDWAN SLA" }
+        }
+    }
 }
 :if ([:tostr [/ip/firewall/connection/tracking/get enabled]] = "no") do={ :error "connection tracking must be enabled" }
 :foreach id in=[/ip/firewall/mangle/find where disabled=no] do={
@@ -91,15 +132,15 @@ $sdwanValidateStrict cfg=$cfg
         }
         :if (!$present) do={ :error ("static WAN source address is not configured: " . ($w->"address")) }
     } else={
-        :if (($mode != "dhcp") && ($mode != "pppoe") && ($mode != "lte")) do={ :error "unknown WAN kind" }
+        :if (($mode != "dhcp") && ($mode != "pppoe") && ($mode != "lte") && ($mode != "vpn")) do={ :error "unknown WAN kind" }
         :if (([:len [:tostr ($w->"address")]] > 0) || ([:len [:tostr ($w->"gateway")]] > 0)) do={ :error "dynamic WAN must not save a lease snapshot" }
         :if ($mode = "lte") do={
             :local binding [$sdwanLTEBinding iface=($w->"interface") profile=($w->"apn_profile")]
-        } else={
+        } else={ :if ($mode != "vpn") do={
             :local clients ""
             :if ($mode = "dhcp") do={ :set clients [/ip/dhcp-client/find where interface=($w->"interface")] } else={ :set clients [/interface/pppoe-client/find where name=($w->"interface")] }
             :if ([:len $clients] != 1) do={ :error "missing or ambiguous provider client" }
-        }
+        } }
     }
 }
 :local scheduler [/system/scheduler/find where name="sdwan-controller"]
@@ -224,6 +265,8 @@ $sdwanValidateStrict cfg=$cfg
         }
     }
 }
+:local vpnFlags ($backup->"vpn_clients")
+:if ($vpnManaged) do={ :set vpnFlags [$sdwanVPNCapture cfg=$cfg entries=$vpnFlags]; :set ($backup->"vpn_clients") $vpnFlags }
 :set ($backup->"lte_apns") $apnFlags
 :set ($backup->"provider_clients") $providerFlags
 :set ($backup->"route_selectors") $routeFlags
@@ -253,6 +296,7 @@ $sdwanValidateStrict cfg=$cfg
 :foreach profileName,entry in=$apnFlags do={
     :if (($apnsWanted->$profileName) = true) do={ $sdwanLTEAPNApply entry=$entry expected=($apnExpected->$profileName) }
 }
+:if ($vpnManaged) do={ $sdwanVPNAdopt entries=$vpnFlags }
 :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
 # Placeholders remain disabled and are never promoted to the active JSON.
 :foreach index,spec in=($cfg->"wans") do={
@@ -357,10 +401,11 @@ $sdwanValidateStrict cfg=$cfg
 /import file-name=($dir . "sdwan-dataplane.rsc")
 # Reconcile removed managed rules, routes and probes; preserve all unowned objects.
 :foreach id in=[/routing/rule/find where comment~"^sdwan:v1:"] do={ :if ((!([/routing/rule/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/routing/rule/get $id comment]) != true)) do={ /routing/rule/remove $id } }
-:foreach id in=[/ip/route/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/route/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/ip/route/get $id comment]) != true)) do={ /ip/route/remove $id } }
+:foreach id in=[/ip/route/find where comment~"^sdwan:v1:"] do={ :if ((!([/ip/route/get $id comment] ~ "^sdwan:v1:(overlay|vpn):")) && (($wanted->[/ip/route/get $id comment]) != true)) do={ /ip/route/remove $id } }
 :foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if ((!([/tool/netwatch/get $id comment] ~ "^sdwan:v1:overlay:")) && (($wanted->[/tool/netwatch/get $id comment]) != true)) do={ /tool/netwatch/remove $id } }
 :foreach id in=[/routing/table/find where name~"^sdwan-"] do={ :if ((!([/routing/table/get $id name] ~ "^sdwan-ol-")) && (($wantedTables->[/routing/table/get $id name]) != true)) do={ /routing/table/remove $id } }
 :if ($overlayManaged) do={ $sdwanOverlayInstall cfg=$cfg }
+:if ($vpnManaged) do={ $sdwanVPNInstall cfg=$cfg; :local resolved [$sdwanVPNTick cfg=$cfg]; :if ((($cfg->"vpn_egress")->"enabled") = true) do={ $sdwanVPNOrder cfg=$cfg } }
 # Promote the complete, reconciled configuration. Editing the staging JSON alone is inert.
 :local raw [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local active [/file/find where name=($dir . "sdwan-active.json")]
