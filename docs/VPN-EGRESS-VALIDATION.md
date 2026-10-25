@@ -107,7 +107,7 @@ plus the two-VPN priority matrix (7), authenticated web/fallback/steady intent
 checks (6) and the short same-configuration resource sample. Plain cold external
 DNS has 5 checks and hostname/custom-port HTTPS DoH has 6. The new DNS module's
 absent-file encrypted rollback has 2 checks. See [current gates](NEXT-NETWORK-PLAN.md)
-for remaining dynamic/lifecycle verification and the single 48–72h final soak.
+for the completed dynamic/lifecycle batch and the remaining single 48–72h final soak.
 Duplicate source addresses require an independently validated VRF layout; VRF
 support is not claimed here. The emulated SSTP fixture does not replace testing
 an operator's TLS/certificate configuration.
@@ -127,5 +127,7 @@ per-policy SLA failover/failback with scoped conntrack cleanup, readable per-pol
 jump chains, independent branch/Internet TCP survival, and VPN as the general
 Internet default with physical tunnel transport pinning.
 
-Overlay native schema/ownership gates pass 123/24 cases. Final dynamic/lifecycle
-verification and the full-branch soak/publication remain open.
+Overlay native schema/ownership gates pass 123/24 cases. The final native batch
+passes DHCP (2), PPPoE (2), outer-UDP retirement (4) and lifecycle/complete-package
+rollback (6). The unit suite now has 269 tests including observer safety checks.
+The full-branch soak, CI and publication remain open.

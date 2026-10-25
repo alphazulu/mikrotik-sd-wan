@@ -32,7 +32,7 @@ Selected completed checks in this iteration:
 
 | Area | Verification |
 | --- | --- |
-| Python | 265 unit tests |
+| Python | 269 unit tests, including four soak-driver safety checks |
 | Container | 41 base Rust, 75 web Rust, 6 browser JS tests; 100% executable lines and functions per runtime file |
 | Scratch artifacts | Six static single-binary profiles: amd64, arm64, ARMv5, base/web |
 | Strict probes | 13 functional and 21 native/Python contract cases |
@@ -41,6 +41,7 @@ Selected completed checks in this iteration:
 | Overlay schema/ownership | 123 schema and 24 ownership/VRF/list cases |
 | Overlay lifecycle | 6 install/reapply/off/on/rollback cases and 3 original-JSON guards |
 | Outer UDP roaming | 4 checks including direct standby removal count; latest NAT-port retirement 1.074 s, independent UDP/TCP retained |
+| Dynamic VPN parents | 2 DHCP and 2 PPPoE live lease/reconnect cases on the final native runtime |
 | Cold external DNS | 5 plain-DNS and 6 actual HTTPS DoH checks |
 | MTU/MSS | 2 real DF-boundary and bidirectional forwarding-SYN checks |
 | Windows GUI | Four offline suites pass; earlier unified GUI inventory checks also passed read-only |
@@ -51,20 +52,27 @@ the DoH run took 0.832 s. The first delay's cause has not been established.
 Default SLA limits were not relaxed to obtain these results. The functional QEMU
 fixture declares a 250 ms inner jitter budget; the product default stays 50 ms.
 
+Exact 0.3.0 CHR parity (6 checks), two-VPN priority matrix (7), all four VPN
+protocols (8 each), the same-configuration resource sample and the final
+native dynamic/cleanup/lifecycle gates now pass. The standby retirement helper
+removed one actual incoming UDP conntrack when called in the controller's
+scheduler environment; the earlier direct-API fixture had a different RAM scope.
+The first PPPoE final attempt captured an empty transient UDP inventory; the
+subsequent run passed, and the fixture now uses a bounded wait for the actual
+new-source bidirectional tuple with no old-source tuple. Failed attempts remain
+in private evidence. Missing process I/O counters remain unknown; byte-stable
+intent is not a hardware flash counter.
+
 Remaining release gates:
 
-1. Exact 0.3.0 CHR parity (6 checks), two-VPN priority matrix (7), all four VPN
-   protocols (8 each) and the same-configuration resource sample now pass. The
-   extended dynamic/cleanup/lifecycle batch is still running. Missing process I/O
-   counters remain unknown; byte-stable intent is not a hardware flash counter.
-2. Finish the expanded standby cached-source cleanup check, repeat changed
-   dynamic-underlay and complete-package rollback paths with the new DNS module.
-3. Run one 48–72 hour soak against the frozen functional source/image with
+1. Run one 48–72 hour soak against the frozen functional source/image with
    [the locked driver](NETWORK-SOAK.md). It observes native and local-container
    phases, three real TCP streams and bounded resources. Do not start a second
    soak or change runtime code underneath it. A short smoke run is not a soak.
-4. Audit staged source, Git history and image layers against private fingerprints;
-   run CI, publish the reviewed release and synchronize reviewed root source.
+2. Recheck staged source, Git history and image layers against private
+   fingerprints after final edits; run CI, publish the reviewed release and
+   synchronize reviewed root source. The pre-soak audit passes for 473 Git blobs
+   and 18 image blobs; gitleaks scanned 21 commits without findings.
 
 Physical ARM/LTE performance and production addressing remain separate from CHR
 emulation. Tests never publish private exports, authentication or private keys.

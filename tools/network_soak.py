@@ -17,6 +17,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ from vpn_lab import VPNLab
 from vpn_traffic import VPNTraffic
 from sdwan.container_runtime import paths, read_container
 from sdwan.router import Router
+from container_checks import source_digest
 
 
 def digest(data):
@@ -173,7 +175,9 @@ def main():
         built = next(x for x in json.loads((ROOT / 'dist/container/build-report.json').read_text()) if x['profile'] == 'web' and x['architecture'] == 'amd64')
         assert row and row['stopped'] == 'true', 'Use the existing stopped prepared container'
         assert row.get('image-id', '').removeprefix('sha256:') == built['image_config_sha256'], 'Prepared image differs from the frozen build'
+        assert built['unit_coverage_source_sha256'] == source_digest(), 'Container source differs from its covered build'
         report['image_id'] = built['image_config_sha256']
+        report['container_coverage_source_sha256'] = built['unit_coverage_source_sha256']
         before = a.read_file('sdwan-active.json')
         recovery = run / ('network-soak-smoke-before.json' if args.smoke_seconds else 'network-soak-before.json')
         write_json(recovery, {'before': json.loads(before), 'status': 'pending', 'pid': os.getpid()})
@@ -197,7 +201,16 @@ def main():
         assert not result, 'Soak observer forwarding port is occupied'
         forwarded = True
         token = a.read_file(paths(cfg)['web_token'])
-        baseline_files = {name: {filename: digest(router.read_file(filename)) for filename in (*cli.FILES, 'sdwan-active.json')} for name, router in v.routers.items()}
+        baseline_files = {}
+        for name, router in v.routers.items():
+            configuration = router.read_file('sdwan-active.json')
+            baseline_files[name] = {'sdwan-active.json': digest(configuration)}
+            with tempfile.TemporaryDirectory(prefix='network-soak-source-') as folder:
+                package = cli.bundle(json.loads(configuration), folder)
+                for filename in cli.FILES:
+                    expected = digest((package / filename).read_text())
+                    assert digest(router.read_file(filename)) == expected, name + ': installed runtime differs from frozen source'
+                    baseline_files[name][filename] = expected
         intent = a.read_file('sdwan-container-intent.json')
         started = time.monotonic()
         report.update(status='running', measured_started_utc=time.time(), phase='native', stream_ids=streams)
