@@ -156,6 +156,31 @@ def main():
     def ready(active):
         state = a.status()
         return not state.get('error') and state.get('container', {}).get('active', False) == active and state.get('selected', {}).get('default') == 'wan1' and state.get('selected', {}).get('vpn-targets') == 'vpn1' and len(state.get('overlay', {})) == 2 and all(x['healthy'] for x in state['overlay'].values())
+    def summarize(state):
+        return {key: state.get(key) for key in ('uptime_seconds', 'error', 'selected', 'states', 'samples', 'overlay', 'vpn_egress')}
+    def stable_native():
+        deadline = time.monotonic() + 240
+        stable = None
+        previous = None
+        report['warmup_changes'] = []
+        while time.monotonic() < deadline:
+            state = a.status()
+            report['last_status'] = {'sitea': summarize(state)}
+            qualities = {key: value['state'] for key, value in state.get('states', {}).items()}
+            if qualities != previous:
+                report['warmup_changes'].append({'utc': time.time(), 'states': qualities})
+                previous = qualities
+            healthy = ready(False) and len(qualities) == 4 and all(value == 'healthy' for value in qualities.values())
+            if healthy:
+                if stable is None:
+                    stable = time.monotonic()
+                if time.monotonic() - stable >= 60:
+                    return
+            else:
+                stable = None
+            write_json(report_path, report)
+            time.sleep(5)
+        raise AssertionError('Four native WANs did not hold healthy SLA for 60 seconds within the 240-second fixture warm-up')
     def interrupted(signum, _frame):
         raise InterruptedError('Soak interrupted by signal ' + str(signum))
     signal.signal(signal.SIGTERM, interrupted)
@@ -196,6 +221,9 @@ def main():
             'vpn': traffic.stream(59412, 'sdwan-out-vpn-targets:vpn1', content_length=1000000000),
             'branch': traffic.stream(59419, 'no-mark', target='10.201.1.2', content_length=1000000000),
         }
+        # Applying the fixture may renegotiate a standby PPP tunnel. Do not
+        # count startup/reconnect convergence as a measured steady-state soak.
+        stable_native()
         nat = a.call('ip/firewall/nat/add', {'chain': 'dstnat', 'in-interface': 'ether1', 'src-address': '10.78.1.2', 'protocol': 'tcp', 'dst-address': '10.78.1.15', 'dst-port': '58880', 'action': 'dst-nat', 'to-addresses': '172.31.255.2', 'to-ports': '8080', 'comment': 'sdwan-network-soak', 'place-before': '0'}, 'POST')['ret']
         result = v.lab.qmp('sitea', 'human-monitor-command', {'command-line': 'hostfwd_add n1 tcp:127.0.0.1:45880-10.78.1.15:58880'})
         assert not result, 'Soak observer forwarding port is occupied'
@@ -237,6 +265,7 @@ def main():
                 observation = {'elapsed_seconds': round(time.monotonic() - started, 3), 'phase': phase, 'nodes': {}}
                 for name, router in v.routers.items():
                     state = router.status()
+                    report.setdefault('last_status', {})[name] = summarize(state)
                     assert not state.get('error'), name + ': controller error'
                     assert state.get('enabled') is True, name + ': controller scheduler disabled'
                     expected = 4 if name == 'hub' else 2
@@ -313,6 +342,15 @@ def main():
                 traffic.close()
             if applied and before is not None:
                 apply(json.loads(before))
+                def restored():
+                    state = a.status()
+                    count = len(json.loads(before).get('overlay', {}).get('tunnels', []))
+                    return not state.get('error') and not state.get('container', {}).get('active', False) and len(state.get('overlay', {})) == count and all(x['healthy'] for x in state.get('overlay', {}).values()) and json.loads(a.read_file('sdwan-active.json')) == json.loads(before)
+                wait(restored)
+                with tempfile.TemporaryDirectory(prefix='network-soak-restore-') as folder:
+                    package = cli.bundle(json.loads(before), folder)
+                    for filename in cli.FILES:
+                        assert a.read_file(filename) == (package / filename).read_text(), 'Restored runtime differs: ' + filename
                 write_json(recovery, {'status': 'restored', 'pid': os.getpid()})
             if report['status'] == 'restoring':
                 report['pass'] = True
