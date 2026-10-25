@@ -32,7 +32,7 @@ Selected completed checks in this iteration:
 
 | Area | Verification |
 | --- | --- |
-| Python | 269 unit tests, including four soak-driver safety checks |
+| Python | 271 unit tests on Linux; Windows passes with five POSIX observer tests skipped |
 | Container | 41 base Rust, 75 web Rust, 6 browser JS tests; 100% executable lines and functions per runtime file |
 | Scratch artifacts | Six static single-binary profiles: amd64, arm64, ARMv5, base/web |
 | Strict probes | 13 functional and 21 native/Python contract cases |
@@ -65,11 +65,13 @@ intent is not a hardware flash counter.
 
 Remaining release gates:
 
-1. Run one 48–72 hour soak against the frozen functional source/image with
+1. Obtain green CI and validate the exact CI-built image on CHR before freezing
+   the release candidate. ELF diagnostic paths can make local and CI bytes differ.
+2. Run one 48–72 hour soak against the frozen functional source/image with
    [the locked driver](NETWORK-SOAK.md). It observes native and local-container
    phases, three real TCP streams and bounded resources. Do not start a second
    soak or change runtime code underneath it. A short smoke run is not a soak.
-2. Recheck staged source, Git history and image layers against private
+3. Recheck staged source, Git history and image layers against private
    fingerprints after final edits; run CI, publish the reviewed release and
    synchronize reviewed root source. The pre-soak audit passes for 473 Git blobs
    and 18 image blobs; gitleaks scanned 21 commits without findings.
@@ -89,3 +91,8 @@ A protected upgrade failure was also tested with the previous compatible
 framework genuinely lacking `sdwan-dns.rsc`. Encrypted rollback restored all
 previous sources/configuration and public identities, removed the newly added
 library and recovered OSPF after reboot (2 checks).
+
+The observer matches full original/reply TCP tuples, policy and monotonic bytes,
+and requires one live HTTP request per stream. RouterOS API handle changes are
+recorded without inventing a reconnect. Standby SLA degradation is counted
+separately; selected-route SLA, private paths and real traffic remain strict.

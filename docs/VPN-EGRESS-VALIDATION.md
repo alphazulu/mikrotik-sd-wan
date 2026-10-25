@@ -129,5 +129,6 @@ Internet default with physical tunnel transport pinning.
 
 Overlay native schema/ownership gates pass 123/24 cases. The final native batch
 passes DHCP (2), PPPoE (2), outer-UDP retirement (4) and lifecycle/complete-package
-rollback (6). The unit suite now has 269 tests including observer safety checks.
+rollback (6). The unit suite now has 271 tests including observer safety and path-alias checks.
+Linux passes all tests; Windows skips the five POSIX-only observer cases.
 The full-branch soak, CI and publication remain open.

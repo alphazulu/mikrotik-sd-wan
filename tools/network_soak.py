@@ -33,6 +33,18 @@ def digest(data):
     return hashlib.sha256(data.encode() if isinstance(data, str) else data).hexdigest()
 
 
+def tcp_stream(baseline, rows):
+    # RouterOS API handles can change while the original TCP transfer continues.
+    # Bind to the complete original/reply tuples and policy, then require byte
+    # continuity and a single live HTTP request in the observer loop.
+    fields = ('src-address', 'src-port', 'dst-address', 'dst-port', 'reply-src-address', 'reply-src-port', 'reply-dst-address', 'reply-dst-port')
+    matches = [row for row in rows if all(row.get(key) == baseline.get(key) for key in fields) and row.get('connection-mark', 'no-mark') == baseline.get('connection-mark', 'no-mark') and row.get('tcp-state') == 'established' and row.get('seen-reply') == 'true']
+    assert len(matches) == 1, 'Original TCP tuple is missing or ambiguous'
+    current = matches[0]
+    assert all(int(current[key]) >= int(baseline[key]) for key in ('orig-bytes', 'repl-bytes')), 'Original TCP counters reset'
+    return current
+
+
 def source_manifest():
     names = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
     return {name: digest((ROOT / name).read_bytes()) for name in sorted(filter(None, names))}
@@ -248,6 +260,9 @@ def main():
         active = False
         writes = None
         last_bytes = {}
+        last_handles = dict(streams)
+        report['stream_handle_changes'] = {label: 0 for label in streams}
+        report['wan_quality_samples'] = {}
         last_uptime = {}
         resources = {'rss_min_bytes': None, 'rss_max_bytes': 0, 'container_memory_max_bytes': 0, 'history_points_max': 0, 'process_io_available': None}
         with (run / ('network-soak-smoke-samples.jsonl' if args.smoke_seconds else 'network-soak-samples.jsonl')).open('a') as samples:
@@ -277,7 +292,12 @@ def main():
                     assert state['selected']['default'] == 'wan1', name + ': unexpected default selection'
                     if name == 'sitea':
                         assert state.get('container', {}).get('active', False) == active and state['selected']['vpn-targets'] == 'vpn1', 'Unexpected active backend or preferred VPN'
-                        assert len(state['states']) == 4 and all(x['state'] == 'healthy' for x in state['states'].values()), 'One of the four WAN resource SLAs closed'
+                        assert len(state['states']) == 4, 'One of four WAN SLA reports is missing'
+                        assert all(state['states']['default/' + wan]['state'] == 'healthy' for wan in ('wan1', 'vpn1')), 'A selected WAN resource SLA closed'
+                        for key, detail in state['states'].items():
+                            counts = report['wan_quality_samples'].setdefault(key, {})
+                            quality = detail['state']
+                            counts[quality] = counts.get(quality, 0) + 1
                     if report['samples'] % 20 == 0:
                         for filename, expected_hash in baseline_files[name].items():
                             assert digest(router.read_file(filename)) == expected_hash, name + ': installed source/config changed'
@@ -289,14 +309,22 @@ def main():
                     assert uptime > last_uptime.get(name, -1), name + ': controller stalled or router rebooted'
                     last_uptime[name] = uptime
                     observation['nodes'][name] = {'selected': state['selected'], 'resources': resource, 'full_neighbors': expected}
+                    if name == 'sitea':
+                        observation['nodes'][name].update(states=state['states'], samples=state['samples'], events=state.get('events', []))
                 assert a.read_file('sdwan-container-intent.json') == intent, 'Steady controller rewrote its persistent intent'
-                connections = {x['.id']: x for x in traffic.connections()}
-                for label, cid in streams.items():
-                    assert cid in connections and connections[cid].get('tcp-state') == 'established', label + ': original TCP connection lost'
-                    count = int(connections[cid]['repl-bytes'])
+                connections = traffic.connections()
+                for label, original in report['stream_tuples'].items():
+                    row = tcp_stream(original, connections)
+                    count = int(row['repl-bytes'])
                     assert count > last_bytes.get(label, -1), label + ': TCP stream stalled'
                     last_bytes[label] = count
+                    if row['.id'] != last_handles[label]:
+                        report['stream_handle_changes'][label] += 1
+                        last_handles[label] = row['.id']
+                    stats = traffic.stream_stats[int(original['dst-port'])]
+                    assert stats['requests'] == 1 and stats['active'] == 1 and stats['error'] is None, label + ': HTTP transfer closed or restarted'
                 observation['tcp_reply_bytes'] = dict(last_bytes)
+                observation['stream_handles'] = dict(last_handles)
                 observation['http_streams'] = {port: dict(stats) for port, stats in traffic.stream_stats.items()}
                 if active:
                     data = web()

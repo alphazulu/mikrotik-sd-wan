@@ -27,6 +27,7 @@ def module_only(path):
     return not text.strip()
 
 def rust_summary(data,profile,root=ROOT):
+    root=root.resolve()
     expected={p.resolve() for p in (root/'container-controller/src').rglob('*.rs') if not module_only(p) and not (profile=='base' and 'web' in p.relative_to(root/'container-controller/src').parts)}
     files={Path(f['filename']).resolve():f['summary'] for section in data['data'] for f in section['files'] if Path(f['filename']).resolve() in expected}
     if expected-files.keys():raise ValueError('Unmeasured Rust runtime files: '+', '.join(str(p.relative_to(root)) for p in sorted(expected-files.keys())))
@@ -38,6 +39,7 @@ def rust_summary(data,profile,root=ROOT):
     return result
 
 def js_summary(events,root=ROOT):
+    root=root.resolve()
     expected={p.resolve() for p in (root/'container-controller/web').rglob('*') if p.suffix in ('.js','.mjs','.cjs')}
     summaries=[e['coverage'] for e in events if 'coverage' in e]
     if len(summaries)!=1 or any('failure' in e for e in events):raise ValueError('Missing/ambiguous Node coverage event or failed JS tests')

@@ -25,7 +25,7 @@ def bundle(c,output):
     output=Path(output)
     payload={'sdwan-config.json':json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n'}
     for name in FILES:
-        source=(ROOT/'native'/name).read_text()
+        source=(ROOT/'native'/name).read_text(encoding='utf-8')
         if name=='sdwan-controller.rsc' and c.get('controller_backend')=='container':
             from sdwan.container_backend import controller_source
             source=controller_source(ROOT,c)

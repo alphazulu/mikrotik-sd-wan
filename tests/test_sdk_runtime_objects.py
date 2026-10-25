@@ -23,7 +23,7 @@ class RuntimeObjectsTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as folder:
    fake=Path(folder);(fake/'native').mkdir()
    for name in cli.FILES:(fake/'native'/name).write_text(':put "fixture"\n')
-   (fake/'native/sdwan-links.rsc').write_text('я'*30001)
+   (fake/'native/sdwan-links.rsc').write_text('я'*30001,encoding='utf-8')
    with patch.object(cli,'ROOT',fake),self.assertRaisesRegex(ValueError,'sdwan-links.rsc.*60000-byte'):
     cli.bundle(cfg,fake/'output')
    self.assertFalse((fake/'output').exists())

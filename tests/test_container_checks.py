@@ -21,6 +21,14 @@ class ContainerCoverageGateTests(unittest.TestCase):
    root=self.fixture(folder);row={'path':str(root/'container-controller/web/app.js'),'totalLineCount':1000000,'coveredLineCount':1000000,'totalFunctionCount':1,'coveredFunctionCount':1};events=[{'coverage':{'files':[row]}}];checks.js_summary(events,root);row['coveredLineCount']-=1
    with self.assertRaises(ValueError):checks.js_summary(events,root)
    with self.assertRaises(ValueError):checks.js_summary([{'coverage':{'files':[]}}],root)
+ def test_aliased_root_resolves_before_relative_coverage_paths(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=self.fixture(Path(folder)/'real');alias=Path(folder)/'alias'
+   try:alias.symlink_to(root,target_is_directory=True)
+   except OSError:self.skipTest('Creating a directory alias requires host privileges')
+   result=checks.rust_summary(self.report(root),'base',alias);self.assertIn('container-controller/src/logic.rs',result)
+   row={'path':str(root/'container-controller/web/app.js'),'totalLineCount':1,'coveredLineCount':1,'totalFunctionCount':1,'coveredFunctionCount':1}
+   self.assertIn('container-controller/web/app.js',checks.js_summary([{'coverage':{'files':[row]}}],alias))
  def test_stale_or_partial_receipt_requires_a_fresh_run(self):
   with tempfile.TemporaryDirectory() as folder,patch.object(checks,'source_digest',return_value='current'),patch.object(checks,'run',return_value={'pass':True}) as run:
    output=Path(folder);receipt=output/'result.json';receipt.write_text(json.dumps({'pass':True,'source_sha256':'old','coverage':{'base':{},'web':{},'javascript':{}}}));checks.ensure_coverage(output);self.assertEqual(run.call_count,1);receipt.write_text(json.dumps({'pass':True,'source_sha256':'current','coverage':{'base':{}}}));checks.ensure_coverage(output);self.assertEqual(run.call_count,2)

@@ -32,6 +32,16 @@ class NetworkSoakSafety(unittest.TestCase):
             lab.assert_not_called()
             self.assertFalse((Path(folder) / 'runtime').exists())
 
+    def test_tcp_handles_can_change_but_tuple_policy_and_counters_must_survive(self):
+        baseline = {'.id': '*1', 'src-address': '192.0.2.1', 'src-port': '50000', 'dst-address': '198.51.100.1', 'dst-port': '80', 'reply-src-address': '198.51.100.1', 'reply-src-port': '80', 'reply-dst-address': '192.0.2.2', 'reply-dst-port': '50000', 'connection-mark': 'sdwan-out-default:wan1', 'orig-bytes': '100', 'repl-bytes': '1000', 'tcp-state': 'established', 'seen-reply': 'true'}
+        current = dict(baseline, **{'.id': '*99', 'repl-bytes': '2000'})
+        self.assertEqual(soak.tcp_stream(baseline, [current])['.id'], '*99')
+        for key, value in [('src-port', '50001'), ('reply-dst-address', '192.0.2.3'), ('connection-mark', 'other'), ('repl-bytes', '999'), ('tcp-state', 'closed'), ('seen-reply', 'false')]:
+            with self.subTest(field=key), self.assertRaises(AssertionError):
+                soak.tcp_stream(baseline, [dict(current, **{key: value})])
+        with self.assertRaises(AssertionError):
+            soak.tcp_stream(baseline, [current, current])
+
     def test_existing_process_lock_preserves_report_without_router_access(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(soak, 'VPNLab') as lab:
             root = Path(folder)
