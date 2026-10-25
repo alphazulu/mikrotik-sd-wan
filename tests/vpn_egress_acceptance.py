@@ -7,7 +7,7 @@ from vpn_lab import VPNLab
 from sdwan.config import validate
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);p.add_argument('--only-reapply',action='store_true');p.add_argument('--reapply',action='store_true');p.add_argument('--traffic',action='store_true');p.add_argument('--protocol',choices=['wireguard','l2tp','sstp','openvpn'],default='wireguard');args=p.parse_args();v=VPNLab(args.lab_root);lock=(v.run/'lab.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);a=v.routers['sitea'];h=v.routers['hub'];report={'checks':[],'pass':False};created=[];disabled=None;applied=False;traffic=None
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--lab-root',required=True,type=Path);p.add_argument('--only-reapply',action='store_true');p.add_argument('--reapply',action='store_true');p.add_argument('--traffic',action='store_true');p.add_argument('--container',action='store_true');p.add_argument('--protocol',choices=['wireguard','l2tp','sstp','openvpn'],default='wireguard');args=p.parse_args();v=VPNLab(args.lab_root);lock=(v.run/'lab.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);a=v.routers['sitea'];h=v.routers['hub'];report={'checks':[],'pass':False};created=[];disabled=None;applied=False;traffic=None;prepared_container=False
  spec=importlib.util.spec_from_file_location('vpn_cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
  before=json.loads(a.read_file('sdwan-active.json'));(v.run/'vpn-before.json').write_text(json.dumps(before,indent=2)+'\n')
  def record(s):report['checks'].append({'check':s,'pass':True});print('PASS '+s,flush=True)
@@ -16,7 +16,7 @@ def main():
   while time.monotonic()<end:
    last=a.status()
    if last.get('error'):raise AssertionError(last['error'])
-   if fn(last):return last
+   if fn(last) and (not args.container or last.get('container',{}).get('active') is True):return last
    time.sleep(.3)
   raise AssertionError(last)
  def apply(c):
@@ -26,6 +26,13 @@ def main():
   wan=copy.deepcopy(cfg['wans'][0]);wan.pop('address');wan.pop('gateway');wan.update(v.state['links'][args.protocol]);wan.update(name='vpn1',kind='vpn',probe_table='sdwan-probe-vpn1');cfg['wans'].append(wan)
   cfg['policies'].append(dict(name='vpn-targets',source='0.0.0.0/0',table='sdwan-vpn-targets',profile='default',mode='prefer',wans=['vpn1','wan1','wan2'],allow_degraded=False,priority=10,destination_list='vpn-fixture-targets'))
   row=a.call('ip/firewall/address-list',{'list':'vpn-fixture-targets','address':'198.19.100.1','comment':'vpn-egress-acceptance-only'},'PUT');created.append((a,'ip/firewall/address-list',row['.id']))
+  if args.container:
+   from sdwan.container_runtime import prepare,read_container
+   row=read_container(a);built=next(x for x in json.loads((ROOT/'dist/container/build-report.json').read_text()) if x['architecture']=='amd64' and x['profile']=='web')
+   assert row and row.get('stopped')=='true' and row.get('image-id','').removeprefix('sha256:')==built['image_config_sha256'],'Reuse the exact stopped covered image; do not duplicate an active test'
+   prepared=json.loads((v.root/'config/overlay-sitea-container.json').read_text());cfg['controller_backend']='container';cfg['container']=copy.deepcopy(prepared['container'])
+   if '172.31.255.0/30' not in cfg['local_networks']:cfg['local_networks'].append('172.31.255.0/30')
+   prepare(a,cfg,'sdwan-overlay-sitea');prepared_container=True;report.update(backend='container',image_id=built['image_config_sha256'])
   applied=True;apply(cfg)
   s=wait(lambda s:s['selected'].get('vpn-targets')=='vpn1' and s['selected'].get('default')=='wan1' and all(x['healthy'] for x in s['overlay'].values()))
   record('existing VPN exit is healthy through pinned physical WAN; Address List policy prefers VPN while default and branch OSPF remain independent')
@@ -60,8 +67,13 @@ def main():
    traffic.stream(59413,'sdwan-out-vpn-targets:vpn1')
    record('preferred VPN failback retires only the old policy path and preserves unrelated Internet and branch TCP streams')
    traffic.close();traffic=None
-  iface=a.call('interface/print',{'.proplist':'.id,disabled','.query':['name=ether2']},'POST')[0];assert iface['disabled']=='false';disabled=iface['.id'];a.call('interface/'+disabled,{'disabled':'true'},'PATCH')
-  wait(lambda s:s['selected']['vpn-targets']=='vpn1' and s['selected']['default']=='wan2' and s['states']['default/vpn1']['state']=='healthy' and s['overlay']['hub-wan2']['healthy'])
+  iface=a.call('interface/print',{'.proplist':'.id,disabled','.query':['name=ether2']},'POST')[0];assert iface['disabled']=='false';disabled=iface['.id'];recovery_start=time.monotonic();a.call('interface/'+disabled,{'disabled':'true'},'PATCH')
+  wait(lambda s:s['selected']['default']=='wan2');report['physical_backup_seconds']=round(time.monotonic()-recovery_start,3)
+  # Existing remote PPP/OpenVPN keepalive and duplicate-session timers are not
+  # rewritten. Internet admission already has its declared physical backup;
+  # reconnection of the preferred VPN has a separate, measured bound.
+  wait(lambda s:s['selected']['vpn-targets']=='vpn1' and s['selected']['default']=='wan2' and s['states']['default/vpn1']['state']=='healthy' and s['overlay']['hub-wan2']['healthy'],timeout=180)
+  report['vpn_backup_recovery_seconds']=round(time.monotonic()-recovery_start,3)
   record('physical WAN1 loss reconnects the same VPN exit through WAN2 and preserves independent branch backup')
   a.call('interface/'+disabled,{'disabled':'false'},'PATCH');disabled=None
   wait(lambda s:s['selected']['vpn-targets']=='vpn1' and s['selected']['default']=='wan1' and all(x['healthy'] for x in s['overlay'].values()))
@@ -74,8 +86,17 @@ def main():
    try:r.call(menu+'/'+id,method='DELETE')
    except RuntimeError:pass
   try:
+   if args.container and prepared_container:
+    from sdwan.container_runtime import read_container
+    current=read_container(a)
+    if current and current.get('running')=='true':a.call('container/stop',{'numbers':current['.id']},'POST')
+    end=time.monotonic()+30
+    while time.monotonic()<end:
+     if read_container(a).get('stopped')=='true':break
+     time.sleep(.3)
+    else:raise AssertionError('Stop the protocol fixture container before restoring its native baseline')
    if applied:apply(before)
   finally:
-   (v.run/('vpn-'+args.protocol+('-reapply' if args.reapply else '')+'-egress-validation.json')).write_text(json.dumps(report,indent=2)+'\n');v.close();lock.close()
+   (v.run/('vpn-'+args.protocol+('-reapply' if args.reapply else '')+('-container' if args.container else '')+'-egress-validation.json')).write_text(json.dumps(report,indent=2)+'\n');v.close();lock.close()
 
 if __name__=='__main__':main()

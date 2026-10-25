@@ -6,6 +6,7 @@
 :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
 :if (([:len [/file/find where name=($dir . "sdwan-dataplane.rsc")]] != 1) || ([:len [/file/find where name=($dir . "sdwan-links.rsc")]] != 1)) do={ :error "upload dataplane and links libraries before installation" }
 :global sdwanResolveWANs
+:global sdwanDNSBootstrap
 :global sdwanLTEBinding
 :global sdwanLTEAPNCapture
 :global sdwanLTEAPNApply
@@ -14,6 +15,7 @@
 :global sdwanProbeNativeType
 :global sdwanConfigureProbe
 /import file-name=($dir . "sdwan-links.rsc")
+/import file-name=($dir . "sdwan-dns.rsc")
 :global sdwanValidateStrict
 :global sdwanStrictConfigure
 $sdwanValidateStrict cfg=$cfg
@@ -449,6 +451,7 @@ $sdwanValidatePolicyLists cfg=$cfg
 :foreach id in=[/routing/table/find where name~"^sdwan-"] do={ :if ((!([/routing/table/get $id name] ~ "^sdwan-ol-")) && (($wantedTables->[/routing/table/get $id name]) != true)) do={ /routing/table/remove $id } }
 :if ($overlayManaged) do={ $sdwanOverlayInstall cfg=$cfg }
 :if ($vpnManaged) do={ $sdwanVPNInstall cfg=$cfg; :local resolved [$sdwanVPNTick cfg=$cfg]; :if ($vpnEnabled) do={ $sdwanVPNOrder cfg=$cfg } }
+:local dnsBootstrap [$sdwanDNSBootstrap cfg=$cfg force=true]
 # Promote the complete, reconciled configuration. Editing the staging JSON alone is inert.
 :local raw [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local active [/file/find where name=($dir . "sdwan-active.json")]

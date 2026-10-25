@@ -15,15 +15,15 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 
 def bundle(c,output):
     from sdwan.vpn_egress import canonical
     c=canonical(c)
-    output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    (output/'sdwan-config.json').write_text(json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n',encoding='utf-8',newline='\n')
+    output=Path(output)
+    payload={'sdwan-config.json':json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n'}
     for name in FILES:
         source=(ROOT/'native'/name).read_text()
         if name=='sdwan-controller.rsc' and c.get('controller_backend')=='container':
@@ -35,7 +35,14 @@ def bundle(c,output):
         if name=='sdwan-deploy-watchdog.rsc' and c.get('controller_backend')=='container':
             from sdwan.container_backend import watchdog_source
             source=watchdog_source(ROOT)
-        (output/name).write_text(source,encoding='utf-8',newline='\n')
+        payload[name]=source
+    # Keep headroom below the RouterOS file-contents boundary observed on CHR.
+    # Reject a growing module before protected deployment archives or uploads.
+    for name,text in payload.items():
+        if len(text.encode('utf-8'))>60000:raise ValueError('Payload '+name+' exceeds the conservative 60000-byte text limit; split the module')
+    output.mkdir(parents=True,exist_ok=True)
+    for name,text in payload.items():
+        (output/name).write_text(text,encoding='utf-8',newline='\n')
     return output
 
 
@@ -46,7 +53,7 @@ def inspect(router,c):
         for row in rows:
             if menu=='ip/firewall/address-list' and row.get('dynamic')=='true':continue
             tag=row.get('comment','')
-            if tag.startswith((PREFIX+'overlay:',PREFIX+'vpn:')):continue  # reconciled by the optional overlay module
+            if tag==PREFIX+'dns-bootstrap' or tag.startswith((PREFIX+'overlay:',PREFIX+'vpn:')):continue  # reconciled by the optional overlay module
             if tag.startswith(PREFIX):
                 if tag in by_tag:raise ValueError(f'duplicate managed comment: {tag}')
                 by_tag[tag]=row

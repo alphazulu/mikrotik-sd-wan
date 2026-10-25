@@ -7,7 +7,7 @@ This is a development checkpoint, not completed release acceptance.
 
 | Checks | Result |
 | --- | --- |
-| Python unit suite | 247 PASS |
+| Python unit suite | 265 PASS |
 | Existing Address List, static membership, removal, timed membership and retained TCP | 4 PASS |
 | Python/native VPN contract | 18 PASS, including rejection of L2TP FastPath |
 | Native/Python list types, explicit null, control bytes, UTF-8 byte limit | 44 PASS |
@@ -102,13 +102,15 @@ now authorizes both legitimate return legs and restores all original ACLs.
 The subsequent Rust/two-VPN matrix passed all7cases. Additional sustained
 fault/reapply repeatability still belongs to the final acceptance and soak.
 
-Still pending: additional endpoint/PPP DNS/rebinding cases, sustained dynamic
-underlay/NAT fault cycles, further native ownership/baseline checks, new Rust/scratch
-container parity and bounded web diagnostics, full branch overlay GUI/hardening,
-resource checks and the single final48–72h soak. Duplicate source addresses require
-an independently validated VRF layout; VRF support is not claimed here. The
-emulated SSTP interoperability fixture does not replace verification of an
-operator's production TLS/certificate configuration.
+Current 0.3.0 container acceptance passes all four protocols (8 checks each),
+plus the two-VPN priority matrix (7), authenticated web/fallback/steady intent
+checks (6) and the short same-configuration resource sample. Plain cold external
+DNS has 5 checks and hostname/custom-port HTTPS DoH has 6. The new DNS module's
+absent-file encrypted rollback has 2 checks. See [current gates](NEXT-NETWORK-PLAN.md)
+for remaining dynamic/lifecycle verification and the single 48–72h final soak.
+Duplicate source addresses require an independently validated VRF layout; VRF
+support is not claimed here. The emulated SSTP fixture does not replace testing
+an operator's TLS/certificate configuration.
 
 ## Unified WAN steering (current development branch)
 
@@ -116,7 +118,7 @@ VPN exits now belong only to `wans`; all selection is in ordinary `policies`.
 The GUI no longer creates a feature switch or an implicit destination policy.
 Legacy configurations remain readable and migrate on SDK/GUI output.
 
-Verified after this change:256 Python tests;88 native/Python source/destination
+Verified after this change:265 Python tests;88 native/Python source/destination
 Address List contract cases;18 VPN native/Python cases;5 offline and4 read-only
 live Windows GUI checks;6 real-CHR checks in
 `tests/unified_wan_acceptance.py`. The CHR checks cover source IP, destination IP,
@@ -125,4 +127,5 @@ per-policy SLA failover/failback with scoped conntrack cleanup, readable per-pol
 jump chains, independent branch/Internet TCP survival, and VPN as the general
 Internet default with physical tunnel transport pinning.
 
-Overlay native validation and final full-branch acceptance/soak remain open.
+Overlay native schema/ownership gates pass 123/24 cases. Final dynamic/lifecycle
+verification and the full-branch soak/publication remain open.

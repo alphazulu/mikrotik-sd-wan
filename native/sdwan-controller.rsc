@@ -18,6 +18,8 @@
 :global sdwanLastCleanup
 :global sdwanCleanupUntil
 :global sdwanResolveWANs
+:global sdwanDNSBootstrap
+:global sdwanDNSLoaded
 :global sdwanReconcileWANs
 :global sdwanLinksLoaded
 :global sdwanLinkFingerprints
@@ -47,6 +49,7 @@
         :global sdwanVPNTick
         :if (($sdwanVPNLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
     }
+    :if ($sdwanDNSLoaded != 2) do={ /import file-name=($dir . "sdwan-dns.rsc") }
     :local health ($cfg->"health")
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
     :if ([:typeof $sdwanWanDown] != "array") do={ :set sdwanWanDown [:toarray ""] }
@@ -88,6 +91,7 @@
     :if ([:typeof $sdwanLinkWarming] != "array") do={ :set sdwanLinkWarming [:toarray ""] }
     :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
     :if ($vpnEnabled) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
+    :local dnsBootstrap [$sdwanDNSBootstrap cfg=$cfg force=false]
     :local linkChanges [$sdwanReconcileWANs wans=($cfg->"wans") policies=($cfg->"policies") health=$health]
     :foreach wn,change in=$linkChanges do={
         :set sdwanConntrackRemoved ($sdwanConntrackRemoved + ($change->"removed"))

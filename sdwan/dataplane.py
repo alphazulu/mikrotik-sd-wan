@@ -8,6 +8,9 @@ def objects(c):
     result={}
     def add(tag,chain,action,**fields):
         result[('ip/firewall/mangle','sdwan:v1:'+tag)]={'chain':chain,'action':action,**fields}
+    for chain in ('sdwan-pre','sdwan-output'):
+        for address_type in ('multicast','broadcast'):
+            add('control:'+chain+':'+address_type,chain,'return',**{'dst-address-type':address_type})
     for w in c['wans']:
         name=w['name'];table=w['probe_table']
         result[('ip/route','sdwan:v1:pin-blackhole:'+name)]={'dst-address':'0.0.0.0/0','routing-table':table,'blackhole':'true','distance':'254'}
@@ -35,7 +38,7 @@ def objects(c):
         add('policy-jump:'+p['name'],'sdwan-pre','jump',**selectors,**{'connection-mark':'no-mark','connection-state':'established,related,new','jump-target':chain})
         for name in p['wans']:
             add('classify:'+p['name']+':'+name,chain,'mark-connection',**{'connection-state':'established,related,new','connection-mark':'no-mark','new-connection-mark':'sdwan-out-'+p['name']+':'+name,'passthrough':'true'})
-        add('guard:'+p['name'],chain,'mark-routing',**{'connection-mark':'no-mark','new-routing-mark':p['table'],'passthrough':'false'})
+        add('guard:'+p['name'],chain,'drop',**{'connection-mark':'no-mark'})
         from .vpn_egress import wan_flag
         for name in p['wans']:
             wan=next(w for w in c['wans'] if w['name']==name);fields={'out-interface':wan['interface'],'connection-mark':'sdwan-out-'+p['name']+':'+name};tag='sdwan:v1:egress:'+p['name']+':'+name

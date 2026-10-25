@@ -36,7 +36,15 @@ def main():
  try:
   row=read_container(r);assert row and row['stopped']=='true' and cfg['controller_backend']=='container','Prepare the stopped new image first; do not duplicate an active test'
   expected=json.loads((v.run/'overlay-container-prepare-validation.json').read_text())['image_id'];assert row.get('image-id','').removeprefix('sha256:')==expected
-  applied=True;apply(cfg);r.call('container/start',{'numbers':row['.id']},'POST');started=True;wait(active);record('exact new scratch image controls the existing CHR through the local API while both private OSPF paths remain healthy')
+  applied=True;apply(cfg);started=True
+  # Protected installation starts the selected backend before watchdog commit.
+  # Stop it explicitly to measure the same configuration under warm fallback.
+  r.call('container/stop',{'numbers':row['.id']},'POST');wait(lambda:read_container(r).get('stopped')=='true' and not r.status().get('container',{}).get('active'));started=False
+  wait(lambda:all(x['state']=='healthy' for x in r.status()['states'].values()))
+  report['native_resource_baseline']=[]
+  for _ in range(6):
+   resource=r.call('system/resource/print',{'.proplist':'cpu-load,free-memory'},'POST')[0];report['native_resource_baseline'].append(resource);assert not r.status().get('container',{}).get('active');time.sleep(5)
+  r.call('container/start',{'numbers':row['.id']},'POST');started=True;wait(active);record('exact new scratch image controls the existing CHR through the local API while both private OSPF paths remain healthy')
   with (v.run/'network-container-apply.log').open('a') as log,contextlib.redirect_stdout(log):cli.preflight(r,cfg,'sdwan-overlay-sitea')
   record('protected overlay and VPN installation retains prepared container isolation ordering and passes the unchanged API safety gate')
   nat=r.call('ip/firewall/nat/add',{'chain':'dstnat','in-interface':'ether1','src-address':'10.78.1.2','protocol':'tcp','dst-address':'10.78.1.15','dst-port':'58880','action':'dst-nat','to-addresses':'172.31.255.2','to-ports':'8080','comment':'sdwan-network-container-test','place-before':'0'},'POST')['ret']
@@ -59,8 +67,15 @@ def main():
     time.sleep(1)
    assert child.returncode==0,'Inspect private network-container-vpn-matrix.log'
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);matrix=json.loads(native_report.read_text());assert matrix['pass'] and len(matrix['checks'])==7 and observed;report['vpn_matrix_checks']=7;record('two-VPN priority matrix passes under the local Rust backend, including scoped real TCP cleanup and independent branch survival; live web observes both VPN parents')
-  wait(active);intent=r.read_file('sdwan-container-intent.json');writes=web()['resources']['write_bytes'];time.sleep(12);assert r.read_file('sdwan-container-intent.json')==intent
-  if type(writes) is int:assert web()['resources']['write_bytes']==writes
+  wait(active);intent=r.read_file('sdwan-container-intent.json');writes=web()['resources']['write_bytes'];samples=[];sample_start=time.monotonic()
+  for _ in range(12):
+   time.sleep(5);data=web();assert not data['stale'] and data['current']['actor']=='container';assert r.read_file('sdwan-container-intent.json')==intent
+   if type(writes) is int:assert data['resources']['write_bytes']==writes
+   assert data['resources']['rss_bytes']>0 and data['history_points']<=12
+   measured=r.call('container/print',{'.proplist':'memory-current,cpu-usage','.query':['name=sdwan-container-controller']},'POST')[0]
+   samples.append({'elapsed_seconds':round(time.monotonic()-sample_start,2),'process':data['resources'],'container':measured,'router':r.call('system/resource/print',{'.proplist':'cpu-load,free-memory'},'POST')[0],'history_points':data['history_points']})
+  report['active_resource_samples']=samples
+  report['resource_limits']='Same four-WAN/OSPF configuration;30s native baseline and60s active CHR sample. CPU percentages are rounded; no physical ARM/LTE or long-soak result is implied.'
   report['process_write_bytes']=writes;record('steady handoff leaves the RouterOS intent file byte-identical; unavailable process I/O counters remain explicitly unknown')
   r.call('container/stop',{'numbers':row['.id']},'POST');wait(lambda:read_container(r).get('stopped')=='true' and not r.status().get('container',{}).get('active'));started=False;assert r.status()['selected']['default']=='wan1' and all(x['healthy'] for x in r.status()['overlay'].values());record('stopped local container returns ownership to warm RouterOS fallback without losing private paths')
   report['pass']=True

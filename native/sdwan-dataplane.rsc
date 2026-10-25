@@ -37,6 +37,16 @@
 # Address list is confined to the SDWAN namespace.
 :foreach id in=[/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"] do={ :if (!([/ip/firewall/address-list/get $id comment] ~ "^sdwan:v1:vpn:")) do={ /ip/firewall/address-list/remove $id } }
 :foreach network in=($cfg->"local_networks") do={ /ip/firewall/address-list/add list=sdwan-local address=$network comment=("sdwan:v1:local-address:" . $network) }
+# Local routing protocols and DHCP/broadcast control must survive even when
+# every Internet policy is closed. Bypass classification before ingress marks.
+:foreach chain in={"sdwan-pre";"sdwan-output"} do={
+    :foreach addressType in={"multicast";"broadcast"} do={
+        :local tag ("sdwan:v1:control:" . $chain . ":" . $addressType)
+        :local id [$ensure tag=$tag chain=$chain]
+        /ip/firewall/mangle/set $id action=return dst-address-type=$addressType disabled=no
+        :set ($wanted->$tag) true; :set order ($order,$id)
+    }
+}
 # Mark incoming connections before DNAT; never mark their inbound packets for a WAN route.
 :foreach w in=($cfg->"wans") do={
     :local wn ($w->"name")
@@ -113,7 +123,7 @@
     :local tag ("sdwan:v1:guard:" . $pn)
     /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
     :local id [$ensure tag=$tag chain=$policyChain]
-    /ip/firewall/mangle/set $id action=mark-routing connection-mark=no-mark new-routing-mark=($p->"table") passthrough=no
+    /ip/firewall/mangle/set $id action=drop connection-mark=no-mark
     /ip/firewall/mangle/enable $id
     :set ($wanted->$tag) true; :set order ($order,$id)
 }

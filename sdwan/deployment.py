@@ -79,7 +79,7 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     state=read_state(router,token)
     if state.get('phase')!='prepared' or not state.get('backup_ready'):raise RuntimeError('Native encrypted backup preparation failed')
     previous=state.get('previous')
-    if not isinstance(previous,dict) or len(previous)<10:raise RuntimeError('Previous package archive manifest is incomplete; payload was not uploaded')
+    if not isinstance(previous,dict) or len(previous)<11:raise RuntimeError('Previous package archive manifest is incomplete; payload was not uploaded')
     # While prepared, the watchdog only reads this journal until our unique arm
     # token is uploaded. Extend and verify the manifest BEFORE any payload/arm.
     previous.update(infrastructure_manifest)
@@ -96,7 +96,7 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     try:
         for path in Path(package).iterdir():
             if path.name=='sdwan-deployment.rsc' or not path.is_file():continue
-            if path.name not in {'sdwan-config.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc'}:continue
+            if path.name not in {'sdwan-config.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc'}:continue
             text=path.read_text(encoding='utf-8');router.upload(path.name,text)
             if router.read_file(path.name)!=text:raise RuntimeError('Uploaded payload verification failed: '+path.name)
         router.upload('sdwan-deploy-arm.json',json.dumps({'token':token}))

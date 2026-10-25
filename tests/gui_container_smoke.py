@@ -38,7 +38,7 @@ def main():
             with patch('sdwan.diagnostics_ui.filedialog.asksaveasfilename',return_value=str(path)):app.diagnostics.export()
             assert app.password.get() not in path.read_text(encoding='utf-8')
             spec=importlib.util.spec_from_file_location('gui_container_cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
-            package=cli.bundle(app.collect(),Path(folder)/'container');assert len(list(package.iterdir()))==11
+            package=cli.bundle(app.collect(),Path(folder)/'container');assert len(list(package.iterdir()))==len(cli.FILES)+1
             assert 'sdwanContainerBridge' in (package/'sdwan-controller.rsc').read_text()
             app.container_vars['subnet'].set('192.168.244.0/30');changed=app.collect()
             assert '192.168.244.0/30' in changed['local_networks']

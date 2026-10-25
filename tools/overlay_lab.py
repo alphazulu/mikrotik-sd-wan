@@ -164,7 +164,7 @@ class Lab:
         for node,cfg in result.items():
             site=node!='hub';idx=NODES[node]
             cfg['revision']='overlay-lab-v1'
-            cfg['overlay']={'enabled':True,'role':'site' if site else 'hub','router_id':f'10.202.0.{idx if site else 254}','local_prefixes':[f'10.201.{idx}.0/24'] if site else [],'remote_prefixes':[f'10.201.{2 if node=="sitea" else 1}.0/24'] if site else ['10.201.1.0/24','10.201.2.0/24'],'mtu':1380,'mss_clamp':True,'tunnels':[]}
+            cfg['overlay']={'enabled':True,'role':'site' if site else 'hub','router_id':f'10.202.0.{idx if site else 254}','local_prefixes':[f'10.201.{idx}.0/24'] if site else [],'remote_prefixes':[f'10.201.{2 if node=="sitea" else 1}.0/24'] if site else ['10.201.1.0/24','10.201.2.0/24'],'mtu':1380,'mss_clamp':True,'health':{'jitter_ms':250},'tunnels':[]}
         for site_index,site in enumerate(('sitea','siteb')):
             for wan in (1,2):
                 link=site_index*2+wan;site_name='hub-wan'+str(wan);hub_name=site+'-wan'+str(wan)

@@ -41,7 +41,7 @@ def main():
    saved=json.loads(path.read_text(encoding='utf-8'));assert saved['identity']=='sdwan-edge'
    assert app.password.get() not in path.read_text(encoding='utf-8')
    spec=importlib.util.spec_from_file_location('cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
-   package=cli.bundle(app.collect(),Path(folder)/'package');assert len(list(package.iterdir()))==11
+   package=cli.bundle(app.collect(),Path(folder)/'package');assert len(list(package.iterdir()))==len(cli.FILES)+1
   # Local aging and API failures must never leave an apparently fresh snapshot.
   panel.received_at-=cfg['health']['stale_seconds']+1;panel.tick();assert panel.report['telemetry_stale']
   panel.explain_flow();assert 'УСТАРЕЛ' in panel.flow_result.get()

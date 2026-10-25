@@ -66,7 +66,7 @@ def main():
    assert not any(x.get('comment','').startswith('sdwan:v1:overlay:') for x in r.call(menu+'/print',{'.proplist':'comment'},'POST')),menu
   record('disabling overlay removes its routing/firewall/OSPF/probe objects, retains disabled key identities and leaves ordinary Internet selection healthy')
   apply(before);wait(healthy);assert identities()==original_keys;record('reenabling overlay reuses exact public identities and restores both private paths through fresh inner SLA')
-  changed=copy.deepcopy(before);changed['revision']='overlay-injected-lifecycle';changed['overlay'].update(mtu=1360,mss_clamp=True);changed['overlay']['tunnels'][0]['cost']+=7;protected_failure(changed);record('local watchdog rolls back actual MTU/OSPF/MSS mutations, encrypted full configuration and all ten source files after worker failure')
+  changed=copy.deepcopy(before);changed['revision']='overlay-injected-lifecycle';changed['overlay'].update(mtu=1360,mss_clamp=True);changed['overlay']['tunnels'][0]['cost']+=7;protected_failure(changed);record('local watchdog rolls back actual MTU/OSPF/MSS mutations, encrypted full configuration and all declared source files after worker failure')
   bad=copy.deepcopy(before);bad['revision']='overlay-null-injected';protected_failure(bad,raw_null=True);record('native original-JSON guard rejects a null tunnel before reconciliation and protected rollback restores the complete previous package')
   report['pass']=True
  finally:

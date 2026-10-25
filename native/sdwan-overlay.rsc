@@ -377,12 +377,68 @@
     :foreach key,value in=$defaults do={ :if ([:typeof ($h->$key)] = "num") do={ :set ($defaults->$key) ($h->$key) } }
     :return $defaults
 }
+# Retire one owned WireGuard listener's previous remote UDP tuple, in either
+# conntrack direction. Cached socket source may differ from its WAN source.
+# The local-address snapshot is RAM only. Never purge inner TCP or port-only UDP.
+:global sdwanOverlayRetireTransport do={
+    :local remoteIP [:toip ($previous->"endpoint")]
+    :local localPort ($previous->"listen_port")
+    :local remotePort ($previous->"endpoint_port")
+    :local localAddresses ($previous->"local_addresses")
+    :if (([:typeof $remoteIP] != "ip") || ($remoteIP = 0.0.0.0) || ([:typeof $localPort] != "num") || ([:typeof $remotePort] != "num") || ($localPort < 1) || ($localPort > 65535) || ($remotePort < 1) || ($remotePort > 65535) || ([:typeof $localAddresses] != "array") || ([:len $localAddresses] = 0) || ([:len $localAddresses] > 1024)) do={ :return 0 }
+    :local count 0
+    :foreach cid in=[/ip/firewall/connection/find where protocol=udp and src-port=$localPort and dst-address=$remoteIP and dst-port=$remotePort] do={
+        :onerror expired in={ :local source [:tostr [/ip/firewall/connection/get $cid src-address]]; :if (($localAddresses->$source) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+    }
+    :foreach cid in=[/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] do={
+        :onerror expired in={ :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]; :if (($localAddresses->$destination) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+    }
+    :return $count
+}
+:global sdwanOverlayRebind do={
+    :global sdwanOverlayRetireTransport
+    :global sdwanOverlayTransport
+    :if ([:typeof $sdwanOverlayTransport] != "array") do={ :set sdwanOverlayTransport [:toarray ""] }
+    :local endpoint [:toip [/interface/wireguard/peers/get $peerID current-endpoint-address]]
+    :local endpointPort [/interface/wireguard/peers/get $peerID current-endpoint-port]
+    # Preserve the previous geometry while the peer has not learned an endpoint.
+    :if (([:typeof $endpoint] != "ip") || ($endpoint = 0.0.0.0) || ([:typeof $endpointPort] != "num") || ($endpointPort < 1)) do={ :return 0 }
+    :local row {"source"=[:tostr ($wan->"address")];"listen_port"=($tunnel->"listen_port");"endpoint"=[:tostr $endpoint];"endpoint_port"=$endpointPort}
+    :local signature ([:serialize to=json value=$row options=json.no-string-conversion] . ":" . ($tunnel->"wan") . ":" . ($wan->"route_gateway") . ":" . ($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"endpoint") . ":" . ($tunnel->"endpoint_port"))
+    :local previous ($sdwanOverlayTransport->($tunnel->"name"))
+    :if (([:typeof $previous] = "array") && (($previous->"signature") = $signature)) do={ :return 0 }
+    :local ids [/ip/address/find where disabled=no and invalid=no]
+    # Fail closed on oversized inventories, keeping the prior snapshot for retry.
+    :if ([:len $ids] > 1024) do={ :return 0 }
+    :local localAddresses [:toarray ""]
+    :foreach id in=$ids do={ :local address [:tostr [/ip/address/get $id address]]; :local ip [:pick $address 0 [:find $address "/"]]; :set ($localAddresses->$ip) true }
+    :local retired 0
+    :if ([:typeof $previous] = "array") do={ :set retired [$sdwanOverlayRetireTransport previous=$previous] }
+    :set ($row->"local_addresses") $localAddresses
+    :set ($row->"signature") $signature
+    :set ($sdwanOverlayTransport->($tunnel->"name")) $row
+    :return $retired
+}
+
 :global sdwanOverlayInstall do={
     :global sdwanOverlayHealth
+    :global sdwanOverlayTransport
+    :global sdwanOverlayRetireTransport
     :local overlay ($cfg->"overlay")
     :local on (($overlay->"enabled") = true)
     :local wanted [:toarray ""]
     :local keepInterfaces [:toarray ""]
+    # Keep geometry for unchanged names across protected reapply. Retire only
+    # obsolete owned outer tuples before removing their peers/firewall rules.
+    :local retainedTransport [:toarray ""]
+    :if ([:typeof $sdwanOverlayTransport] = "array") do={
+        :foreach name,previous in=$sdwanOverlayTransport do={
+            :local keep false
+            :if ($on) do={ :foreach tunnel in=($overlay->"tunnels") do={ :if (($tunnel->"name") = $name) do={ :set keep true } } }
+            :if ($keep) do={ :set ($retainedTransport->$name) $previous } else={ :local retired [$sdwanOverlayRetireTransport previous=$previous] }
+        }
+    }
+    :set sdwanOverlayTransport $retainedTransport
     :local ensure do={
         :local id [/ip/firewall/mangle/find where comment=$tag]
         :if ([:len $id] > 1) do={ :error "duplicate overlay mangle ownership" }
@@ -524,6 +580,7 @@
     }
 }
 :global sdwanOverlayTick do={
+    :global sdwanOverlayRebind
     :global sdwanOverlayState
     :global sdwanOverlayHealth
     :local overlay ($cfg->"overlay")
@@ -539,6 +596,9 @@
         :if (([:len $probe] != 1) || ([:len $template] != 1)) do={ :error "missing owned overlay probe/template" }
         :local wanSpec [:toarray ""]
         :foreach wan in=($cfg->"wans") do={ :if (($wan->"name") = ($tunnel->"wan")) do={ :set wanSpec $wan } }
+        :local peer [/interface/wireguard/peers/find where comment=("sdwan:v1:overlay:peer:" . $tn)]
+        :if ([:len $peer] != 1) do={ :error "missing owned overlay transport peer" }
+        :local retired [$sdwanOverlayRebind tunnel=$tunnel wan=$wanSpec peerID=$peer]
         :local signature (($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"address") . ":" . ($wanSpec->"address") . ":" . ($wanSpec->"route_gateway") . ":" . [:tostr $probe] . ":" . [:serialize to=json value=$h options=json.no-string-conversion])
         :local epoch [/tool/netwatch/get $probe done-tests]
         :if ([:typeof $epoch] != "num") do={ :set epoch 0 }

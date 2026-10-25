@@ -183,3 +183,24 @@ loopback aliases45728hub,45729siteA,45730siteB,45731NATA,45732NATB. On a running
 fabric, `python tools/overlay_lab.py windows-api --project-root PRIVATE_ROOT`
 adds/reuses those forwards on the existing NICs. It does not restart guests or
 create another fabric. New launches include the aliases automatically.
+
+The isolated QEMU TCP socket links can introduce delayed packet delivery even
+with KVM and healthy physical probes. The functional lab explicitly uses a
+250 ms inner jitter budget; the product default remains 50 ms. A 90-second
+baseline observation with the default budget recorded transient OSPF withdrawals
+on all three native routers, including the untouched second branch; Netwatch
+reported zero packet loss but jitter above 50 ms. Functional routing tests use
+the declared lab budget; strict SLA rejection is tested separately. This does
+not justify widening an operator's SLA on a real network.
+
+Outer transport geometry is now tracked in bounded RouterOS RAM. A changed
+learned endpoint, parent address/gateway or configured peer/listener retires
+only that listener's previous remote UDP tuple in either conntrack direction.
+A snapshot of local IPv4 addresses accounts for WireGuard caching another WAN's
+socket source before NAT. Stable geometry retains conntrack; inner TCP is never
+included in this cleanup. The CHR CGNAT port-change test observed retirement
+within 1.444 seconds while the old tuple still had 2m59s remaining, preserving
+another branch's UDP and the same ordinary/private TCP streams. A separate
+forced geometry test exercises standby cached-source handling; it is not a
+substitute for an actual DHCP change. See [DNS bootstrap](DNS-BOOTSTRAP.md) for
+hostname endpoints when the ordinary default policy is closed.

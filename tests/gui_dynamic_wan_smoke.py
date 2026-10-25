@@ -53,7 +53,7 @@ def main():
             spec=importlib.util.spec_from_file_location('bundle_cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
             package=cli.bundle(cfg,ROOT/'build/wizard-dynamic')
             assert {x.name for x in package.iterdir() if x.is_file()}=={'sdwan-config.json',*cli.FILES}
-            assert len(cli.FILES)==10
+            assert 'sdwan-dns.rsc' in cli.FILES
             if not args.inventory:
                 app.run('plan');phase=1;app.after(200,step);return
         else:

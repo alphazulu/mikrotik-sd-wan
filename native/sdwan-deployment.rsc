@@ -26,7 +26,7 @@
 :local path ($dir . "sdwan-txn-" . $token . ".json")
 :local previous [:toarray ""]
 :local index 0
-:foreach base in={"sdwan-config.json";"sdwan-active.json";"sdwan-backup.json";"sdwan-controller.rsc";"sdwan-install.rsc";"sdwan-rollback.rsc";"sdwan-dataplane.rsc";"sdwan-links.rsc";"sdwan-overlay.rsc";"sdwan-vpn.rsc"} do={
+:foreach base in={"sdwan-config.json";"sdwan-active.json";"sdwan-backup.json";"sdwan-controller.rsc";"sdwan-install.rsc";"sdwan-rollback.rsc";"sdwan-dataplane.rsc";"sdwan-links.rsc";"sdwan-overlay.rsc";"sdwan-vpn.rsc";"sdwan-dns.rsc"} do={
     :local objectNames [:toarray ($dir . $base)]
     :if ($dir != "") do={ :set objectNames ($objectNames,$base) }
     :foreach objectName in=$objectNames do={
@@ -40,7 +40,7 @@
         :set ($previous->[:tostr $objectName]) $archive
     }
 }
-:if ([:len $previous] < 10) do={ :error "previous package manifest is incomplete" }
+:if ([:len $previous] < 11) do={ :error "previous package manifest is incomplete" }
 :set ($state->"previous") $previous
 :set ($state->"phase") "prepared"
 :set ($state->"started_ticks") [:tonsec [/system/resource/get uptime]]

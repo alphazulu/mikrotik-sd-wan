@@ -35,7 +35,7 @@ class VPNTraffic:
   self.add(self.n,'ip/firewall/filter',{'chain':'forward','dst-address':'10.78.3.2','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   time.sleep(1) # allow RouterOS to publish the updated peer/address classifiers
  def connections(self):return self.a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,dst-address,dst-port,connection-mark,tcp-state,seen-reply,orig-bytes,repl-bytes,srcnat,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,timeout'},'POST')
- def stream(self,port,mark,target='198.19.100.1',source='10.201.2.1'):
+ def stream(self,port,mark,target='198.19.100.1',source='10.201.2.1',timeout=20):
   port=self.base+(port-59410)
   stop=self.stop
   class Handler(http.server.BaseHTTPRequestHandler):
@@ -48,16 +48,16 @@ class VPNTraffic:
   server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True;self.servers.append(server);threading.Thread(target=server.serve_forever,daemon=True).start()
   name=self.prefix+'-'+str(port);self.tasks.append(name)
   script=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address={source} output=none idle-timeout=60s }}','policy':'read,write,policy,test'})
-  self.b.call('system/script/run',{'number':script},'POST');end=time.monotonic()+20
+  self.b.call('system/script/run',{'number':script},'POST');end=time.monotonic()+timeout
   while time.monotonic()<end:
    rows=[x for x in self.connections() if x.get('src-address')==source and x.get('dst-port')==str(port)]
    for row in rows:
     if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return row['.id']
    time.sleep(.2)
   details={}
-  for name,r in [('sitea',self.a),('siteb',self.b),('hub',self.h)]:
+  for name,r in [('sitea',self.a),('siteb',self.b),('hub',self.h),('nata',self.n)]:
    s=r.status();flows=r.call('ip/firewall/connection/print',{'.proplist':'src-address,dst-address,src-port,dst-port,tcp-state,connection-mark,seen-reply,orig-bytes,repl-bytes'},'POST');routes=r.call('ip/route/print',{'.proplist':'dst-address,gateway,active,blackhole,routing-table'},'POST')
-   details[name]={'selected':s.get('selected'),'overlay':s.get('overlay'),'flows':[x for x in flows if x.get('dst-port')==str(port)],'routes':[x for x in routes if x.get('dst-address') in ('198.19.100.1/32','10.201.1.0/24','10.201.2.0/24')]}
+   details[name]={'firewall_counters':r.call('ip/firewall/filter/print',{'.proplist':'comment,chain,action,packets'},'POST'),'nat_counters':r.call('ip/firewall/nat/print',{'.proplist':'comment,chain,action,packets'},'POST'),'selected':s.get('selected'),'overlay':s.get('overlay'),'flows':[x for x in flows if x.get('dst-port')==str(port)],'routes':[x for x in routes if x.get('dst-address') in ('198.19.100.1/32','10.201.1.0/24','10.201.2.0/24')]}
   raise AssertionError({'port':port,'mark':mark,'flows':rows,'diagnostic':details})
  def assert_sessions(self,absent=(),retained=()):
   end=time.monotonic()+3
@@ -75,10 +75,11 @@ class VPNTraffic:
  def close(self):
   self.stop.set()
   try:
-   for job in self.b.call('system/script/job/print',{'.proplist':'.id,trace'},'POST'):
-    if any('/script:'+name+'/' in job.get('trace','') for name in self.tasks):
-     try:self.b.call('system/script/job/'+job['.id'],method='DELETE')
-     except RuntimeError:pass
+   for origin in (self.b,self.a):
+    for job in origin.call('system/script/job/print',{'.proplist':'.id,trace'},'POST'):
+     if any('/script:'+name+'/' in job.get('trace','') for name in self.tasks):
+      try:origin.call('system/script/job/'+job['.id'],method='DELETE')
+      except RuntimeError:pass
    for r in (self.b,self.h,self.a,self.n):
     for row in r.call('ip/firewall/connection/print',{'.proplist':'.id,dst-address,dst-port'},'POST'):
      if row.get('dst-address') in ('198.19.100.1','198.19.100.2','10.201.1.2') and str(row.get('dst-port','')).isdigit() and self.base<=int(row['dst-port'])<self.base+30:

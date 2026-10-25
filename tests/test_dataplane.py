@@ -30,8 +30,18 @@ class DataplaneTests(unittest.TestCase):
     def test_no_enabled_wan_classifier_does_not_fall_through_to_default(self):
         rules=objects(self.config);rule=rules[('ip/firewall/mangle','sdwan:v1:guard:strict103')];jump=rules[('ip/firewall/mangle','sdwan:v1:policy-jump:strict103')]
         self.assertEqual(jump['src-address'],'192.168.50.103/32');self.assertEqual(jump['jump-target'],rule['chain'])
-        self.assertEqual(rule['new-routing-mark'],'sdwan-strict103')
-        self.assertEqual(rule['passthrough'],'false')
+        self.assertEqual(rule['action'],'drop')
+        self.assertNotIn('new-routing-mark',rule)
+        # More-specific control-plane host routes in main must not reopen a
+        # policy whose WAN classifiers are all disabled.
+        self.assertEqual(rule['connection-mark'],'no-mark')
+    def test_routing_multicast_and_dhcp_broadcast_bypass_wan_classification(self):
+        rules=objects(self.config);keys=list(rules)
+        for chain in ('sdwan-pre','sdwan-output'):
+            for address_type in ('multicast','broadcast'):
+                key=('ip/firewall/mangle','sdwan:v1:control:'+chain+':'+address_type)
+                self.assertEqual(rules[key],{'chain':chain,'action':'return','dst-address-type':address_type})
+                self.assertLess(keys.index(key),keys.index(('ip/firewall/mangle','sdwan:v1:in:wan1')))
     def test_generated_rules_do_not_open_input_services(self):
         self.assertFalse(any(menu=='ip/firewall/filter' for menu,_ in objects(self.config)))
     def test_router_originated_flows_have_separate_marks(self):
