@@ -139,18 +139,57 @@
 # the original JSON as well; quotes/escapes ensure an Address List named "null"
 # or a hostname containing that text is never treated as a JSON null token.
 :global sdwanOverlayJSON do={
-    :if ([:typeof $value] != "str") do={ :error "overlay preflight requires original JSON text" }
-    :if (!($value ~ "null")) do={ :return true }
+    :if (([:typeof $value] != "str") || ([:len $value] > 60000)) do={ :error "overlay preflight requires bounded original JSON text" }
     :local quoted false
     :local escaped false
+    :local stringStart 0
+    :local scopes [:toarray ""]
+    :local depth 0
+    :local expected ""
+    :local nextScope "other"
     :for i from=0 to=([:len $value] - 1) do={
         :local char [:pick $value $i ($i + 1)]
         :if ($quoted) do={
             :if ($escaped) do={ :set escaped false } else={
-                :if ($char = "\\") do={ :set escaped true } else={ :if ($char = "\"") do={ :set quoted false } }
+                :if ($char = "\\") do={ :set escaped true } else={
+                    :if ($char = "\"") do={
+                        :set quoted false
+                        :local next ($i + 1)
+                        :while (($next < [:len $value]) && ([:typeof [:find " \r\n\t" [:pick $value $next ($next + 1)]]] != "nil")) do={ :set next ($next + 1) }
+                        :if ([:pick $value $next ($next + 1)] = ":") do={
+                            # Deserialize keys too: escaped Unicode field names
+                            # must obey the same structure as literal names.
+                            :local key [:deserialize from=json options=json.no-string-conversion value=[:pick $value $stringStart ($i + 1)]]
+                            :local parent ($scopes->($depth - 1))
+                            :set expected ""
+                            :set nextScope "other"
+                            :if (($parent = "root") && ($key = "overlay")) do={ :set expected "{"; :set nextScope "overlay" }
+                            :if ($parent = "overlay") do={
+                                :if ($key = "health") do={ :set expected "{" }
+                                :if (($key = "local_prefixes") || ($key = "remote_prefixes") || ($key = "tunnels")) do={ :set expected "[" }
+                                :if ($key = "tunnels") do={ :set nextScope "tunnels" }
+                            }
+                            :if (($parent = "tunnel") && ($key = "peer_prefixes")) do={ :set expected "[" }
+                        }
+                    }
+                }
             }
         } else={
-            :if ($char = "\"") do={ :set quoted true } else={ :if ([:pick $value $i ($i + 4)] = "null") do={ :error "JSON null is not an overlay configuration value" } }
+            :if (([:typeof [:find " \r\n\t" $char]] = "nil") && ($char != ":") && ($char != ",")) do={
+                :if ([:pick $value $i ($i + 4)] = "null") do={ :error "JSON null is not an overlay configuration value" }
+                :if (($expected != "") && ($char != $expected)) do={ :error "overlay JSON object/list type mismatch" }
+                :if (($char = "{") || ($char = "[")) do={
+                    :local child $nextScope
+                    :if ($depth = 0) do={ :set child "root" } else={ :if ((($scopes->($depth - 1)) = "tunnels") && ($char = "{")) do={ :set child "tunnel" } }
+                    :if ($depth >= 64) do={ :error "overlay JSON nesting exceeds validation budget" }
+                    :set ($scopes->$depth) $child
+                    :set depth ($depth + 1)
+                }
+                :if (($char = "}") || ($char = "]")) do={ :set depth ($depth - 1) }
+                :set expected ""
+                :set nextScope "other"
+                :if ($char = "\"") do={ :set quoted true; :set stringStart $i }
+            }
         }
     }
     :return true

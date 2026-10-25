@@ -64,6 +64,15 @@ def main():
   if owner=='wan':c['wans'][0]['probe_table']='sdwan-ol-'+c['overlay']['tunnels'][0]['name']
   else:c['policies'][0]['table']='sdwan-ol-'+c['overlay']['tunnels'][0]['name']
   add('table collision with '+owner,c)
+ c=copy.deepcopy(before);c['overlay']['health']=[];add('empty health list is not an object',c)
+ c=copy.deepcopy(before);c['overlay']['role']='hub';c['overlay']['local_prefixes']={}
+ for t in c['overlay']['tunnels']:
+  for field in ('endpoint','endpoint_port','keepalive_seconds'):t.pop(field,None)
+ add('hub local prefixes empty object is not a list',c)
+ c=copy.deepcopy(before);c['overlay']['health']=[];add('escaped health key still requires object',c);cases[-1]['config_json']=cases[-1]['config_json'].replace('"health":[]','"\\u0068ealth":[]')
+ for text in ('text "null" and a backslash \\', 'a string mentioning "health":[] and "local_prefixes":{}'):
+  c=copy.deepcopy(before);c['revision']=text;add('quoted JSON tokens remain ordinary text '+str(len(text)),c)
+ c=copy.deepcopy(before);c['groups']={'health':['192.0.2.0/24'],'local_prefixes':['192.0.2.0/25']};add('group names may equal overlay field names',c)
  try:
   assert not r.call('system/script/print',{'.proplist':'.id','.query':['name='+name]},'POST') and not r.file_entry(name+'.json'),'Previous contract test must not be duplicated'
   for filename,body in [(name+'.rsc',(ROOT/'native/sdwan-overlay.rsc').read_text().split(':global sdwanOverlayInstall do={',1)[0])]:r.upload(filename,body);files.append(filename)

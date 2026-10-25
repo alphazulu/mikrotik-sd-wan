@@ -17,3 +17,6 @@ Rust/musl, `FROM scratch`, один исполняемый файл, без shel
 Optional `web` feature (0.2.0): separate scratch image and entrypoint, bounded RAM
 history/events and embedded read-only UI, runtime disabled by default. No database,
 access logs, CDN or automatic disk checkpoints. See [statistics guide](../docs/STATISTICS.md).
+
+Unit coverage is mandatory on every change, before building either profile.
+See [coverage commands and CI gates](../docs/CONTAINER-TESTING.md).
