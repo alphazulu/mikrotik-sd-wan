@@ -276,6 +276,18 @@ def main():
                     active = True
                     wait(lambda: not web()['stale'] and web()['current']['actor'] == 'container')
                     writes = web()['resources']['write_bytes']
+                    # A fresh process must publish one fenced ownership claim.
+                    # No-write assertions apply within each steady phase, not
+                    # across that explicit controller start/instance change.
+                    next_intent = a.read_file('sdwan-container-intent.json')
+                    old_fields = json.loads(intent) if intent.strip() else {}
+                    new_fields = json.loads(next_intent)
+                    report['backend_transition'] = {
+                        'intent_before_sha256': digest(intent),
+                        'intent_after_sha256': digest(next_intent),
+                        'changed_fields': sorted(key for key in old_fields.keys() | new_fields.keys() if old_fields.get(key) != new_fields.get(key)),
+                    }
+                    intent = next_intent
                     report.update(phase='container', container_started_utc=time.time())
                 assert source_manifest() == manifest, 'Frozen runtime or fixture source changed during soak'
                 phase = 'container' if active else 'native'
