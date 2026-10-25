@@ -11,13 +11,22 @@ class VPNTraffic:
  def __init__(self,fixture):
   self.fixture=fixture;self.a=fixture.routers['sitea'];self.h=fixture.routers['hub'];creds=json.loads((fixture.run/'credentials.json').read_text());self.b=Router(fixture.root,'api://127.0.0.1:55730',credentials_data=creds['siteb']);self.n=Router(fixture.root,'api://127.0.0.1:55731',credentials_data=creds['nata']);self.created=[];self.changed=[];self.servers=[];self.stop=threading.Event();self.prefix='vpn-egress-client-only';self.tasks=[];counter=fixture.run/'vpn-flow-counter.json';value=int(json.loads(counter.read_text()).get('counter',0)) if counter.exists() else 0;counter.write_text(json.dumps({'counter':value+1})+'\n');self.base=60000+(value%100)*40
  def add(self,r,menu,data):
+  if r is self.a and menu=='ip/firewall/filter' and data.get('chain')=='forward' and data.get('place-before')=='0':
+   rules=r.call(menu+'/print',{'.proplist':'.id,chain,comment'},'POST');barriers=[i for i,x in enumerate(rules) if x.get('comment') in ('sdwan-container:no-forward','sdwan-container:no-forward-to-container')]
+   if barriers:
+    anchor=next((x['.id'] for i,x in enumerate(rules) if i>max(barriers) and x.get('chain')=='forward' and not x.get('comment','').startswith('sdwan-container:')),None);data=dict(data);data.pop('place-before')
+    if anchor:data['place-before']=anchor
   row=r.call(menu,dict(data,comment=self.prefix),'PUT');self.created.append((r,menu,row['.id']));return row['.id']
  def prepare(self):
   assert self.b.call('system/identity')['name']=='sdwan-overlay-siteb';assert self.n.call('system/identity')['name']=='sdwan-overlay-nata'
   assert not self.b.call('system/script/print',{'.proplist':'name','.query':['comment='+self.prefix]},'POST'),'previous TCP fixture must not be duplicated'
-  for r,iface in [(self.b,'sdwan-wg-hub-wan1'),(self.h,'sdwan-wg-sitea-wan1')]:
-   row=r.call('interface/wireguard/peers/print',{'.proplist':'.id,allowed-address','.query':['interface='+iface]},'POST')[0];value=row['allowed-address'];old=value if isinstance(value,str) else ','.join(value);self.changed.append((r,row['.id'],old));r.call('interface/wireguard/peers/set',{'.id':row['.id'],'allowed-address':old+',198.19.100.1/32,198.19.100.2/32'},'POST')
-   for target in ('198.19.100.1','198.19.100.2'):self.add(r,'ip/route',{'dst-address':target+'/32','gateway':iface,'routing-table':'main','distance':'1'})
+  for r,ifaces in [(self.b,['sdwan-wg-hub-wan1','sdwan-wg-hub-wan2']),(self.h,['sdwan-wg-sitea-wan1','sdwan-wg-sitea-wan2'])]:
+   # The explicit outbound fixture uses WAN1, while legitimate OSPF return
+   # traffic may use either leg during convergence/failover. Authorize its two
+   # public source addresses on BOTH peers, then restore all original ACLs.
+   for iface in ifaces:
+    row=r.call('interface/wireguard/peers/print',{'.proplist':'.id,allowed-address','.query':['interface='+iface]},'POST')[0];value=row['allowed-address'];old=value if isinstance(value,str) else ','.join(value);self.changed.append((r,row['.id'],old));r.call('interface/wireguard/peers/set',{'.id':row['.id'],'allowed-address':old+',198.19.100.1/32,198.19.100.2/32'},'POST')
+   for target in ('198.19.100.1','198.19.100.2'):self.add(r,'ip/route',{'dst-address':target+'/32','gateway':ifaces[0],'routing-table':'main','distance':'1'})
   self.add(self.h,'ip/firewall/mangle',{'chain':'prerouting','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   self.add(self.h,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface':'sdwan-wg-sitea-wan1','action':'accept','place-before':'0'})
   self.add(self.a,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface-list':'WAN','action':'accept','place-before':'0'})

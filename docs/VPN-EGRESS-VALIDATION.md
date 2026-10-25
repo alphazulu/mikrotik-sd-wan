@@ -95,10 +95,12 @@ Check existing processes and reports before running; never duplicate the fabric
 or a long soak. Do not run live GUI assertions during a test that temporarily
 changes fixture clients.
 
-One repeated DHCP run observed an incomplete initial forwarded TCP handshake;
-the instrumented rerun passed. Additional flow diagnostics are now captured on
-failure. Treat repeatability under sustained fault/reapply cycles as pending,
-rather than inferring long-term stability from individual passing runs.
+The captured repeated-handshake failure exposed a test-fixture ACL boundary:
+the server reply followed OSPF's second return leg, but the temporary public
+source prefixes were authorized only on the first WireGuard peer. The fixture
+now authorizes both legitimate return legs and restores all original ACLs.
+The subsequent Rust/two-VPN matrix passed all7cases. Additional sustained
+fault/reapply repeatability still belongs to the final acceptance and soak.
 
 Still pending: additional endpoint/PPP DNS/rebinding cases, sustained dynamic
 underlay/NAT fault cycles, further native ownership/baseline checks, new Rust/scratch

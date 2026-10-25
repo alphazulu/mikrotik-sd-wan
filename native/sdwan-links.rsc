@@ -1,3 +1,15 @@
+# New forward accepts must stay below the prepared container isolation block.
+# Only owned overlay/VPN rules use this anchor; foreign rule order is untouched.
+:global sdwanForwardAnchor do={
+    :local remaining [:len [/ip/firewall/filter/find where comment="sdwan-container:no-forward" or comment="sdwan-container:no-forward-to-container"]]
+    :foreach id in=[/ip/firewall/filter/find where chain=forward and dynamic=no] do={
+        :local tag [/ip/firewall/filter/get $id comment]
+        :if (($tag = "sdwan-container:no-forward") || ($tag = "sdwan-container:no-forward-to-container")) do={ :set remaining ($remaining - 1) } else={
+            :if (($remaining = 0) && (!($tag ~ "^sdwan-container:"))) do={ :return $id }
+        }
+    }
+    :return ""
+}
 # Minimal native LTE inventory. Keep profile arrays intact; no PIN/auth reads.
 # Some RouterOS enum getters return profile IDs, others return names.
 # Resolve each element separately so arrays never become a flattened string.
@@ -695,8 +707,18 @@
 :global sdwanReconcileWANs do={
     :global sdwanCreateWANProbes
     :global sdwanLinkFingerprints
+    :global sdwanLinkPending
     :if ([:typeof $sdwanLinkFingerprints] != "array") do={ :set sdwanLinkFingerprints [:toarray ""] }
+    :if ([:typeof $sdwanLinkPending] != "array") do={ :set sdwanLinkPending [:toarray ""] }
     :local changes [:toarray ""]
+    :local bindingsReady do={
+        :local pin [/ip/route/find where comment=("sdwan:v1:pinroute:" . $wn)]
+        :if (([:len $pin] != 1) || ([:len [/ip/route/find where .id=$pin and active=yes and disabled=no]] != 1)) do={ :return false }
+        :local bindings [/ip/firewall/mangle/find where comment=("sdwan:v1:source:" . $wn) or comment~("^sdwan:v1:probe-classify:" . $wn . ":")]
+        :if ([:len $bindings] = 0) do={ :return false }
+        :foreach bid in=$bindings do={ :if ([:len [/ip/firewall/mangle/find where .id=$bid and invalid=no and disabled=no]] != 1) do={ :return false } }
+        :return true
+    }
     :local purge do={
         :local removed 0
         :foreach cid in=[/ip/firewall/connection/find where connection-mark=$mark] do={
@@ -709,7 +731,19 @@
         :local mode ($wan->"kind")
         :if ($mode != "static") do={
             :local signature ([:tostr ($wan->"ready")] . ":" . ($wan->"address") . ":" . ($wan->"route_gateway") . ":" . ($wan->"interface"))
-            :if (($sdwanLinkFingerprints->$wn) != $signature) do={
+            :local pending ($sdwanLinkPending->$wn)
+            :if ((($sdwanLinkFingerprints->$wn) != $signature) || ([:typeof $pending] = "array")) do={
+                :if (($mode = "vpn") && (($wan->"ready") = true) && ([:typeof $pending] = "array") && (($pending->"signature") = $signature)) do={
+                    # PPP can advertise running/address before its forwarding
+                    # bindings settle. Poll in RAM; do not rebuild rules each tick.
+                    :if ([$bindingsReady wn=$wn]) do={
+                        :local counters [$sdwanCreateWANProbes wan=$wan health=$health]
+                        :set ($changes->$wn) {"ready"=true;"was_known"=true;"removed"=0;"counters"=$counters}
+                        :set ($sdwanLinkFingerprints->$wn) $signature
+                        :set ($sdwanLinkPending->$wn) false
+                    }
+                } else={
+                :set ($sdwanLinkPending->$wn) false
                 :local wasKnown ([:typeof ($sdwanLinkFingerprints->$wn)] = "str")
                 :local pin [/ip/route/find where comment=("sdwan:v1:pinroute:" . $wn)]
                 :if ([:len $pin] != 1) do={ :error ("missing or duplicate runtime pin route " . $wn) }
@@ -736,6 +770,7 @@
                 :if ([:len $pinRule] > 0) do={ /routing/rule/remove $pinRule }
                 :local bindings [/ip/firewall/mangle/find where comment=("sdwan:v1:source:" . $wn) or comment~("^sdwan:v1:probe-classify:" . $wn . ":")]
                 /ip/firewall/mangle/disable $bindings
+                :local deferred false
                 :if ($wan->"ready") do={
                     :local source (($wan->"address") . "/32")
                     :local before ""
@@ -757,27 +792,31 @@
                     :local attempt 0
                     :while ((!$usable) && ($attempt < 20)) do={
                         :set attempt ($attempt + 1)
-                        :set usable ([:len [/ip/route/find where .id=$pin and active=yes and disabled=no]] = 1)
-                        :foreach bid in=$bindings do={
-                            :if ([:len [/ip/firewall/mangle/find where .id=$bid and invalid=no and disabled=no]] != 1) do={ :set usable false }
-                        }
+                        :set usable [$bindingsReady wn=$wn]
                         :if (!$usable) do={ :delay 50ms }
                     }
-                    :if (!$usable) do={ :error ("runtime WAN bindings not ready " . $wn) }
-                    :set counters [$sdwanCreateWANProbes wan=$wan health=$health]
+                    :if (!$usable) do={
+                        :if ($mode != "vpn") do={ :error ("runtime WAN bindings not ready " . $wn) }
+                        :set deferred true
+                        :set ($sdwanLinkPending->$wn) {"signature"=$signature}
+                    } else={ :set counters [$sdwanCreateWANProbes wan=$wan health=$health] }
                 }
                 :local change [:toarray ""]
-                :set ($change->"ready") ($wan->"ready")
+                :set ($change->"ready") ((($wan->"ready") = true) && (!$deferred))
                 :set ($change->"was_known") $wasKnown
                 :set ($change->"removed") $removed
                 :set ($change->"counters") $counters
                 :set ($changes->$wn) $change
                 # Publish only after EVERY mutation succeeded; failed operations
                 # will be retried next scheduler run with routes still closed.
-                :set ($sdwanLinkFingerprints->$wn) $signature
+                :if (!$deferred) do={ :set ($sdwanLinkFingerprints->$wn) $signature }
+                }
             }
         }
     }
+    :local retained [:toarray ""]
+    :foreach wan in=$wans do={ :local wn ($wan->"name"); :if ([:typeof ($sdwanLinkPending->$wn)] = "array") do={ :set ($retained->$wn) ($sdwanLinkPending->$wn) } }
+    :set sdwanLinkPending $retained
     :return $changes
 }
 

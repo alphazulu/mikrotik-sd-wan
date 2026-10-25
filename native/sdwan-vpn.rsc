@@ -219,7 +219,8 @@
                         :local tag ("sdwan:v1:vpn:egress:" . ($p->"name") . ":" . $wn)
                         :if ((($cfg->"vpn_egress")->"masquerade") = true) do={ /ip/firewall/nat/add chain=srcnat out-interface=($w->"interface") connection-mark=$mark action=masquerade comment=$tag }
                         :if ((($cfg->"vpn_egress")->"allow_selected_forward") = true) do={
-                            :local before [:pick [/ip/firewall/filter/find where dynamic=no] 0]
+                            :global sdwanForwardAnchor
+                            :local before [$sdwanForwardAnchor]
                             :if ([:len $before] = 0) do={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag } else={ /ip/firewall/filter/add chain=forward out-interface=($w->"interface") connection-mark=$mark connection-state=new,established,related action=accept comment=$tag place-before=$before }
                         }
                     }

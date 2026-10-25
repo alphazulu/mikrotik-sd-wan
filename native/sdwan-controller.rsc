@@ -21,6 +21,7 @@
 :global sdwanReconcileWANs
 :global sdwanLinksLoaded
 :global sdwanLinkFingerprints
+:global sdwanLinkPending
 :global sdwanLinkWarming
 :global sdwanEvents
 :global sdwanRecordEvent
@@ -56,6 +57,7 @@
     :local resetHealth (([:typeof $sdwanState] != "array") || ($configChanged && (([:typeof $sdwanHealthConfigSignature] != "str") || ($sdwanHealthConfigSignature != $signature))))
     :if ($resetHealth) do={
         :set sdwanLinkFingerprints [:toarray ""]
+        :set sdwanLinkPending [:toarray ""]
         :set sdwanLinkWarming [:toarray ""]
         :set sdwanState [:toarray ""]
         :set sdwanGood [:toarray ""]
@@ -112,6 +114,13 @@
         :local event [:toarray ""]
         :set ($event->"type") "link"; :set ($event->"wan") $wn; :set ($event->"reason") "address/session changed; fresh SLA required"; :set ($event->"removed") ($change->"removed")
         $sdwanRecordEvent event=$event revision=($cfg->"revision")
+    }
+    :foreach index,wan in=($cfg->"wans") do={
+        :if ([:typeof ($sdwanLinkPending->($wan->"name"))] = "array") do={
+            :set ($wan->"ready") false
+            :set ($wan->"link_reason") "VPN forwarding bindings pending"
+            :set (($cfg->"wans")->$index) $wan
+        }
     }
     :set sdwanRuntimeWANs ($cfg->"wans")
     :local maintenance [$sdwanMaintenance wans=($cfg->"wans") now=$now]

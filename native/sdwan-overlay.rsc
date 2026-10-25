@@ -237,8 +237,9 @@
             :local id [/ip/firewall/filter/find where comment=$tag]
             :if ([:len $id] = 0) do={ /ip/firewall/filter/add chain=forward src-address-list=sdwan-overlay-sites dst-address-list=sdwan-overlay-sites action=accept comment=$tag disabled=yes; :set id [/ip/firewall/filter/find where comment=$tag] }
             :if ($direction = "in") do={ /ip/firewall/filter/set $id in-interface-list=sdwan-overlay disabled=no } else={ /ip/firewall/filter/set $id out-interface-list=sdwan-overlay disabled=no }
-            :local first [:pick [/ip/firewall/filter/find where chain=forward] 0]
-            :if ([:tostr $id] != [:tostr $first]) do={ /ip/firewall/filter/move $id destination=$first }
+            :global sdwanForwardAnchor
+            :local first [$sdwanForwardAnchor]
+            :if (([:len $first] > 0) && ([:tostr $id] != [:tostr $first])) do={ /ip/firewall/filter/move $id destination=$first }
         }
         :if (($overlay->"mss_clamp") = true) do={
             :local tag "sdwan:v1:overlay:mss"; :set ($wanted->$tag) true

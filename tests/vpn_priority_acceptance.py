@@ -26,6 +26,7 @@ def main():
   raise AssertionError(s)
  try:
   cfg=copy.deepcopy(before);cfg['revision']='vpn-priority-matrix';cfg['vpn_egress']={'enabled':True,'masquerade':True,'allow_selected_forward':True}
+  cfg['wans']=[w for w in cfg['wans'] if w['name'] not in ('vpn1','vpn2')];cfg['policies']=[p for p in cfg['policies'] if p['name']!='vpn-targets']
   for i,kind in enumerate(('wireguard','sstp'),1):
    w=copy.deepcopy(cfg['wans'][0]);w.pop('address');w.pop('gateway');w.update(v.state['links'][kind]);w.update(name='vpn'+str(i),kind='vpn',probe_table='sdwan-probe-vpn'+str(i));cfg['wans'].append(w)
   cfg['policies'].append(dict(name='vpn-targets',source='0.0.0.0/0',destination_list='vpn-priority-targets',priority=10,wans=['vpn1','vpn2','wan1','wan2'],table='sdwan-vpn-targets',profile='default',mode='prefer',allow_degraded=False))
@@ -55,8 +56,14 @@ def main():
    row=a.call('interface/print',{'.proplist':'.id,disabled','.query':['name='+iface]},'POST')[0];assert row['disabled']=='false';disabled.append(row['.id']);a.call('interface/'+row['.id'],{'disabled':'true'},'PATCH')
   wait(lambda s:s['selected']['vpn-targets']=='none' and all(not x['transport_ready'] for x in s['vpn_egress'].values()))
   record('loss of all physical underlays makes both logical VPN exits unavailable and fails closed')
+  recovery_started=time.monotonic()
   for id in disabled:a.call('interface/'+id,{'disabled':'false'},'PATCH')
-  disabled=[];wait(lambda s:s['selected']['vpn-targets']=='vpn1' and all(x['state']=='healthy' for x in s['states'].values()) and all(x['healthy'] for x in s['overlay'].values()));report['pass']=True
+  # Preferred egress/OSPF must recover within the usual bound. The standby PPP
+  # client retains its own existing negotiation/retry timers (no credential or
+  # timer rewrite); complete standby convergence has a separate explicit bound.
+  disabled=[];wait(lambda s:s['selected']['vpn-targets']=='vpn1' and all(x['healthy'] for x in s['overlay'].values()))
+  report['preferred_recovery_seconds']=round(time.monotonic()-recovery_started,1)
+  wait(lambda s:all(x['state']=='healthy' for x in s['states'].values()),timeout=180);report['all_channels_recovery_seconds']=round(time.monotonic()-recovery_started,1);report['pass']=True
  finally:
   for id in disabled:a.call('interface/'+id,{'disabled':'false'},'PATCH')
   if traffic:traffic.close()
