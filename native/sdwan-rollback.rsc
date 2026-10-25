@@ -6,6 +6,17 @@
 :local n 0
 :while (([/system/script/job/print count-only where script="sdwan-controller"] > 0) && ($n < 50)) do={ :delay 100ms; :set n ($n + 1) }
 :if ([/system/script/job/print count-only where script="sdwan-controller"] > 0) do={ :error "controller still busy" }
+:if ([:len [/routing/ospf/instance/find where comment="sdwan:v1:overlay:instance"]] > 0) do={
+    :global sdwanOverlayInstall
+    /import file-name=($dir . "sdwan-overlay.rsc")
+    :local empty [:toarray ""]
+    $sdwanOverlayInstall cfg=$empty
+}
+:global sdwanStrictCancel
+/import file-name=($dir . "sdwan-links.rsc")
+/system/scheduler/remove [/system/scheduler/find where name="sdwan-strict-dispatch" and comment="sdwan:v1:strict"]
+$sdwanStrictCancel
+/system/script/remove [/system/script/find where comment="sdwan:v1:strict"]
 :local backup [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=($dir . "sdwan-backup.json")] contents]]
 :foreach tag,disabled in=($backup->"routes") do={ /ip/route/set [/ip/route/find where comment=$tag] disabled=$disabled }
 :foreach id,disabled in=($backup->"rules") do={ :if ([:len [/routing/rule/find where .id=$id]] > 0) do={ /routing/rule/set $id disabled=$disabled } }
@@ -36,6 +47,13 @@
         :if (![$sdwanLTEAPNRestore entry=$entry]) do={ :log warning ("SDWAN baseline skipped changed or missing LTE APN " . $profileName) }
     }
 }
+:if ([:typeof ($backup->"vpn_clients")] = "array") do={
+    :global sdwanVPNRestore
+    /import file-name=($dir . "sdwan-vpn.rsc")
+    $sdwanVPNRestore entries=($backup->"vpn_clients")
+}
+/ip/firewall/nat/remove [/ip/firewall/nat/find where comment~"^sdwan:v1:((vpn|egress):|dns-bootstrap\$)"]
+/ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:((vpn|egress):|dns-bootstrap\$)"]
 /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment~"^sdwan:v1:"]
 /ip/firewall/address-list/remove [/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"]
 :foreach id in=[/ip/firewall/connection/find where connection-mark~"^sdwan-"] do={

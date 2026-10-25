@@ -32,6 +32,16 @@ class DeploymentWaitTests(unittest.TestCase):
         r=RouterFixture([ValueError('Router file not found: sdwan-txn-fixture.json')])
         with self.assertRaisesRegex(RuntimeError,'Deployment status unavailable'):self.run_wait(r)
         self.assertGreater(r.close_calls,0)
+    def test_closed_default_requires_both_explicit_intent_and_fresh_router_evidence(self):
+        for requested,reported,expected in [(True,True,1),(False,True,0),(True,False,0),(False,False,0)]:
+            r=RouterFixture([{'phase':'await-confirm','revision':'fixture','default_policy':'default','operation':'apply','allow_no_default':requested},{'phase':'committed','backup_name':'fixture'}]);sent=[]
+            class Fresh:
+                def call(self,path):return {'name':'sdwan-edge'}
+                def status(self):return {'revision':'fixture','selected':{'default':'none'},'default_admission_closed':reported}
+                def upload(self,path,data):sent.append(path)
+                def close(self):pass
+            r.fresh=lambda:Fresh();self.run_wait(r)
+            self.assertEqual(len(sent),expected,(requested,reported))
     def test_fresh_confirmation_waits_for_container_lease(self):
         r=RouterFixture([{'phase':'await-confirm','revision':'fixture','default_policy':'default','operation':'apply'},{'phase':'await-confirm','revision':'fixture','default_policy':'default','operation':'apply'},{'phase':'committed','backup_name':'fixture'}])
         sent=[];states=iter([False,True])

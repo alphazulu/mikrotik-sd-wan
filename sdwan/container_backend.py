@@ -32,7 +32,7 @@ def controller_source(root: Path, config=None) -> str:
             :local eligible ($wanted = "none")
             :if ($wanted != "none") do={
                 :local state ($sdwanState->(($policy->"profile") . "/" . $wanted))
-                :if (($state = "healthy") || (($state = "degraded") && ($policy->"allow_degraded"))) do={ :set eligible true }
+                :if (((($maintenance->$wanted)->"admit") = true) && (($state = "healthy") || (($state = "degraded") && ($policy->"allow_degraded")))) do={ :set eligible true }
             }
             :if ($eligible) do={ :set selected $wanted; :set containerDecision true }
         }

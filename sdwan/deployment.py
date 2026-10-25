@@ -34,7 +34,8 @@ def check_permissions(router):
     except RuntimeError:pass  # Availability of the read-only menu varies by RouterOS.
 
 
-def start(router,package,expected,*,revision='',default_policy='',operation='apply',timeout=120):
+def start(router,package,expected,*,revision='',default_policy='',operation='apply',timeout=120,allow_no_default=False):
+    if type(allow_no_default) is not bool:raise ValueError('allow_no_default must be boolean')
     if not 30<=timeout<=600:raise ValueError('Deployment deadline must be 30..600 seconds')
     check_permissions(router)
     token=secrets.token_hex(12)
@@ -55,7 +56,7 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
             else:old_infrastructure[original]=None
     from .maintenance import require_backup_space
     require_backup_space(router,package)
-    request={'token':token,'password':secrets.token_urlsafe(40),'identity':expected,'operation':operation,'revision':revision,'default_policy':default_policy,'timeout_seconds':timeout,'created_utc':datetime.now(timezone.utc).isoformat()}
+    request={'token':token,'password':secrets.token_urlsafe(40),'identity':expected,'operation':operation,'revision':revision,'default_policy':default_policy,'allow_no_default':allow_no_default,'timeout_seconds':timeout,'created_utc':datetime.now(timezone.utc).isoformat()}
     run=router.root/'runtime';run.mkdir(exist_ok=True)
     key=run/('recovery-'+token+'.json')
     key.write_text(json.dumps({'token':token,'identity':expected,'backup_password':request['password'],'backup_file':router.storage_prefix+'sdwan-before-'+token+'.backup'},indent=2)+'\n')
@@ -78,7 +79,7 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     state=read_state(router,token)
     if state.get('phase')!='prepared' or not state.get('backup_ready'):raise RuntimeError('Native encrypted backup preparation failed')
     previous=state.get('previous')
-    if not isinstance(previous,dict) or len(previous)<8:raise RuntimeError('Previous package archive manifest is incomplete; payload was not uploaded')
+    if not isinstance(previous,dict) or len(previous)<11:raise RuntimeError('Previous package archive manifest is incomplete; payload was not uploaded')
     # While prepared, the watchdog only reads this journal until our unique arm
     # token is uploaded. Extend and verify the manifest BEFORE any payload/arm.
     previous.update(infrastructure_manifest)
@@ -95,7 +96,7 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     try:
         for path in Path(package).iterdir():
             if path.name=='sdwan-deployment.rsc' or not path.is_file():continue
-            if path.name not in {'sdwan-config.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc'}:continue
+            if path.name not in {'sdwan-config.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc'}:continue
             text=path.read_text(encoding='utf-8');router.upload(path.name,text)
             if router.read_file(path.name)!=text:raise RuntimeError('Uploaded payload verification failed: '+path.name)
         router.upload('sdwan-deploy-arm.json',json.dumps({'token':token}))
@@ -122,7 +123,9 @@ def wait(router,token,expected,*,timeout=120,confirm=True):
                     ready=state['operation']=='rollback'
                     if not ready:
                         status=fresh.status()
-                        ready='error' not in status and status.get('revision')==state.get('revision') and status.get('selected',{}).get(state.get('default_policy')) not in (None,'none')
+                        selected=status.get('selected',{}).get(state.get('default_policy'))
+                        explicitly_closed=state.get('allow_no_default') is True and status.get('default_admission_closed') is True
+                        ready='error' not in status and status.get('revision')==state.get('revision') and (selected not in (None,'none') or explicitly_closed)
                         if status.get('backend')=='container':ready=ready and status.get('container',{}).get('active') is True
                     if ready:
                         fresh.upload('sdwan-deploy-ack.json',json.dumps({'token':token}));ack=True

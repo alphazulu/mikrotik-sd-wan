@@ -2,7 +2,7 @@
 :if ([:len [/file/find where name="flash"]] > 0) do={ :set dir "flash/" }
 # MikroTik RouterOS 7.24.5. Installed as system/script sdwan-controller.
 # Runtime decisions are entirely local. Active config: sdwan-active.json (promoted by the installer).
-:if ([/system/script/job/print count-only where script="sdwan-controller"] > 1) do={ :return }
+:if ([/system/script/job/print count-only where script="sdwan-controller"] > 1) do={ :return "" }
 :global sdwanStatusJSON
 :global sdwanState
 :global sdwanGood
@@ -18,25 +18,51 @@
 :global sdwanLastCleanup
 :global sdwanCleanupUntil
 :global sdwanResolveWANs
+:global sdwanDNSBootstrap
+:global sdwanDNSLoaded
 :global sdwanReconcileWANs
 :global sdwanLinksLoaded
 :global sdwanLinkFingerprints
+:global sdwanLinkPending
 :global sdwanLinkWarming
 :global sdwanEvents
 :global sdwanRecordEvent
+:global sdwanProbeAccepted
+:global sdwanHealthSignature
+:global sdwanHealthConfigSignature
+:global sdwanRuntimeWANs
+:global sdwanMaintenance
+:global sdwanDrainingMarks
+:global sdwanOverlayLoaded
+:global sdwanVPNTick
+:global sdwanOverlayTick
+:global sdwanVPNTransport
 :onerror err in={
     :local raw [/file/get [/file/find where name=($dir . "sdwan-active.json")] contents]
     :local cfg [:deserialize from=json options=json.no-string-conversion value=$raw]
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
-    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 6) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :local vpnEnabled false
+    :foreach wan in=($cfg->"wans") do={ :if (($wan->"kind") = "vpn") do={ :set vpnEnabled true } }
+    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 7) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :if ($vpnEnabled) do={
+        :global sdwanVPNLoaded
+        :global sdwanVPNTick
+        :if (($sdwanVPNLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
+    }
+    :if ($sdwanDNSLoaded != 2) do={ /import file-name=($dir . "sdwan-dns.rsc") }
     :local health ($cfg->"health")
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
     :if ([:typeof $sdwanWanDown] != "array") do={ :set sdwanWanDown [:toarray ""] }
     :if ([:typeof $sdwanConntrackRemoved] != "num") do={ :set sdwanConntrackRemoved 0 }
     :if ([:typeof $sdwanLastCleanup] != "array") do={ :set sdwanLastCleanup [:toarray ""] }
     :if ([:typeof $sdwanCleanupUntil] != "array") do={ :set sdwanCleanupUntil [:toarray ""] }
-    :if (([:typeof $sdwanState] != "array") || ($sdwanConfigRaw != $raw)) do={
+    :local configChanged ($sdwanConfigRaw != $raw)
+    :local signature $sdwanHealthConfigSignature
+    :if ($configChanged || ([:typeof $signature] != "str")) do={ :set signature [$sdwanHealthSignature cfg=$cfg] }
+    :local resetHealth (([:typeof $sdwanState] != "array") || ($configChanged && (([:typeof $sdwanHealthConfigSignature] != "str") || ($sdwanHealthConfigSignature != $signature))))
+    :if ($resetHealth) do={
         :set sdwanLinkFingerprints [:toarray ""]
+        :set sdwanLinkPending [:toarray ""]
         :set sdwanLinkWarming [:toarray ""]
         :set sdwanState [:toarray ""]
         :set sdwanGood [:toarray ""]
@@ -52,11 +78,20 @@
         :set sdwanCleanupUntil [:toarray ""]
         :if ([:typeof $sdwanConntrackRemoved] != "num") do={ :set sdwanConntrackRemoved 0 }
         :if ([:typeof $sdwanLastCleanup] != "array") do={ :set sdwanLastCleanup [:toarray ""] }
-        :set sdwanConfigRaw $raw
         :log info "SDWAN local controller initialized"
     }
+    :if ($configChanged && (!$resetHealth)) do={
+        :local retained [:toarray ""]
+        :foreach policy in=($cfg->"policies") do={ :local pn ($policy->"name"); :if ([:typeof ($sdwanSelected->$pn)] = "str") do={ :set ($retained->$pn) ($sdwanSelected->$pn) } }
+        :set sdwanSelected $retained
+        :log info "SDWAN configuration updated; SLA state preserved"
+    }
+    :set sdwanHealthConfigSignature $signature
+    :set sdwanConfigRaw $raw
     :if ([:typeof $sdwanLinkWarming] != "array") do={ :set sdwanLinkWarming [:toarray ""] }
     :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
+    :if ($vpnEnabled) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
+    :local dnsBootstrap [$sdwanDNSBootstrap cfg=$cfg force=false]
     :local linkChanges [$sdwanReconcileWANs wans=($cfg->"wans") policies=($cfg->"policies") health=$health]
     :foreach wn,change in=$linkChanges do={
         :set sdwanConntrackRemoved ($sdwanConntrackRemoved + ($change->"removed"))
@@ -86,6 +121,17 @@
         :set ($event->"type") "link"; :set ($event->"wan") $wn; :set ($event->"reason") "address/session changed; fresh SLA required"; :set ($event->"removed") ($change->"removed")
         $sdwanRecordEvent event=$event revision=($cfg->"revision")
     }
+    :foreach index,wan in=($cfg->"wans") do={
+        :if ([:typeof ($sdwanLinkPending->($wan->"name"))] = "array") do={
+            :set ($wan->"ready") false
+            :set ($wan->"link_reason") "VPN forwarding bindings pending"
+            :set (($cfg->"wans")->$index) $wan
+        }
+    }
+    :set sdwanRuntimeWANs ($cfg->"wans")
+    :local maintenance [$sdwanMaintenance wans=($cfg->"wans") now=$now]
+    :if ([:typeof $sdwanDrainingMarks] != "array") do={ :set sdwanDrainingMarks [:toarray ""] }
+    :local retainedMarks [:toarray ""]
     # JSON fractions deserialize as strings on RouterOS; convert explicitly to scaled integers.
     :local scaled do={
         :local text [:tostr $value]
@@ -109,6 +155,7 @@
     }
     :local report [:toarray ""]
     :local samples [:toarray ""]
+    :local probeDetails [:toarray ""]
     :local policyReport [:toarray ""]
     :foreach wan in=($cfg->"wans") do={
         :local wn ($wan->"name")
@@ -135,7 +182,9 @@
             :local done 0
             :if ([:len $id] > 0) do={
                 :set done [/tool/netwatch/get $id done-tests]
-                :if ([/tool/netwatch/get $id status] = "up") do={ :set up ($up + 1) }
+                :local verified [$sdwanProbeAccepted pid=$id probe=$probe wan=$wan raw=$raw health=$health now=$now]
+                :set ($probeDetails->($wn . "/" . ($probe->"name"))) $verified
+                :if ($verified->"up") do={ :set up ($up + 1) }
             }
             :if ([:typeof $done] != "num") do={ :set done 0 }
             :if ($done < $epoch) do={ :set epoch $done }
@@ -265,15 +314,45 @@
         }
         :set ($sdwanWanDown->$wn) $down
     }
+    :local defaultAdmissionClosed false
     :foreach policy in=($cfg->"policies") do={
+        :if (($policy->"source") = "") do={
+            :set defaultAdmissionClosed true
+            :foreach wn in=($policy->"wans") do={ :if ((($maintenance->$wn)->"admit") = true) do={ :set defaultAdmissionClosed false } }
+        }
         :local pn ($policy->"name")
         :local selected "none"
         :foreach wn in=($policy->"wans") do={
-            :if (($selected = "none") && (($sdwanState->(($policy->"profile") . "/" . $wn)) = "healthy")) do={ :set selected $wn }
+            :if (($selected = "none") && ((($maintenance->$wn)->"admit") = true) && (($sdwanState->(($policy->"profile") . "/" . $wn)) = "healthy")) do={ :set selected $wn }
         }
         :if (($selected = "none") && ($policy->"allow_degraded")) do={
             :foreach wn in=($policy->"wans") do={
-                :if (($selected = "none") && (($sdwanState->(($policy->"profile") . "/" . $wn)) = "degraded")) do={ :set selected $wn }
+                :if (($selected = "none") && ((($maintenance->$wn)->"admit") = true) && (($sdwanState->(($policy->"profile") . "/" . $wn)) = "degraded")) do={ :set selected $wn }
+            }
+        }
+        # Retain only previously selected/retained marks, while the draining
+        # path still meets this policy's SLA and its optional deadline.
+        :foreach wn in=($policy->"wans") do={
+            :local mark ("sdwan-out-" . $pn . ":" . $wn)
+            :local mode ($maintenance->$wn)
+            :local state ($sdwanState->(($policy->"profile") . "/" . $wn))
+            :local eligible (($state = "healthy") || (($state = "degraded") && ($policy->"allow_degraded")))
+            :local retain ((($mode->"retain") = true) && $eligible && ((($sdwanSelected->$pn) = $wn) || (($sdwanDrainingMarks->$mark) = true)))
+            :if ($retain) do={ :set ($retainedMarks->$mark) true } else={
+                :if (((($sdwanDrainingMarks->$mark) = true) && ($wn != $selected)) || (($mode->"effective") = "down")) do={
+                    :local count [$purge mark=$mark]
+                    :if (($policy->"source") = "") do={ :set count ($count + [$purge mark=("sdwan-router-" . $wn)]) }
+                    :set sdwanConntrackRemoved ($sdwanConntrackRemoved + $count)
+                    :if ($count > 0) do={
+                        :local cleanup [:toarray ""]; :set ($cleanup->"from") $wn; :set ($cleanup->"to") $selected
+                        :set ($cleanup->"removed") $count; :set ($cleanup->"uptime_seconds") $now
+                        :set ($cleanup->"reason") "drain ended, channel failed or emergency down"
+                        :set ($sdwanLastCleanup->$pn) $cleanup
+                        :local event [:toarray ""]; :set ($event->"type") "drain-end"; :set ($event->"policy") $pn
+                        :set ($event->"wan") $wn; :set ($event->"removed") $count; :set ($event->"reason") ($cleanup->"reason")
+                        $sdwanRecordEvent event=$event revision=($cfg->"revision")
+                    }
+                }
             }
         }
         :local decision [:toarray ""]
@@ -310,7 +389,7 @@
         :if (($sdwanSelected->$pn) != $selected) do={
             :set ($sdwanCleanupUntil->$pn) ($now + 3)
             :local previous ($sdwanSelected->$pn)
-            :if (([:typeof $previous] = "str") && ($previous != "none")) do={
+            :if (([:typeof $previous] = "str") && ($previous != "none") && (($retainedMarks->("sdwan-out-" . $pn . ":" . $previous)) != true)) do={
                 :local killMarks [:toarray ("sdwan-out-" . $pn . ":" . $previous)]
                 :if (($policy->"source") = "") do={ :set killMarks ($killMarks,("sdwan-router-" . $previous)) }
                 :local count 0
@@ -342,7 +421,7 @@
         :if (([:typeof ($sdwanCleanupUntil->$pn)] = "num") && ($now <= ($sdwanCleanupUntil->$pn))) do={
             :local late 0
             :foreach wn in=($policy->"wans") do={
-                :if ($wn != $selected) do={
+                :if (($wn != $selected) && (($retainedMarks->("sdwan-out-" . $pn . ":" . $wn)) != true)) do={
                     :set late ($late + [$purge mark=("sdwan-out-" . $pn . ":" . $wn)])
                 }
             }
@@ -358,6 +437,12 @@
             }
         }
     }
+    :set sdwanDrainingMarks $retainedMarks
+    :local overlayReport [:toarray ""]
+    :if ((($cfg->"overlay")->"enabled") = true) do={
+        :if ($sdwanOverlayLoaded != 1) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
+        :set overlayReport [$sdwanOverlayTick cfg=$cfg now=$now]
+    }
     :local output [:toarray ""]
     :set ($output->"revision") ($cfg->"revision")
     :set ($output->"uptime_seconds") $now
@@ -366,7 +451,17 @@
     :if ([:typeof $sdwanEvents] != "array") do={ :set sdwanEvents [:toarray ""] }
     :set ($output->"events") $sdwanEvents
     :set ($output->"samples") $samples
+    :set ($output->"probe_details") $probeDetails
     :set ($output->"selected") $sdwanSelected
+    :set ($output->"maintenance") $maintenance
+    :set ($output->"overlay") $overlayReport
+    :local vpnReport [:toarray ""]
+    :if ($vpnEnabled) do={
+        :foreach wn,row in=$sdwanVPNTransport do={ :set ($vpnReport->$wn) {"underlay"=($row->"underlay");"transport_ready"=($row->"ready")} }
+    }
+    :set ($output->"vpn_egress") $vpnReport
+    :set ($output->"default_admission_closed") $defaultAdmissionClosed
+    :set ($output->"draining_marks") $sdwanDrainingMarks
     :set ($output->"controller") "RouterOS local script + scheduler"
     :set ($output->"conntrack_removed") $sdwanConntrackRemoved
     :set ($output->"last_cleanup") $sdwanLastCleanup

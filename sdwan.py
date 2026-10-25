@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 import time
+import tempfile
 
 from sdwan.config import load, objects
 from sdwan.router import Router
@@ -14,15 +15,17 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 
 def bundle(c,output):
-    output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    (output/'sdwan-config.json').write_text(json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n',encoding='utf-8',newline='\n')
+    from sdwan.vpn_egress import canonical
+    c=canonical(c)
+    output=Path(output)
+    payload={'sdwan-config.json':json.dumps(c,separators=(',',':'),ensure_ascii=False)+'\n'}
     for name in FILES:
-        source=(ROOT/'native'/name).read_text()
+        source=(ROOT/'native'/name).read_text(encoding='utf-8')
         if name=='sdwan-controller.rsc' and c.get('controller_backend')=='container':
             from sdwan.container_backend import controller_source
             source=controller_source(ROOT,c)
@@ -32,17 +35,25 @@ def bundle(c,output):
         if name=='sdwan-deploy-watchdog.rsc' and c.get('controller_backend')=='container':
             from sdwan.container_backend import watchdog_source
             source=watchdog_source(ROOT)
-        (output/name).write_text(source,encoding='utf-8',newline='\n')
+        payload[name]=source
+    # Keep headroom below the RouterOS file-contents boundary observed on CHR.
+    # Reject a growing module before protected deployment archives or uploads.
+    for name,text in payload.items():
+        if len(text.encode('utf-8'))>60000:raise ValueError('Payload '+name+' exceeds the conservative 60000-byte text limit; split the module')
+    output.mkdir(parents=True,exist_ok=True)
+    for name,text in payload.items():
+        (output/name).write_text(text,encoding='utf-8',newline='\n')
     return output
 
 
 def inspect(router,c):
     live={}
-    for menu in ('ip/route','routing/rule','tool/netwatch','ip/firewall/mangle','ip/firewall/address-list'):
+    for menu in ('ip/route','routing/rule','tool/netwatch','ip/firewall/mangle','ip/firewall/address-list','ip/firewall/nat','ip/firewall/filter'):
         rows=router.call(menu); by_tag={}
         for row in rows:
             if menu=='ip/firewall/address-list' and row.get('dynamic')=='true':continue
             tag=row.get('comment','')
+            if tag==PREFIX+'dns-bootstrap' or tag.startswith((PREFIX+'overlay:',PREFIX+'vpn:')):continue  # reconciled by the optional overlay module
             if tag.startswith(PREFIX):
                 if tag in by_tag:raise ValueError(f'duplicate managed comment: {tag}')
                 by_tag[tag]=row
@@ -67,12 +78,16 @@ def inspect(router,c):
 
 
 def preflight(router,c,expected):
+    from sdwan.vpn_egress import canonical
+    c=canonical(c)
     identity=router.call('system/identity')['name']
     if identity!=expected:raise ValueError(f'Router identity {identity!r} differs from expected {expected!r}')
     res=router.call('system/resource')
     if isinstance(res,list):res=res[0]
     if res['version'].split()[0]!='7.24.5':raise ValueError('This build is validated for RouterOS 7.24.5 only')
     routes=router.call('ip/route')
+    from sdwan.vpn_egress import validate_pushed_defaults
+    validate_pushed_defaults(routes,c)
     selectors={s['.id']:s for s in c.get('takeover_routes',[])}
     actual={r['.id']:r for r in routes}
     for identifier,selector in selectors.items():
@@ -95,6 +110,9 @@ def preflight(router,c,expected):
         if kind=='static' and not any(row.get('interface')==w['interface'] and row.get('address','').split('/')[0]==w['address'] and row.get('dynamic') not in ('true',True) and row.get('disabled') not in ('true',True) and row.get('invalid') not in ('true',True) for row in addresses):raise ValueError('Static WAN source must already be assigned statically: '+w['interface'])
         if kind=='lte':
             binding=apn_binding(w['interface'],router.call('interface/lte/print',{'.proplist':'.id,name,disabled,running,apn-profiles,apn-profile'},'POST'),router.call('interface/lte/apn/print',{'.proplist':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface'},'POST'),expected_profile=w['apn_profile'],managed_interfaces=[x['interface'] for x in c['wans'] if x.get('kind')=='lte'])
+        elif kind=='vpn':
+            from sdwan.vpn_egress import binding as vpn_binding
+            vpn_binding(router,w)
         elif kind!='static':
             menu='ip/dhcp-client' if kind=='dhcp' else 'interface/pppoe-client'
             field='interface' if kind=='dhcp' else 'name'
@@ -118,7 +136,16 @@ def preflight(router,c,expected):
     except ValueError as error:
         if not str(error).startswith('Router file not found:'):raise
         active=None
+    from sdwan.overlay import enabled as overlay_enabled
+    if overlay_enabled(c):
+        actions.append({'action':'reconcile local WireGuard/OSPF overlay using prepared public identities; pin every tunnel to its WAN and probe its inner peer; blackhole remote prefixes when unavailable',
+                        'tunnels':[{'name':t['name'],'wan':t['wan'],'cost':t['cost']} for t in c['overlay']['tunnels']],
+                        'local_prefixes':c['overlay']['local_prefixes'],'remote_prefixes':c['overlay']['remote_prefixes']})
+    elif active and overlay_enabled(active):actions.append({'action':'withdraw owned overlay peers, OSPF templates and VPN routes; retain disabled key identities'})
     if active and signature(active)!=signature(c):actions.append({'action':'reclassify managed outbound client connections after selector/group/order changes; incoming WAN API and probes preserved'})
+    from sdwan.vpn_egress import vpn_wans
+    from sdwan.vpn_egress import wan_flag
+    for w in vpn_wans(c):actions.append({'action':'adopt existing VPN WAN transport and suppress automatic/pushed defaults; select with ordinary WAN policies and common SLA/conntrack','wan':w['name'],'vpn_type':w['vpn_type'],'underlays':w['underlays'],'masquerade':wan_flag(c,w,'masquerade'),'allow_selected_forward':wan_flag(c,w,'allow_selected_forward'),'credentials_changed':False})
     for identifier in selectors:actions.append({'action':'disable baseline route','menu':'ip/route','id':identifier})
     for item in c.get('disable_fasttrack',[]):actions.append({'action':'disable FastTrack','menu':'ip/firewall/filter','id':item['.id']})
     for w in c['wans']:
@@ -149,10 +176,16 @@ def apply(router,c,expected,*,timeout=120):
     run=ROOT/'runtime';run.mkdir(exist_ok=True)
     snapshot={m:router.call(m) for m in ('system/identity','ip/route','routing/rule','routing/table','tool/netwatch','system/scheduler','system/script','ip/firewall/mangle','ip/firewall/filter','ip/firewall/address-list','ip/settings')}
     (run/f'pre-native-{stamp}.json').write_text(json.dumps(snapshot,indent=2)+'\n')
-    output=bundle(c,ROOT/'build')
-    policy=next(p['name'] for p in c['policies'] if not p['source'])
-    token=start(router,output,expected,revision=c['revision'],default_policy=policy,timeout=timeout)
-    result=wait(router,token,expected,timeout=timeout)
+    # Multiple routers can be configured concurrently. Each transaction needs
+    # its own sealed local payload until every file has been uploaded.
+    (ROOT/'build').mkdir(exist_ok=True)
+    default=next(p for p in c['policies'] if not p['source']);policy=default['name']
+    modes={w['name']:w.get('admin_state','enabled') for w in c['wans']}
+    allow_no_default=all(modes[wan] in ('drain','down') for wan in default['wans'])
+    with tempfile.TemporaryDirectory(prefix='deploy-',dir=ROOT/'build') as directory:
+        output=bundle(c,Path(directory))
+        token=start(router,output,expected,revision=c['revision'],default_policy=policy,timeout=timeout,allow_no_default=allow_no_default)
+        result=wait(router,token,expected,timeout=timeout)
     if previous_backend=='container' and c.get('controller_backend')!='container':
         from sdwan.container_runtime import deactivate
         deactivate(router)
@@ -170,9 +203,11 @@ def rollback(router,expected,*,timeout=120):
     from sdwan.deployment import start,wait
     if router.call('system/identity')['name']!=expected:raise ValueError('Router identity changed')
     cfg=load(ROOT/'config/sdwan.json')
-    output=bundle(cfg,ROOT/'build/rollback-package')
-    token=start(router,output,expected,operation='rollback',timeout=timeout)
-    result=wait(router,token,expected,timeout=timeout)
+    (ROOT/'build').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='rollback-',dir=ROOT/'build') as directory:
+        output=bundle(cfg,Path(directory))
+        token=start(router,output,expected,operation='rollback',timeout=timeout)
+        result=wait(router,token,expected,timeout=timeout)
     from sdwan.container_runtime import deactivate
     deactivate(router)
     print(json.dumps({'baseline_restored':True,'deployment':result},indent=2))
