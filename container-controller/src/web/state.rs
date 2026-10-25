@@ -67,6 +67,19 @@ impl<'de,T:Deserialize<'de>,const N:usize> Deserialize<'de> for List<T,N>{
 pub enum Quality {Healthy,Degraded,Down,Recovering,#[default] #[serde(other)] Unknown}
 impl Quality {fn code(self)->u8{match self{Self::Unknown=>0,Self::Healthy=>1,Self::Degraded=>2,Self::Down=>3,Self::Recovering=>4}}}
 #[derive(Clone,Debug,Deserialize)] pub struct State {pub state:Quality}
+#[derive(Clone,Copy,Debug,Default,Deserialize,Serialize,PartialEq,Eq)]
+#[serde(rename_all="lowercase")]
+pub enum AdminMode {#[default] Enabled,Drain,Down,#[serde(other)] Unknown}
+#[derive(Clone,Debug,Deserialize)]
+#[serde(default)]
+pub struct Maintenance {pub configured:AdminMode,pub effective:AdminMode,pub admit:bool,pub elapsed_seconds:Option<u32>,pub timeout_seconds:Option<u32>}
+impl Default for Maintenance {fn default()->Self{Self{configured:AdminMode::Enabled,effective:AdminMode::Enabled,admit:true,elapsed_seconds:None,timeout_seconds:None}}}
+#[derive(Clone,Debug,Default,Deserialize)]
+#[serde(default)]
+pub struct VpnTransport {pub underlay:Text<31>,pub transport_ready:bool}
+#[derive(Clone,Debug,Default,Deserialize)]
+#[serde(default)]
+pub struct OverlaySample {pub wan:Text<31>,pub cost:u16,pub healthy:bool,pub probe_up:bool,pub sample_age_seconds:Option<u64>,pub good_windows:u64,pub bad_windows:u64,pub reason:Text<64>}
 #[derive(Clone,Debug,Default,Deserialize)]
 #[serde(default)]
 pub struct Sample {
@@ -88,6 +101,9 @@ pub struct Update {
     #[serde(default)] pub selected:Map<Text<31>,64>,
     #[serde(default)] pub states:Map<State,1024>,
     #[serde(default)] pub events:List<NativeEvent,100>,
+    #[serde(default)] pub maintenance:Map<Maintenance,16>,
+    #[serde(default)] pub vpn_egress:Map<VpnTransport,16>,
+    #[serde(default)] pub overlay:Map<OverlaySample,16>,
 }
 impl Update {
     pub fn parse(raw:&str)->Result<Self,()> {
@@ -96,6 +112,8 @@ impl Update {
         let ident=|s:&str|!s.is_empty()&&s.len()<=31&&s.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||b"_-".contains(&c));
         if value.samples.0.keys().chain(value.selected.0.keys()).any(|s|!ident(s)) || value.states.0.keys().any(|s|s.split_once('/').is_none_or(|(a,b)|!ident(a)||!ident(b))) {return Err(());}
         if value.samples.0.values().any(|s|s.loss_basis_points.is_some_and(|n|n>10000)){return Err(());}
+        if value.maintenance.0.keys().chain(value.vpn_egress.0.keys()).chain(value.overlay.0.keys()).any(|s|!ident(s)) || value.vpn_egress.0.values().any(|v|!v.underlay.0.is_empty()&&!ident(&v.underlay.0)) || value.overlay.0.values().any(|v|!v.wan.0.is_empty()&&!ident(&v.wan.0)) {return Err(());}
+        if value.maintenance.0.values().any(|m|m.timeout_seconds.is_some_and(|n|n>86400)){return Err(());}
         Ok(value)
     }
 }
@@ -117,7 +135,9 @@ pub fn rate(now:u64,old:u64,elapsed:Duration)->Option<u64>{
     pub observed_seconds:u64,pub unhealthy_seconds:u64,
 }
 #[derive(Clone,Serialize)] pub struct Policy {pub name:String,pub selected:String,pub transitions:u64}
-#[derive(Clone,Serialize)] pub struct Current {pub uptime_seconds:u64,pub revision:String,pub actor:&'static str,pub profile:String,pub wans:Vec<Wan>,pub policies:Vec<Policy>,pub qualities:BTreeMap<String,Quality>}
+#[derive(Clone,Serialize)] pub struct Transport {pub name:String,pub configured:AdminMode,pub effective:AdminMode,pub admit:bool,pub elapsed_seconds:Option<u32>,pub timeout_seconds:Option<u32>,pub vpn_underlay:Option<String>,pub vpn_ready:Option<bool>}
+#[derive(Clone,Serialize)] pub struct OverlayPath {pub name:String,pub wan:String,pub cost:u16,pub healthy:bool,pub probe_up:bool,pub sample_age_seconds:Option<u64>,pub good_windows:u64,pub bad_windows:u64,pub reason:String}
+#[derive(Clone,Serialize)] pub struct Current {pub uptime_seconds:u64,pub revision:String,pub actor:&'static str,pub profile:String,pub wans:Vec<Wan>,pub policies:Vec<Policy>,pub qualities:BTreeMap<String,Quality>,pub transports:Vec<Transport>,pub overlay:Vec<OverlayPath>}
 #[derive(Clone,Serialize)] pub struct Status {
     pub schema:u8,pub epoch:u64,pub age_seconds:Option<u64>,pub stale:bool,pub current:Option<Current>,
     pub sample_seconds:u64,pub history_capacity:usize,pub history_points:usize,pub events:usize,
@@ -202,7 +222,12 @@ impl Store {
         }
         let actor=if value.backend.0=="container" {if value.container.as_ref().is_some_and(|b|b.active){"container"}else{"routeros-fallback"}}else{"routeros"};
         if let Some(from)=self.current.as_ref().map(|c|c.actor).filter(|old|*old!=actor){self.event(Event{seq:0,uptime_seconds:value.uptime_seconds,kind:"actor".into(),policy:String::new(),from:from.into(),to:actor.into(),reason:"Observed controller mode changed".into()});}
-        self.current=Some(Current{uptime_seconds:value.uptime_seconds,revision:text(&value.revision.0,api_secret,web_secret,320),actor,profile:self.profile.clone(),wans:current_wans,policies,qualities});
+        let transports=value.samples.0.keys().map(|name|{
+            let m=value.maintenance.0.get(name).cloned().unwrap_or_default();let vpn=value.vpn_egress.0.get(name);
+            Transport{name:name.clone(),configured:m.configured,effective:m.effective,admit:m.admit,elapsed_seconds:m.elapsed_seconds,timeout_seconds:m.timeout_seconds,vpn_underlay:vpn.map(|v|text(&v.underlay.0,api_secret,web_secret,31)),vpn_ready:vpn.map(|v|v.transport_ready)}
+        }).collect();
+        let overlay=value.overlay.0.iter().map(|(name,v)|OverlayPath{name:name.clone(),wan:text(&v.wan.0,api_secret,web_secret,31),cost:v.cost,healthy:v.healthy,probe_up:v.probe_up,sample_age_seconds:v.sample_age_seconds,good_windows:v.good_windows,bad_windows:v.bad_windows,reason:text(&v.reason.0,api_secret,web_secret,64)}).collect();
+        self.current=Some(Current{uptime_seconds:value.uptime_seconds,revision:text(&value.revision.0,api_secret,web_secret,320),actor,profile:self.profile.clone(),wans:current_wans,policies,qualities,transports,overlay});
         self.observer_available=counters.is_some();self.last_uptime=Some(value.uptime_seconds);if sample{self.last_sample=Some(value.uptime_seconds);}
     }
     pub fn status(&self,now:Instant)->Status {
@@ -224,6 +249,22 @@ impl Store {
         assert!(Update::parse(&format!(r#"{{"uptime_seconds":1,"revision":"x","samples":{{{names}}}}}"#)).is_err());
         assert!(Update::parse(r#"{"uptime_seconds":1,"revision":"x","samples":{"wan1":{},"wan1":{}}}"#).is_err());
         assert!(Update::parse(&"x".repeat(MAX_RAW+1)).is_err());
+    }
+    #[test] fn optional_network_rows_are_bounded_and_legacy_empty_arrays_remain_valid(){
+        for field in ["maintenance","vpn_egress","overlay"] {
+            let rows=(0..17).map(|n|format!("\"path{n}\":{{}}" )).collect::<Vec<_>>().join(",");
+            assert!(Update::parse(&format!(r#"{{"uptime_seconds":1,"revision":"x","{field}":{{{rows}}}}}"#)).is_err());
+            assert!(Update::parse(&format!(r#"{{"uptime_seconds":1,"revision":"x","{field}":[]}}"#)).is_ok());
+        }
+        assert!(Update::parse(r#"{"uptime_seconds":1,"revision":"x","vpn_egress":{"vpn1":{"underlay":"bad/name"}}}"#).is_err());
+        assert!(Update::parse(r#"{"uptime_seconds":1,"revision":"x","maintenance":{"wan1":{"timeout_seconds":86401}}}"#).is_err());
+    }
+    #[test] fn optional_network_export_is_current_only_and_excludes_unknown_secrets(){
+        let raw=r#"{"uptime_seconds":1,"revision":"x","samples":{"vpn1":{}},"maintenance":{"vpn1":{"configured":"drain","effective":"drain","admit":false,"elapsed_seconds":5,"timeout_seconds":30}},"vpn_egress":{"vpn1":{"underlay":"wan2","transport_ready":true,"private-key":"must-not-appear"}},"overlay":{"hub-wan1":{"wan":"wan1","healthy":true,"probe_up":true,"sample_age_seconds":1,"cost":10,"reason":"api-secret","password":"must-not-appear"}}}"#;
+        let start=Instant::now();let mut store=Store::new("default".into(),5,12);store.ingest(Update::parse(raw).unwrap(),start,None,"api-secret","");
+        let current=store.status(start).current.unwrap();assert_eq!(current.transports[0].configured,AdminMode::Drain);assert!(!current.transports[0].admit);assert_eq!(current.transports[0].vpn_underlay.as_deref(),Some("wan2"));assert_eq!(current.transports[0].vpn_ready,Some(true));assert!(current.overlay[0].healthy);
+        let safe=serde_json::to_string(&current).unwrap();assert!(!safe.contains("must-not-appear")&&!safe.contains("api-secret"));assert!(store.export().history.wans.values().all(|points|points.len()==1));
+        store.ingest(update(2),start+Duration::from_secs(1),None,"","");assert!(store.status(start).current.unwrap().overlay.is_empty());
     }
     #[test] fn history_is_bounded_and_epoch_reset_discards_old_rows(){
         let start=Instant::now();let mut s=Store::new("default".into(),5,12);

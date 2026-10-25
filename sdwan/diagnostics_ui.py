@@ -20,6 +20,8 @@ class DiagnosticsPanel(ttk.Frame):
         self.wans=self.table('Каналы WAN',[('name','WAN',70),('interface','Интерфейс',130),('kind','Тип',70),('apn_profile','APN профиль',120),('address','IP',130),('gateway','Шлюз',125),('state','SLA общей политики',170),('rtt','RTT, мс',85),('jitter','Jitter, мс',85),('loss','Потери, %',85),('age','Возраст проб, с',110),('quorum','Цели / кворум',115),('reason','Причина',350)])
         self.policies=self.table('Политики и выбор WAN',[('name','Политика',130),('priority','Приоритет',90),('source','Источник',150),('match','Условия потока',350),('profile','SLA',100),('mode','Режим',80),('selected','Выбран WAN',110),('wans','Порядок WAN',200),('reason','Причина выбора',300)])
         self.sla=self.table('SLA и возврат',[('profile','Профиль',100),('wan','WAN',80),('state','Состояние',110),('verdict','Текущее окно',120),('good_windows','Хороших окон',110),('bad_windows','Плохих окон',110),('recover_windows_remaining','Окон до возврата',130),('hold_remaining_seconds','Hold-down, с',110),('reason','Причина',400)])
+        self.transports=self.table('WAN / VPN транспорт',[('name','WAN',90),('admin_state','Режим оператора',130),('effective_admin_state','Фактический режим',150),('admission','Новые соединения',140),('retained_marks','Drain: меток',100),('drain_elapsed_seconds','Drain: прошло, с',130),('drain_timeout_seconds','Drain: лимит, с',130),('vpn_underlay','Физический WAN VPN',150),('transport_ready','Транспорт VPN готов',160)])
+        self.overlay=self.table('Филиалы: SLA путей',[('name','Путь',150),('interface','WireGuard',190),('wan','WAN',90),('cost','Стоимость OSPF',130),('healthy','Допуск OSPF по SLA',160),('ospf_state','Соседство OSPF',150),('probe_up','Внутренняя проба',140),('sample_age_seconds','Возраст проб, с',130),('good_windows','Хороших окон',120),('bad_windows','Плохих окон',120),('reason','Причина',250)])
         self.events=self.table('История переключений',[('seq','№',65),('estimated_utc','Время UTC (оценка по ПК)',210),('uptime_seconds','Uptime, с',95),('revision','Конфигурация',170),('type','Событие',95),('object','Объект',160),('from','Было',110),('to','Стало',110),('removed','Удалено CT',95),('reason','Причина',400)])
         frame=ttk.LabelFrame(self,text='Проверка нового исходящего соединения по действующей конфигурации',padding=6);frame.pack(fill='x',pady=8)
         self.flow={}
@@ -56,6 +58,12 @@ class DiagnosticsPanel(ttk.Frame):
                 if self.wans.exists(str(i)):
                     if row['sample_age_seconds'] is not None:self.wans.set(str(i),'age',f"{row['sample_age_seconds']+elapsed:.1f}")
                     if self.report['telemetry_stale']:self.wans.set(str(i),'state','Устарел');self.wans.item(str(i),tags=('bad',))
+            for i,row in enumerate(self.report.get('overlay',[])):
+                if self.overlay.exists(str(i)):
+                    if row['sample_age_seconds'] is not None:self.overlay.set(str(i),'sample_age_seconds',f"{row['sample_age_seconds']+elapsed:.1f}")
+                    if self.report['telemetry_stale']:self.overlay.item(str(i),tags=('wait',));self.overlay.set(str(i),'healthy','Устарело');self.overlay.set(str(i),'ospf_state','Устарело')
+            if self.report['telemetry_stale']:
+                for item in self.transports.get_children():self.transports.item(item,tags=('wait',))
         if self.auto.get() and now-self.last_auto>=5 and self.app.steps.select()==str(self) and not self.app.busy and self.app.connection_matches():
             self.last_auto=now;self.app.run('diagnostics')
         self.after(1000,self.tick)
@@ -68,7 +76,7 @@ class DiagnosticsPanel(ttk.Frame):
 
     def clear(self,message='Подключение изменилось. Получите свежую диагностику.'):
         self.report=None;self.active_config=None;self.received_at=None;self.summary.set(message)
-        for tree in (self.wans,self.policies,self.sla,self.events):tree.delete(*tree.get_children())
+        for tree in (self.wans,self.policies,self.sla,self.events,self.transports,self.overlay):tree.delete(*tree.get_children())
         self.flow_result.set('Нет свежих данных для объяснения потока.')
         self.detail.configure(state='normal');self.detail.delete('1.0','end');self.detail.configure(state='disabled')
 
@@ -88,9 +96,10 @@ class DiagnosticsPanel(ttk.Frame):
         self.fill(self.wans,rows)
         rows=[]
         for r in report['policies']:
-            match=', '.join(f'{key}={r[key]}' for key in ('source_group','destination','destination_group','in_interface','protocol','src_ports','dst_ports') if r.get(key) and r[key]!='any')
+            match=', '.join(f'{key}={r[key]}' for key in ('source_group','destination','destination_group','destination_list','in_interface','protocol','src_ports','dst_ports') if r.get(key) and r[key]!='any')
             rows.append(dict(r,source=r.get('source') or 'Все остальные',priority=r.get('priority','после явных'),match=match or 'Любой поток',wans=' → '.join(r['wans']),_tag='bad' if r['selected']=='none' else 'good'))
         self.fill(self.policies,rows);self.fill(self.sla,[dict(r,_tag='good' if r['state']=='healthy' else 'wait' if r['state']=='recovering' else 'bad') for r in report['sla']])
+        self.fill(self.transports,[dict(r,_tag='wait' if r['effective_admin_state']!='enabled' else 'good') for r in report['wans']]);self.fill(self.overlay,[dict(r,_tag='wait' if r['stale'] else 'good' if r['healthy'] else 'bad') for r in report.get('overlay',[])])
         self.fill(self.events,[dict(r,object=r.get('policy') or r.get('wan','')) for r in reversed(report['events'])]);self.policy_detail()
 
     def policy_detail(self,event=None):

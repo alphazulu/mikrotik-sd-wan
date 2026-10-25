@@ -7,9 +7,9 @@ This is a development checkpoint, not completed release acceptance.
 
 | Checks | Result |
 | --- | --- |
-| Python unit suite | 239 PASS |
+| Python unit suite | 247 PASS |
 | Existing Address List, static membership, removal, timed membership and retained TCP | 4 PASS |
-| Python/native VPN contract | 17 PASS |
+| Python/native VPN contract | 18 PASS, including rejection of L2TP FastPath |
 | Native/Python list types, explicit null, control bytes, UTF-8 byte limit | 44 PASS |
 | WireGuard real SLA / TCP / scoped conntrack / physical failover | 8 PASS |
 | L2TP/IPsec plus protected reapply | 9 PASS |
@@ -20,6 +20,11 @@ This is a development checkpoint, not completed release acceptance.
 | Full encrypted rollback after real VPN routing/dataplane mutation | 3 PASS |
 | Real server-pushed def1 rejection and protected adoption | 3 PASS |
 | Duplicate VPN source IPv4 | Both exits rejected; physical WANs remained ready |
+| Cold restart with active WireGuard egress | 3 PASS; unchanged public identity, fresh SLA, two OSPF neighbors Full |
+| WireGuard hostname and real DNS address rotation | 2 PASS; old server blocked, hostname retained, fresh VPN TCP and unrelated streams preserved |
+| Public-only key preparation against actual CHR API | 2 PASS; disabled local identity and idempotent public readback |
+| DHCP and PPPoE parent address change with VPN and private OSPF | 2 PASS per protocol; live leases, scoped transport cleanup and retained branch TCP |
+| API/native full-default route boundary | 5 PASS; enabled inactive defaults rejected, exact adoption validated |
 | Windows GUI offline | 4 PASS |
 | Windows GUI against live CHR API | 3 PASS; router configuration unchanged |
 
@@ -77,6 +82,12 @@ python tests/vpn_priority_acceptance.py --lab-root PRIVATE_ROOT
 python tests/vpn_protection_acceptance.py --lab-root PRIVATE_ROOT
 python tests/vpn_pushed_defaults_acceptance.py --lab-root PRIVATE_ROOT
 python tests/vpn_duplicate_source_acceptance.py --lab-root PRIVATE_ROOT
+python tests/vpn_restart_acceptance.py --lab-root PRIVATE_ROOT
+python tests/vpn_dns_acceptance.py --lab-root PRIVATE_ROOT
+python tests/overlay_key_acceptance.py --lab-root PRIVATE_ROOT
+python tests/vpn_dynamic_underlay_acceptance.py --kind dhcp --lab-root PRIVATE_ROOT
+python tests/vpn_dynamic_underlay_acceptance.py --kind pppoe --lab-root PRIVATE_ROOT
+python tests/default_route_guard_acceptance.py --lab-root PRIVATE_ROOT
 ```
 
 Tests use nonblocking ownership locks and restore their configuration/fixtures.
@@ -84,8 +95,13 @@ Check existing processes and reports before running; never duplicate the fabric
 or a long soak. Do not run live GUI assertions during a test that temporarily
 changes fixture clients.
 
-Still pending: endpoint DNS/rebinding and cold active-VPN restart, dynamic
-underlay/NAT rebinding, further native ownership/baseline checks, new Rust/scratch
+One repeated DHCP run observed an incomplete initial forwarded TCP handshake;
+the instrumented rerun passed. Additional flow diagnostics are now captured on
+failure. Treat repeatability under sustained fault/reapply cycles as pending,
+rather than inferring long-term stability from individual passing runs.
+
+Still pending: additional endpoint/PPP DNS/rebinding cases, sustained dynamic
+underlay/NAT fault cycles, further native ownership/baseline checks, new Rust/scratch
 container parity and bounded web diagnostics, full branch overlay GUI/hardening,
 resource checks and the single final48–72h soak. Duplicate source addresses require
 an independently validated VRF layout; VRF support is not claimed here. The

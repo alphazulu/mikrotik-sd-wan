@@ -4,6 +4,7 @@ from datetime import datetime,timezone,timedelta
 import json
 import re
 from .policies import match_flow,ordered,conflicts
+from .overlay import health as overlay_health
 
 REASONS={'within SLA':'В пределах SLA','SLA threshold exceeded':'Превышен порог SLA','probe quorum unavailable':'Нет кворума контрольных целей','stale probe telemetry':'Измерения устарели','address/session changed: waiting for fresh probe generation':'Ожидание свежих проб после смены адреса/сессии','interface unavailable':'Интерфейс недоступен','ready':'Готов','first healthy WAN in policy order':'Первый исправный WAN в заданном порядке','no eligible WAN within SLA; policy fails closed':'Нет допустимого WAN по SLA; политика закрыта','degraded fallback explicitly allowed':'Разрешён резерв с нарушением SLA'}
 
@@ -20,7 +21,7 @@ def seconds(value):
 
 def view(status,config=None,*,identity='',version='',router_uptime=None,router_addresses=()):
     status=dict(status)
-    for key in ('samples','selected','states','policies','last_cleanup'):
+    for key in ('samples','selected','states','policies','last_cleanup','maintenance','draining_marks','vpn_egress','overlay'):
         if not isinstance(status.get(key),dict):status[key]={}
     config=config or {};now=status.get('uptime_seconds',0);age=max(0,(router_uptime if router_uptime is not None else now)-now)
     health=config.get('health',{});limit=health.get('stale_seconds',10)
@@ -36,6 +37,12 @@ def view(status,config=None,*,identity='',version='',router_uptime=None,router_a
         spec=specs.get(name,{})
         row={k:sample.get(k) for k in ('kind','address','gateway','route_gateway','link_ready','carrier','warming','up','total','epoch','rtt_us','jitter_us','loss_basis_points','sample_age_seconds')}
         row.update(name=name,interface=sample.get('interface',spec.get('interface','')),apn_profile=sample.get('apn_profile',spec.get('apn_profile','')),stale=stale or sample.get('stale',False),reason=REASONS.get(sample.get('link_reason'),sample.get('link_reason','')),quorum=health.get('quorum'),sample_age_seconds=None if sample.get('sample_age_seconds') is None else sample['sample_age_seconds']+age)
+        maintenance=status['maintenance'].get(name,{})
+        if not isinstance(maintenance,dict):maintenance={}
+        row.update(admin_state=maintenance.get('configured',spec.get('admin_state','enabled')),effective_admin_state=maintenance.get('effective',spec.get('admin_state','enabled')),admission=maintenance.get('admit',spec.get('admin_state','enabled')=='enabled'),drain_elapsed_seconds=maintenance.get('elapsed_seconds'),drain_timeout_seconds=maintenance.get('timeout_seconds'),retained_marks=sum(1 for mark,retained in status['draining_marks'].items() if retained is True and mark.endswith(':'+name)))
+        transport=status['vpn_egress'].get(name,{})
+        if not isinstance(transport,dict):transport={}
+        if spec.get('kind')=='vpn':row.update(vpn_underlay=transport.get('underlay',''),transport_ready=transport.get('transport_ready',False))
         if row['stale']:row['reason']='Измерения устарели: '+str(row['reason'])
         result['wans'].append(row)
     for key,state in status.get('states',{}).items():
@@ -66,6 +73,14 @@ def view(status,config=None,*,identity='',version='',router_uptime=None,router_a
         row['effective']=shadow is None
         if shadow:row['reason']='Полностью перекрыта правилом '+shadow+'; '+row['reason']
         result['policies'].append(row)
+    result['overlay']=[]
+    for tunnel in config.get('overlay',{}).get('tunnels',[]) if config.get('overlay',{}).get('enabled') else []:
+        observed=status['overlay'].get(tunnel['name'],{})
+        if not isinstance(observed,dict):observed={}
+        row={k:observed.get(k) for k in ('healthy','probe_up','good_windows','bad_windows','reason')}
+        sample_age=observed.get('sample_age_seconds');sample_age=sample_age+age if isinstance(sample_age,(int,float)) else None
+        row.update(name=tunnel['name'],interface='sdwan-wg-'+tunnel['name'],wan=tunnel['wan'],cost=tunnel['cost'],sample_age_seconds=sample_age,stale=stale or sample_age is None or sample_age>overlay_health(config)['stale_seconds'],ospf_state='unknown')
+        result['overlay'].append(row)
     for event in status.get('events',[]):
         row={k:event[k] for k in ('seq','uptime_seconds','revision','type','policy','wan','from','to','reason','removed') if k in event}
         if isinstance(event.get('uptime_seconds'),(int,float)) and router_uptime is not None:
@@ -84,6 +99,14 @@ def read(router,*,include_membership=False):
     resource=router.call('system/resource')
     if isinstance(resource,list):resource=resource[0]
     result=view(status,config,identity=identity,version=resource.get('version',''),router_uptime=seconds(resource.get('uptime',0)),router_addresses=addresses)
+    if result['overlay']:
+        try:
+            neighbors=router.call('routing/ospf/neighbor/print',{'.proplist':'instance,interface,state','.query':['instance=sdwan-overlay']},'POST')
+            if not isinstance(neighbors,list) or len(neighbors)>64:raise ValueError('Overlay OSPF neighbor budget exceeded')
+            for row in result['overlay']:
+                states=sorted({n['state'] for n in neighbors if n.get('instance')=='sdwan-overlay' and n.get('interface')==row['interface'] and isinstance(n.get('state'),str)})
+                row['ospf_state']=', '.join(states) if states else 'none'
+        except (RuntimeError,ValueError):result['overlay_neighbors_unavailable']=True
     names={p['destination_list'] for p in (config or {}).get('policies',[]) if p.get('destination_list')}
     if names and include_membership:
         from .address_lists import snapshot

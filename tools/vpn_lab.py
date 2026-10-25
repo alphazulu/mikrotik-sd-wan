@@ -23,7 +23,7 @@ class VPNLab:
   for r in self.routers.values():r.close()
  def save(self):self.path.write_text(json.dumps(self.state,indent=2)+'\n')
  def add(self,node,menu,data):
-  row=self.routers[node].call(menu,dict(data,comment=TAG),'PUT');self.state['created'].append({'node':node,'menu':menu,'id':row['.id']});self.save();return row['.id']
+  done=self.routers[node].call(menu+'/add',dict(data,comment=TAG),'POST');self.state['created'].append({'node':node,'menu':menu,'id':done['ret']});self.save();return done['ret']
  def wg(self):
   if 'wireguard' in self.state['links']:print('WireGuard exit fixture already exists; reusing it');return
   a=self.routers['sitea'];h=self.routers['hub']
@@ -77,7 +77,7 @@ class VPNLab:
   for name in ('vpn-lab-ca','vpn-lab-ovpn-server'):
    assert not h.call('certificate/print',{'.proplist':'name','.query':['name='+name]},'POST'),'Unexpected certificate name collision'
   def add_certificate(data):
-   row=h.call('certificate',data,'PUT');item={'node':'hub','menu':'certificate','id':row['.id']};self.state['created'].append(item);self.save();return item
+   done=h.call('certificate/add',data,'POST');item={'node':'hub','menu':'certificate','id':done['ret']};self.state['created'].append(item);self.save();return item
   ca=add_certificate({'name':'vpn-lab-ca','common-name':'VPN CHR Lab CA','key-size':'2048','key-usage':'key-cert-sign,crl-sign','days-valid':'30'})
   h.call('certificate/sign',{'number':ca['id'],'name':'vpn-lab-ca'},'POST')
   ca['id']=h.call('certificate/print',{'.proplist':'.id','.query':['name=vpn-lab-ca']},'POST')[0]['.id'];self.save()
@@ -89,7 +89,7 @@ class VPNLab:
   self.add('hub','ppp/secret',{'name':'vpn-lab-openvpn','password':credentials[kind]['password'],'service':'ovpn','profile':'vpn-lab-openvpn'})
   self.add('hub','ip/firewall/filter',{'chain':'input','protocol':'tcp','in-interface':'ether2','dst-port':'51194','action':'accept','place-before':'0'})
   self.add('hub','ip/firewall/filter',{'chain':'forward','src-address':'10.204.4.2','out-interface':'ether2','action':'accept','place-before':'0'})
-  row=h.call('interface/ovpn-server/server',{'name':'vpn-lab-openvpn','port':'51194','mode':'ip','protocol':'tcp','default-profile':'vpn-lab-openvpn','certificate':'vpn-lab-ovpn-server','require-client-certificate':'false','auth':'sha256','cipher':'aes256-cbc','disabled':'false'},'PUT');self.state['created'].append({'node':'hub','menu':'interface/ovpn-server/server','id':row['.id']});self.save()
+  done=h.call('interface/ovpn-server/server/add',{'name':'vpn-lab-openvpn','port':'51194','mode':'ip','protocol':'tcp','default-profile':'vpn-lab-openvpn','certificate':'vpn-lab-ovpn-server','require-client-certificate':'false','auth':'sha256','cipher':'aes256-cbc','disabled':'false'},'POST');self.state['created'].append({'node':'hub','menu':'interface/ovpn-server/server','id':done['ret']});self.save()
   self.add('sitea','interface/ovpn-client',{'name':'vpn-exit-openvpn','connect-to':'198.18.100.1','port':'51194','protocol':'tcp','mode':'ip','user':'vpn-lab-openvpn','password':credentials[kind]['password'],'auth':'sha256','cipher':'aes256-cbc','verify-server-certificate':'false','add-default-route':'false','route-nopull':'false','disabled':'false'})
   self.state['links'][kind]={'interface':'vpn-exit-openvpn','vpn_type':kind,'vpn_endpoint':'198.18.100.1','underlays':['wan1','wan2']};self.save();print('OpenVPN external exit prepared; certificate private keys generated and retained on CHR')
  def status(self):

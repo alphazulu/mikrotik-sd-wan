@@ -53,8 +53,10 @@ def prepare_keys(router,requests,expected):
             name=interface_name(request)
             if any(row.get('name')==name for row in existing):continue
             # RouterOS generates the private key locally. Never supply or read it.
-            row=router.call('interface/wireguard',{'name':name,'listen-port':str(request['listen_port']),'mtu':str(request.get('mtu',1380)),'disabled':'true','comment':PREFIX+request['name']},'PUT')
-            created.append((row['.id'],name,PREFIX+request['name']))
+            # PUT in the native API adapter performs an unrestricted readback.
+            # /add returns only the identifier; inventory below selects public fields.
+            done=router.call('interface/wireguard/add',{'name':name,'listen-port':str(request['listen_port']),'mtu':str(request.get('mtu',1380)),'disabled':'true','comment':PREFIX+request['name']},'POST')
+            created.append((done['ret'],name,PREFIX+request['name']))
         rows=inventory(router);result=[]
         for request in requests:
             matches=[row for row in rows if row.get('name')==interface_name(request) and row.get('comment')==PREFIX+request['name']]

@@ -61,7 +61,10 @@
             :if (($proxy != "") && ($proxy != "::") && ($proxy != "0.0.0.0") && ($proxy != "none")) do={ :error "SSTP HTTP proxy transport is not supported" }
             :set port [$sdwanVPNGet kind=$kind id=$id field="port"]; :set protocol "tcp"
         }
-        :if ($kind = "l2tp") do={ :set ($row->"ipsec") [:tostr [$sdwanVPNGet kind=$kind id=$id field="use-ipsec"]] }
+        :if ($kind = "l2tp") do={
+            :if ([$sdwanVPNGet kind=$kind id=$id field="allow-fast-path"]) do={ :error "L2TP allow-fast-path bypasses SDWAN marks and conntrack; disable it before adoption" }
+            :set ($row->"ipsec") [:tostr [$sdwanVPNGet kind=$kind id=$id field="use-ipsec"]]
+        }
         :if ($kind = "openvpn") do={
             :if ([:tostr [$sdwanVPNGet kind=$kind id=$id field="mode"]] != "ip") do={ :error "OpenVPN exit requires routed IP mode" }
             :set port [$sdwanVPNGet kind=$kind id=$id field="port"]

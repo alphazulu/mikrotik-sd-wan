@@ -3,8 +3,9 @@
 Status: the first native overlay slice is installed on three CHRs. All four
 tunnels and eight OSPF neighbor entries are healthy. A real inner TCP stream
 survives WAN failure and failback; all-down activates a remote-LAN blackhole.
-GUI/project workflow, dynamic/ownership/rollback hardening and full acceptance
-remain in progress. This is an unreleased implementation checkpoint.
+The per-router GUI/key workflow is implemented and verified with5offline and4live
+Windows/Tk checks; see OVERLAY-GUI.md. Further ownership/rollback hardening and
+full acceptance remain in progress. This is an unreleased implementation checkpoint.
 
 ## CGNAT and the test fabric
 
@@ -38,8 +39,8 @@ service addresses. Host LAN endpoints behind each branch are10.201.N.2.
 
 ## Configuration and keys
 
-`sdwan/overlay.py` validates the proposed optional overlay block in isolation;
-it is not connected to the main JSON validator/installer yet. Roles are site
+`sdwan/overlay.py` validates the optional overlay block through the main
+JSON validator and native installer. Roles are site
 and hub; defaults: MTU1380, optional MSS clamp off, bounded inner SLA timings.
 Each tunnel declares name, underlay WAN, unique local listen port, /30 or /31
 local address, peer address, local/peer PUBLIC keys, peer prefixes and OSPF cost.
@@ -157,7 +158,7 @@ then removed. No existing OSPF objects were changed.
 
 The main validator, derived bypass objects, native installer/dataplane/controller,
 SDK payload upload and recovery manifest now include overlay support. The package
-contains9RSC+JSON. Core cleanup preserves the overlay namespace for module-owned
+contains10RSC+JSON including optional VPN egress. Core cleanup preserves the overlay namespace for module-owned
 reconciliation. Initial peer activation happens after outer pinning/NAT/firewall.
 A real failed installation restored the encrypted pre-overlay configuration and
 removed the formerly absent ninth library. The corrected installation is active
@@ -170,7 +171,7 @@ on the SAME conntrack ID after WAN1 failure, preferred-path failback and all-dow
 blackhole. Native API blackhole is an empty flag value, not the text true.
 Further required hardening: partial config/peer/endpoint changes and scoped outer
 UDP conntrack cleanup, strict native health/key bounds and foreign OSPF/interface
-list protection, default-off/disable/re-enable/full rollback, GUI/diagnostics and
+list protection, default-off/disable/re-enable/full rollback, further diagnostics and
 new container parity. Do not treat the smoke/flow checks as full release acceptance.
 
 

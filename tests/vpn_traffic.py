@@ -16,7 +16,7 @@ class VPNTraffic:
   assert self.b.call('system/identity')['name']=='sdwan-overlay-siteb';assert self.n.call('system/identity')['name']=='sdwan-overlay-nata'
   assert not self.b.call('system/script/print',{'.proplist':'name','.query':['comment='+self.prefix]},'POST'),'previous TCP fixture must not be duplicated'
   for r,iface in [(self.b,'sdwan-wg-hub-wan1'),(self.h,'sdwan-wg-sitea-wan1')]:
-   row=r.call('interface/wireguard/peers/print',{'.proplist':'.id,allowed-address','.query':['interface='+iface]},'POST')[0];value=row['allowed-address'];old=value if isinstance(value,str) else ','.join(value);self.changed.append((r,row['.id'],old));r.call('interface/wireguard/peers/'+row['.id'],{'allowed-address':old+',198.19.100.1/32,198.19.100.2/32'},'PATCH')
+   row=r.call('interface/wireguard/peers/print',{'.proplist':'.id,allowed-address','.query':['interface='+iface]},'POST')[0];value=row['allowed-address'];old=value if isinstance(value,str) else ','.join(value);self.changed.append((r,row['.id'],old));r.call('interface/wireguard/peers/set',{'.id':row['.id'],'allowed-address':old+',198.19.100.1/32,198.19.100.2/32'},'POST')
    for target in ('198.19.100.1','198.19.100.2'):self.add(r,'ip/route',{'dst-address':target+'/32','gateway':iface,'routing-table':'main','distance':'1'})
   self.add(self.h,'ip/firewall/mangle',{'chain':'prerouting','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   self.add(self.h,'ip/firewall/filter',{'chain':'forward','src-address':'10.201.2.1','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','out-interface':'sdwan-wg-sitea-wan1','action':'accept','place-before':'0'})
@@ -45,7 +45,11 @@ class VPNTraffic:
    for row in rows:
     if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return row['.id']
    time.sleep(.2)
-  raise AssertionError({'port':port,'mark':mark,'flows':rows})
+  details={}
+  for name,r in [('sitea',self.a),('siteb',self.b),('hub',self.h)]:
+   s=r.status();flows=r.call('ip/firewall/connection/print',{'.proplist':'src-address,dst-address,src-port,dst-port,tcp-state,connection-mark,seen-reply,orig-bytes,repl-bytes'},'POST');routes=r.call('ip/route/print',{'.proplist':'dst-address,gateway,active,blackhole,routing-table'},'POST')
+   details[name]={'selected':s.get('selected'),'overlay':s.get('overlay'),'flows':[x for x in flows if x.get('dst-port')==str(port)],'routes':[x for x in routes if x.get('dst-address') in ('198.19.100.1/32','10.201.1.0/24','10.201.2.0/24')]}
+  raise AssertionError({'port':port,'mark':mark,'flows':rows,'diagnostic':details})
  def assert_sessions(self,absent=(),retained=()):
   end=time.monotonic()+3
   while time.monotonic()<end:
@@ -74,7 +78,7 @@ class VPNTraffic:
    for r,menu,id in reversed(self.created):
     try:r.call(menu+'/'+id,method='DELETE')
     except RuntimeError:pass
-   for r,id,value in reversed(self.changed):r.call('interface/wireguard/peers/'+id,{'allowed-address':value},'PATCH')
+   for r,id,value in reversed(self.changed):r.call('interface/wireguard/peers/set',{'.id':id,'allowed-address':value},'POST')
   finally:
    for server in self.servers:server.shutdown();server.server_close()
    self.b.close();self.n.close()

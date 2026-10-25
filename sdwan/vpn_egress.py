@@ -5,7 +5,7 @@ from .overlay import public_key
 
 TYPES=('wireguard','l2tp','sstp','openvpn')
 MENUS={'l2tp':'interface/l2tp-client','sstp':'interface/sstp-client','openvpn':'interface/ovpn-client'}
-PPP_PROPERTIES='.id,name,disabled,running,connect-to,port,protocol,add-default-route,route-nopull,mode,use-ipsec,http-proxy'
+PPP_PROPERTIES='.id,name,disabled,running,connect-to,port,protocol,add-default-route,route-nopull,mode,use-ipsec,http-proxy,allow-fast-path'
 WG_PROPERTIES='.id,name,disabled,running,listen-port,public-key'
 PEER_PROPERTIES='.id,interface,public-key,disabled,endpoint-address,endpoint-port,current-endpoint-address,current-endpoint-port,allowed-address'
 
@@ -77,6 +77,7 @@ def binding(router,wan):
  if row.get('connect-to')!=wan['vpn_endpoint']:raise ValueError('PPP VPN endpoint changed; rediscover')
  if kind=='openvpn' and row.get('mode','ip')!='ip':raise ValueError('OpenVPN egress must use routed IP mode')
  if kind=='sstp' and row.get('http-proxy','') not in ('','::','0.0.0.0','none'):raise ValueError('SSTP HTTP proxy transport requires a separate validated configuration; direct SSTP exits only')
+ if kind=='l2tp' and yes(row.get('allow-fast-path')):raise ValueError('L2TP allow-fast-path must be disabled before adoption; FastPath bypasses SD-WAN marks and conntrack')
  return {'menu':menu(kind),'id':row['.id'],'endpoint':row['connect-to'],'endpoint_port':int(row.get('port',1701 if kind=='l2tp' else 443 if kind=='sstp' else 1194)),'protocol':'udp' if kind=='l2tp' else row.get('protocol','tcp'),'add_default_route':row.get('add-default-route'),'route_nopull':row.get('route-nopull'),'ipsec':row.get('use-ipsec','no')}
 
 
@@ -101,6 +102,7 @@ def inventory(router):
     if kind=='openvpn' and row.get('mode','ip')!='ip':continue
     item['vpn_endpoint']=row.get('connect-to','')
     if kind=='sstp' and row.get('http-proxy','') not in ('','::','0.0.0.0','none'):item['unsupported_reason']='SSTP через HTTP proxy пока не поддерживается'
+    if kind=='l2tp' and yes(row.get('allow-fast-path')):item['unsupported_reason']='Отключите allow-fast-path на L2TP перед добавлением в SD-WAN'
    if item['vpn_endpoint']:result.append(item)
  return result
 

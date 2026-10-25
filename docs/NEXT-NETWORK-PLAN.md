@@ -71,7 +71,7 @@ the existing SD-WAN continuation; preserve unrelated owner-paused schedules.
 
 ## Implementation checkpoint (2026-10-25)
 
-- 213 Python tests and 13 Rust base /28 Rust web tests pass. Drain has six real-CHR TCP
+- 247 Python tests and 13 Rust base /30 Rust web tests pass. Drain has six real-CHR TCP
   acceptance cases plus3 single-WAN closure cases: existing/new flows, strict policy, cancellation, emergency
   retirement after selection moved, deadline, and subsequent channel failure.
 - Strict HTTP uses two RAM-only Fetch workers with separate deadline guards.
@@ -99,9 +99,17 @@ The owner also requests optional external VPN egress through existing WireGuard,
 L2TP, SSTP and OpenVPN clients. Destination matching uses an existing MikroTik
 Address List, with VPN-first priorities, declared backups and native SLA-based
 failover/failback in the same SD-WAN engine. Default off; no external controller.
-Implementation and protocol acceptance are pending; see VPN-EGRESS-PLAN.md.
+Native core and GUI are implemented; protocol, protection, DNS and dynamic-parent
+checks are recorded in VPN-EGRESS-VALIDATION.md. Full acceptance is still pending.
 
 The first native overlay slice is now active on all3 lab routers: four healthy
 tunnels,8 Full neighbor entries, real inner TCP survival across failure/failback
 and exact remote-prefix blackhole with both underlays down. Additional hardening,
 GUI/project workflow, external VPN egress and the final long soak remain pending.
+
+Current GUI checkpoint: per-router topology editing, local disabled WireGuard key
+preparation and public-only exchange,5offline+4live Windows/Tk checks. Native/API
+full-default guard5checks, DHCP/PPPoE parent changes2each, active VPN cold restart3,
+WireGuard hostname rotation2 PASS. Bounded current drain/VPN/overlay web rows have
+30 Rust web tests and3offline Chromium checks; six scratch archives are built.
+Actual new-image CHR parity and native overlay hardening remain before the final soak.

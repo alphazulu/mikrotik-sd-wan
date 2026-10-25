@@ -25,9 +25,12 @@ def main():
  add('default off baseline',before)
  for label,change in [('disabled with VPN',lambda c:c['vpn_egress'].update(enabled=False)),('typed flag',lambda c:c['vpn_egress'].update(enabled='true')),('explicit null',lambda c:c['vpn_egress'].update(enabled=None)),('secret option',lambda c:c['vpn_egress'].update(password='forbidden-placeholder')),('parent cycle',lambda c:c['wans'][-1].update(underlays=['vpn1'])),('duplicate parent',lambda c:c['wans'][-1].update(underlays=['wan1','wan1'])),('no parent',lambda c:c['wans'][-1].update(underlays=[])),('default VPN',lambda c:c['policies'][0].update(wans=['vpn1'])),('unscoped VPN policy',lambda c:c['policies'][-1].pop('destination_list')),('source snapshot',lambda c:c['wans'][-1].update(address='10.204.1.2')),('changed exit key',lambda c:c['wans'][-1].update(vpn_peer_public_key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=')),('recursive endpoint',lambda c:c['wans'][-1].update(vpn_endpoint='10.201.2.10'))]:
   c=seed();change(c);add(label,c)
- payload=json.dumps(cases,separators=(',',':'));assert len(payload.encode())<60000
  try:
   assert not r.call('system/script/print',{'.proplist':'name','.query':['name='+name]},'POST'),'Existing contract test must not be duplicated'
+  assert not r.call('interface/l2tp-client/print',{'.proplist':'.id','.query':['name=vpn-fastpath-contract']},'POST'),'Existing FastPath fixture must not be duplicated'
+  done=r.call('interface/l2tp-client/add',{'name':'vpn-fastpath-contract','connect-to':'198.18.100.1','user':'disabled-contract-fixture','disabled':'true','allow-fast-path':'true','use-ipsec':'no','comment':name},'POST');created.append(('interface/l2tp-client',done['ret']))
+  c=seed('l2tp');c['wans'][-1]['interface']='vpn-fastpath-contract';add('L2TP FastPath bypass rejected',c)
+  payload=json.dumps(cases,separators=(',',':'));assert len(payload.encode())<60000
   for filename,body in [('vpn-validation-library.rsc',(ROOT/'native/sdwan-vpn.rsc').read_text()),('vpn-validation-cases.json',payload)]:r.upload(filename,body);files.append(filename)
   for row in r.call('system/script/environment/print',{'.proplist':'.id','.query':['name=sdwanVPNValidationJSON']},'POST'):r.call('system/script/environment/'+row['.id'],method='DELETE')
   source='''/system/scheduler/disable [/system/scheduler/find where name="vpn-validation-acceptance"]

@@ -48,6 +48,43 @@ $sdwanValidatePolicyLists cfg=$cfg
     /import file-name=($dir . "sdwan-vpn.rsc")
     $sdwanVPNValidate cfg=$cfg
 }
+# Manual imports must enforce the same default-route boundary as API preflight.
+# Include enabled inactive routes: they can become active after an SLA closure.
+:foreach rid in=[/ip/route/find where dst-address=0.0.0.0/0 and routing-table=main] do={
+    :if (![/ip/route/get $rid disabled]) do={
+        :local adopted false
+        :local comment [/ip/route/get $rid comment]
+        :if ($comment ~ "^sdwan:v1:") do={ :set adopted true }
+        :foreach tag in=($cfg->"takeover_route_comments") do={ :if ($tag = $comment) do={ :set adopted true } }
+        :foreach selector in=($cfg->"takeover_routes") do={
+            :if (([:tostr $rid] = [:tostr ($selector->".id")]) && ([:tostr [/ip/route/get $rid gateway]] = ($selector->"gateway")) && (($selector->"dst-address") = "0.0.0.0/0") && (($selector->"routing-table") = "main") && (![/ip/route/get $rid dynamic])) do={ :set adopted true }
+        }
+        :if ((!$adopted) && [/ip/route/get $rid dynamic]) do={
+            :foreach w in=($cfg->"wans") do={
+                :local kind ($w->"kind")
+                :local iface ($w->"interface")
+                :local gateway [:tostr [/ip/route/get $rid gateway]]
+                :local at [:find $gateway "@"]
+                :if ([:typeof $at] != "nil") do={ :set gateway [:pick $gateway 0 $at] }
+                :local bound false
+                :local vrfInterface [:tostr [/ip/route/get $rid vrf-interface]]
+                :if ($vrfInterface = $iface) do={ :set bound true }
+                :foreach field in={"gateway";"immediate-gw"} do={
+                    :local value [:tostr [/ip/route/get $rid $field]]
+                    :local suffix [:find $value "@"]
+                    :if ([:typeof $suffix] != "nil") do={ :set value [:pick $value 0 $suffix] }
+                    :if ($value = $iface) do={ :set bound true }
+                    :if ([:len $value] > [:len $iface]) do={ :if ([:pick $value ([:len $value] - [:len $iface] - 1) [:len $value]] = ("%" . $iface)) do={ :set bound true } }
+                }
+                :if (($kind = "dhcp") && [/ip/route/get $rid dhcp] && ($vrfInterface = $iface)) do={ :set adopted true }
+                :if (($kind = "pppoe") && ($gateway = $iface)) do={ :set adopted true }
+                :if (($kind = "vpn") && [/ip/route/get $rid vpn] && $bound) do={ :set adopted true }
+                :if (($kind = "lte") && [/ip/route/get $rid modem] && $bound) do={ :set adopted true }
+            }
+        }
+        :if (!$adopted) do={ :error "undeclared default route would bypass SDWAN SLA" }
+    }
+}
 :foreach splitPrefix in={0.0.0.0/1;128.0.0.0/1} do={
     # Dynamic RIB rows are omitted by where disabled=no on7.24.5 even when
     # get disabled is false. Filter that flag after finding the prefix instead.

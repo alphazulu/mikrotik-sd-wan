@@ -189,6 +189,7 @@ class App(tk.Tk):
         for label,cmd in [('План изменений','plan'),('Подготовить контейнер','container-prepare'),('Установить на MikroTik','apply'),('Состояние','status'),('Журнал решений','events'),('Откат к исходному','rollback')]:
             button=ttk.Button(operations,text=label,command=lambda c=cmd:self.run(c));button.pack(side='left',padx=4);self.op_buttons.append(button);self.action_buttons[cmd]=button
         ttk.Button(operations,text='VPN по Address List',command=self.vpn_configure).pack(side='left',padx=4)
+        ttk.Button(operations,text='Филиалы WG/OSPF',command=self.overlay_configure).pack(side='left',padx=4)
         self.tabs=ttk.Notebook(self.review);self.tabs.pack(fill='both',expand=True)
         self.diagnostics=DiagnosticsPanel(self.steps,self);self.steps.add(self.diagnostics,text='Диагностика')
         self.log=tk.Text(self,height=8,font=('Consolas',10),wrap='word');self.log.pack(fill='both',padx=8,pady=6)
@@ -313,6 +314,13 @@ class App(tk.Tk):
             dialog=VPNDialog(self,self.collect(),self.inventory)
             if dialog.result:self.render_config(dialog.result)
         except (ValueError,KeyError) as error:messagebox.showerror('VPN-egress',str(error),parent=self)
+    def overlay_configure(self):
+        if self.busy:return
+        try:
+            from overlay_gui import OverlayDialog
+            dialog=OverlayDialog(self,self.collect(),Table,RecordDialog)
+            if dialog.result:self.render_config(dialog.result)
+        except (ValueError,KeyError) as error:messagebox.showerror('Филиальный overlay',str(error),parent=self)
     def load(self,path):
         self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
     def collect(self):
@@ -382,7 +390,7 @@ class App(tk.Tk):
             if not dest:return
             from importlib.util import spec_from_file_location,module_from_spec
             spec=spec_from_file_location('deploy_cli',ROOT/'sdwan.py');m=module_from_spec(spec);spec.loader.exec_module(m);m.bundle(c,dest)
-            messagebox.showinfo('Готово','Созданы JSON конфигурации и восемь файлов .rsc.\nДля защищённой установки используйте кнопку установки через API; ручная процедура описана в документации.')
+            messagebox.showinfo('Готово',f'Созданы JSON конфигурации и {len(m.FILES)} файлов .rsc.\nДля защищённой установки используйте кнопку установки через API; ручная процедура описана в документации.')
         except Exception as e:messagebox.showerror('Экспорт',str(e))
     def run(self,command):
         if self.busy:return

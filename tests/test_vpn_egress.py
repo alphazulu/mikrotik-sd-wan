@@ -39,4 +39,11 @@ class VPNTests(unittest.TestCase):
     if path=='interface/wireguard/print':return [{'.id':'*1','listen-port':'51911'}]
     return [{'.id':'*2','public-key':KEY,'endpoint-address':'198.51.100.20','endpoint-port':'51820','allowed-address':'10.201.0.0/16'}]
   with self.assertRaisesRegex(ValueError,'0.0.0.0/0'):binding(Router(),config()['wans'][-1])
+ def test_l2tp_fastpath_rejected_without_changing_client_settings(self):
+  class Router:
+   def call(self,path,data,method):
+    assert path=='interface/l2tp-client/print' and method=='POST' and 'allow-fast-path' in data['.proplist']
+    return [{'.id':'*1','connect-to':'198.51.100.20','allow-fast-path':'true'}]
+  c=config();w=c['wans'][-1];w['vpn_type']='l2tp'
+  with self.assertRaisesRegex(ValueError,'allow-fast-path'):binding(Router(),w)
 if __name__=='__main__':unittest.main()
