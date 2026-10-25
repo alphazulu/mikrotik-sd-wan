@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 import time
+import tempfile
 
 from sdwan.config import load, objects
 from sdwan.router import Router
@@ -149,10 +150,16 @@ def apply(router,c,expected,*,timeout=120):
     run=ROOT/'runtime';run.mkdir(exist_ok=True)
     snapshot={m:router.call(m) for m in ('system/identity','ip/route','routing/rule','routing/table','tool/netwatch','system/scheduler','system/script','ip/firewall/mangle','ip/firewall/filter','ip/firewall/address-list','ip/settings')}
     (run/f'pre-native-{stamp}.json').write_text(json.dumps(snapshot,indent=2)+'\n')
-    output=bundle(c,ROOT/'build')
-    policy=next(p['name'] for p in c['policies'] if not p['source'])
-    token=start(router,output,expected,revision=c['revision'],default_policy=policy,timeout=timeout)
-    result=wait(router,token,expected,timeout=timeout)
+    # Multiple routers can be configured concurrently. Each transaction needs
+    # its own sealed local payload until every file has been uploaded.
+    (ROOT/'build').mkdir(exist_ok=True)
+    default=next(p for p in c['policies'] if not p['source']);policy=default['name']
+    modes={w['name']:w.get('admin_state','enabled') for w in c['wans']}
+    allow_no_default=all(modes[wan] in ('drain','down') for wan in default['wans'])
+    with tempfile.TemporaryDirectory(prefix='deploy-',dir=ROOT/'build') as directory:
+        output=bundle(c,Path(directory))
+        token=start(router,output,expected,revision=c['revision'],default_policy=policy,timeout=timeout,allow_no_default=allow_no_default)
+        result=wait(router,token,expected,timeout=timeout)
     if previous_backend=='container' and c.get('controller_backend')!='container':
         from sdwan.container_runtime import deactivate
         deactivate(router)
@@ -170,9 +177,11 @@ def rollback(router,expected,*,timeout=120):
     from sdwan.deployment import start,wait
     if router.call('system/identity')['name']!=expected:raise ValueError('Router identity changed')
     cfg=load(ROOT/'config/sdwan.json')
-    output=bundle(cfg,ROOT/'build/rollback-package')
-    token=start(router,output,expected,operation='rollback',timeout=timeout)
-    result=wait(router,token,expected,timeout=timeout)
+    (ROOT/'build').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='rollback-',dir=ROOT/'build') as directory:
+        output=bundle(cfg,Path(directory))
+        token=start(router,output,expected,operation='rollback',timeout=timeout)
+        result=wait(router,token,expected,timeout=timeout)
     from sdwan.container_runtime import deactivate
     deactivate(router)
     print(json.dumps({'baseline_restored':True,'deployment':result},indent=2))

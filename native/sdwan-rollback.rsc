@@ -6,6 +6,11 @@
 :local n 0
 :while (([/system/script/job/print count-only where script="sdwan-controller"] > 0) && ($n < 50)) do={ :delay 100ms; :set n ($n + 1) }
 :if ([/system/script/job/print count-only where script="sdwan-controller"] > 0) do={ :error "controller still busy" }
+:global sdwanStrictCancel
+/import file-name=($dir . "sdwan-links.rsc")
+/system/scheduler/remove [/system/scheduler/find where name="sdwan-strict-dispatch" and comment="sdwan:v1:strict"]
+$sdwanStrictCancel
+/system/script/remove [/system/script/find where comment="sdwan:v1:strict"]
 :local backup [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=($dir . "sdwan-backup.json")] contents]]
 :foreach tag,disabled in=($backup->"routes") do={ /ip/route/set [/ip/route/find where comment=$tag] disabled=$disabled }
 :foreach id,disabled in=($backup->"rules") do={ :if ([:len [/routing/rule/find where .id=$id]] > 0) do={ /routing/rule/set $id disabled=$disabled } }

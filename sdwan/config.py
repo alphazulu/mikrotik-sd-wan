@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from .wan import addressing_kind
 from .policies import EXTRA_FIELDS, composite, validate_selectors
+from .probes import STRICT_FIELDS,MAX_STRICT_PROBES,validate_probe,native_type,http_codes,requires_fetch
 
 IDENT = re.compile(r'^[a-z][a-z0-9_-]{0,30}$')
 PROBE_IDENT = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
@@ -30,7 +31,12 @@ def validate(c):
     need(type(c.get('schema_version')) is int and c['schema_version'] == 1, 'schema_version must be 1')
     need(isinstance(c.get('revision'), str) and 0 < len(c['revision']) <= 80, 'revision must be a short string')
     h = c['health']
-    keys(h,('interval_seconds','timeout_ms','packet_count','packet_interval_ms','quorum','fail_windows','recover_windows','hold_down_seconds','stale_seconds'),'health')
+    timing=('interval_seconds','timeout_ms','packet_count','packet_interval_ms','quorum','fail_windows','recover_windows','hold_down_seconds','stale_seconds')
+    keys(h,timing+('strict_probe_interval_seconds','strict_probe_timeout_ms'),'health',timing)
+    strict_interval=h.get('strict_probe_interval_seconds',10)
+    strict_timeout=h.get('strict_probe_timeout_ms',2000)
+    need(type(strict_interval) is int and 5<=strict_interval<=300,'strict_probe_interval_seconds must be 5..300')
+    need(type(strict_timeout) is int and 100<=strict_timeout<=2000,'strict_probe_timeout_ms must be 100..2000')
     for k in ('interval_seconds', 'timeout_ms', 'packet_count', 'packet_interval_ms', 'quorum', 'fail_windows', 'recover_windows', 'hold_down_seconds', 'stale_seconds'):
         need(type(h[k]) is int and 0 <= h[k] <= 100000, f'health.{k} must be a nonnegative integer')
     need(all(h[k] > 0 for k in ('interval_seconds','timeout_ms','packet_count','packet_interval_ms','quorum','fail_windows','recover_windows')), 'probe timing and windows must be positive')
@@ -51,10 +57,13 @@ def validate(c):
             need(val <= 2147483647 and abs(val-round(val))<1e-7,f'{name}.{key} has unsupported precision/range')
     wans = c['wans']
     need(isinstance(wans,list) and 1 <= len(wans) <= 16, '1..16 WANs required')
-    names=set(); interfaces=set(); tables=set(); addresses=set()
+    names=set(); interfaces=set(); tables=set(); addresses=set(); strict_probes=0
     for w in wans:
-        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile'),'WAN',('name','interface','probe_table','icmp_target','probes'))
+        keys(w,('name','interface','address','gateway','probe_table','icmp_target','probes','kind','apn_profile','admin_state','drain_timeout_seconds'),'WAN',('name','interface','probe_table','icmp_target','probes'))
         kind=addressing_kind(w)
+        need(w.get('admin_state','enabled') in ('enabled','drain','down'), 'WAN admin_state must be enabled, drain or down')
+        timeout=w.get('drain_timeout_seconds',300)
+        need(type(timeout) is int and 0<=timeout<=86400, 'WAN drain_timeout_seconds must be 0..86400 (0 keeps established flows without a deadline)')
         need(bool(IDENT.fullmatch(w['name'])) and w['name'] not in names, 'invalid or duplicate WAN name')
         names.add(w['name'])
         need(isinstance(w['interface'],str) and bool(re.fullmatch(r'[^\x00-\x1f\x7f]{1,64}',w['interface'])) and w['interface'] not in interfaces, 'invalid/duplicate interface')
@@ -66,10 +75,12 @@ def validate(c):
         if kind=='static':
             address=ipaddress.IPv4Address(w['address'])
             need(str(address) not in addresses, 'duplicate WAN source address'); addresses.add(str(address))
-        need(len(w['probes']) >= h['quorum'], 'quorum exceeds number of targets')
+        need(isinstance(w['probes'],list) and h['quorum']<=len(w['probes'])<=16, 'quorum exceeds targets or more than 16 probes per WAN')
         probes=set(); targets=set()
         for p in w['probes']:
-            keys(p,('name','type','host','port','dns_server'),'probe',('name','type','host'))
+            keys(p,('name','type','host','port','dns_server')+STRICT_FIELDS,'probe',('name','type','host'))
+            validate_probe(p)
+            strict_probes+=int(requires_fetch(p))
             need(isinstance(p['name'],str) and bool(PROBE_IDENT.fullmatch(p['name'])), f'Цель {p["name"]!r}: имя должно содержать латинские буквы, цифры, точки, дефисы или подчёркивания (до 128 символов)')
             need(p['name'] not in probes, f'Повторяется имя контрольной цели: {p["name"]}'); probes.add(p['name'])
             need(p['type'] in ('http-get','https-get','tcp-conn','dns'), 'unsupported probe type')
@@ -79,6 +90,9 @@ def validate(c):
             else:
                 need(type(p['port']) is int and 1 <= p['port'] <= 65535, 'invalid TCP port'); target=(p['type'],p['host'],p['port'])
             need(target not in targets, 'duplicate probe targets cannot count toward quorum'); targets.add(target)
+    need(strict_probes<=MAX_STRICT_PROBES,'At most 16 asynchronous HTTP body/path probes are supported')
+    need(((strict_probes+1)//2)*((strict_timeout+999)//1000+1)<=2*strict_interval,
+         'Strict probe schedule exceeds the bounded two-worker freshness budget')
     need(isinstance(c['policies'],list) and 1<=len(c['policies'])<=64,'1..64 policies required')
     policies=c['policies']; sources=[]; pnames=set(); defaults=0
     for p in policies:
@@ -134,7 +148,9 @@ def objects(c):
         add('routing/rule',f'sdwan:v1:pinrule:{n}',table=w['probe_table'],**({'src-address':w['address']+'/32'} if static else {}))
         add('tool/netwatch',f'sdwan:v1:icmp:{n}',host=w['icmp_target'],type='icmp',**source)
         for p in w['probes']:
-            add('tool/netwatch',f'sdwan:v1:probe:{n}:{p["name"]}',host=p['host'],type=p['type'],**source,**({'port':str(p['port'])} if 'port' in p else {'dns-server':p['dns_server']}))
+            fields={'port':str(p['port'])} if p['type']!='dns' else {'dns-server':p['dns_server']}
+            if p['type'] in ('http-get','https-get') and 'http_codes' in p and not requires_fetch(p):fields['http-codes']=http_codes(p)
+            add('tool/netwatch',f'sdwan:v1:probe:{n}:{p["name"]}',host=p['host'],type=native_type(p),**source,**fields)
     for p in c['policies']:
         for i,w in enumerate(p['wans']):
             spec=next(x for x in c['wans'] if x['name']==w)

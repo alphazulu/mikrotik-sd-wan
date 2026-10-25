@@ -20,13 +20,15 @@ from sdwan.discovery import discover
 from sdwan.wizard_ui import SetupWizard
 from sdwan.diagnostics_ui import DiagnosticsPanel
 from sdwan.policies import ordered,conflicts
+from sdwan.probes import validate_probe,STRICT_FIELDS
 from sdwan.container_config import settings as container_settings,telemetry as telemetry_settings,addresses as container_addresses
 
 BACKENDS={'Скрипт RouterOS':'routeros','Локальный контейнер Rust':'container'}
 
 ROOT=Path(__file__).resolve().parent
 PROBE_FIELDS=[('name','Имя','text'),('type','Тип',['http-get','https-get','tcp-conn','dns']),('host','IP / DNS-имя','text'),('port','Порт (кроме DNS)','int'),('dns_server','DNS-сервер (для DNS)','text')]
-WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text')]
+PROBE_FIELDS += [('http_codes','HTTP коды через запятую (необяз.)','codes'),('http_path','HTTP путь / query (необяз.)','text'),('http_expected_body','Ожидаемый body: JSON-строка (необяз.)','jsontext'),('dns_expected_ips','Ожидаемые DNS A адреса (необяз.)','csv')]
+WAN_FIELDS=[('name','Имя WAN','text'),('interface','Интерфейс RouterOS','text'),('kind','Подключение',['static','dhcp','pppoe','lte']),('apn_profile','APN профиль (LTE)','text'),('address','IP роутера (static)','text'),('gateway','Шлюз (static)','text'),('probe_table','Таблица проб sdwan-…','text'),('icmp_target','ICMP-цель за шлюзом','text'),('admin_state','Состояние WAN',['enabled','drain','down']),('drain_timeout_seconds','Drain: таймаут, с (0 = без срока)','int')]
 POLICY_FIELDS=[('name','Имя политики','text'),('source','Источник (0.0.0.0/0 = все; пусто = общая)','text'),('table','Таблица маршрутизации','text'),('profile','SLA-профиль','text'),('mode','Режим',['prefer','strict']),('wans','WAN по порядку, через запятую','csv'),('allow_degraded','Разрешить degraded, если нет healthy','bool')]
 GROUP_FIELDS=[('name','Имя группы','text'),('members','IP/подсети через запятую','csv')]
 POLICY_FIELDS += [('priority','Приоритет (меньше = раньше)','int'),('source_group','Группа источников','text'),('destination','Подсеть назначения','text'),('destination_group','Группа назначений','text'),('in_interface','Входной интерфейс / VLAN','text'),('protocol','Протокол',['any','tcp','udp','icmp']),('src_ports','Порты источника / диапазоны','text'),('dst_ports','Порты назначения / диапазоны','text')]
@@ -38,7 +40,8 @@ class RecordDialog(tk.Toplevel):
     def __init__(self,parent,title,fields,value=None,wan=False):
         super().__init__(parent);self.title(title);self.transient(parent);self.result=None;self.fields=fields;self.vars={};self.widgets={};self.wan=wan
         value=copy.deepcopy(value or {})
-        if wan:value.setdefault('kind','static')
+        if wan:
+            value.setdefault('kind','static');value.setdefault('admin_state','enabled')
         self.body=ttk.Frame(self,padding=12);self.body.pack(fill='both',expand=True)
         policy=any(key=='source_group' for key,_,_ in fields)
         if policy:
@@ -52,7 +55,8 @@ class RecordDialog(tk.Toplevel):
                 container=selectors if extra else basic;row=counts[extra];counts[extra]+=1
             ttk.Label(container,text=label).grid(row=row,column=0,sticky='w',padx=4,pady=5)
             v=value.get(key,False if kind=='bool' else 'any' if key=='protocol' else '')
-            if kind=='csv':v=', '.join(v) if isinstance(v,list) else v
+            if kind in ('csv','codes'):v=', '.join(map(str,v)) if isinstance(v,list) else v
+            if kind=='jsontext':v=json.dumps(value[key],ensure_ascii=False) if key in value else ''
             var=tk.BooleanVar(value=v) if kind=='bool' else tk.StringVar(value=str(v))
             self.vars[key]=var
             if isinstance(kind,list):widget=ttk.Combobox(container,textvariable=var,values=kind,state='readonly',width=35)
@@ -84,18 +88,29 @@ class RecordDialog(tk.Toplevel):
             d={}
             for key,_,kind in self.fields:
                 val=self.vars[key].get()
+                if key in STRICT_FIELDS and val=='':continue
                 if kind in ('int','float'):
                     if val=='':continue
                     val=int(val) if kind=='int' else float(val)
-                elif kind=='csv':val=[v.strip() for v in val.split(',') if v.strip()]
+                elif kind in ('csv','codes'):
+                    val=[v.strip() for v in val.split(',') if v.strip()]
+                    if kind=='codes':val=[int(v) for v in val]
+                elif kind=='jsontext':val=json.loads(val)
                 elif kind!='bool':val=val.strip()
                 d[key]=val
             if self.wan:
                 d['probes']=self.probe_table.rows
                 if d['kind']!='static':d.pop('address',None);d.pop('gateway',None)
                 if d['kind']!='lte':d.pop('apn_profile',None)
-            if d.get('type')=='dns':d.pop('port',None)
-            elif 'type' in d:d.pop('dns_server',None)
+            if d.get('type')=='dns':
+                d.pop('port',None)
+                for key in STRICT_FIELDS:
+                    if key.startswith('http_'):d.pop(key,None)
+            elif 'type' in d:
+                d.pop('dns_server',None);d.pop('dns_expected_ips',None)
+                if d['type']=='tcp-conn':
+                    for key in STRICT_FIELDS:d.pop(key,None)
+            if 'type' in d:validate_probe(d)
             self.result=d;self.destroy()
         except ValueError as e:messagebox.showerror('Значение',str(e),parent=self)
 
@@ -117,7 +132,7 @@ class Table(ttk.Frame):
     def refresh(self):
         if self.is_policy:self.rows=ordered({'policies':self.rows})
         self.tree.delete(*self.tree.get_children())
-        for i,row in enumerate(self.rows):self.tree.insert('',tk.END,iid=str(i),values=[', '.join(row.get(k,[])) if isinstance(row.get(k),list) else row.get(k,'') for k,_,_ in self.fields])
+        for i,row in enumerate(self.rows):self.tree.insert('',tk.END,iid=str(i),values=[', '.join(map(str,row.get(k,[]))) if isinstance(row.get(k),list) else row.get(k,'') for k,_,_ in self.fields])
     def add(self):
         d=RecordDialog(self,'Добавить',self.dialog_fields(),wan=self.wan)
         if d.result:self.rows.append(d.result);self.refresh()
@@ -240,6 +255,10 @@ class App(tk.Tk):
         health=ttk.Frame(self.tabs,padding=12);self.tabs.add(health,text='Контроль и возврат');self.health={}
         for row,(key,label) in enumerate(HEALTH_LABELS.items()):
             v=tk.StringVar(value=str(c['health'][key]));self.health[key]=v;ttk.Label(health,text=label).grid(row=row,column=0,sticky='w',pady=4);ttk.Entry(health,textvariable=v,width=12).grid(row=row,column=1,padx=10)
+        self.strict_health={}
+        for row,(key,label,default) in enumerate([('strict_probe_interval_seconds','Период проверки HTTP body/path, с',10),('strict_probe_timeout_ms','Таймаут HTTP body/path, мс',2000)],len(HEALTH_LABELS)):
+            v=tk.StringVar(value=str(c['health'].get(key,default)));self.strict_health[key]=(v,default)
+            ttk.Label(health,text=label).grid(row=row,column=0,sticky='w',pady=4);ttk.Entry(health,textvariable=v,width=12).grid(row=row,column=1,padx=10)
         controller=ttk.Frame(self.tabs,padding=12);self.tabs.add(controller,text='Контроллер')
         self.backend=tk.StringVar(value=next(k for k,v in BACKENDS.items() if v==c.get('controller_backend','routeros')))
         ttk.Label(controller,text='Где выполняются решения SD-WAN').grid(row=0,column=0,sticky='w',pady=5)
@@ -296,6 +315,9 @@ class App(tk.Tk):
         c['sla_profiles']={row['name']:{k:v for k,v in row.items() if k!='name'} for row in self.slas.rows}
         if len(c['sla_profiles'])!=len(self.slas.rows):raise ValueError('Повторяются имена SLA-профилей')
         c['health']={k:int(v.get()) for k,v in self.health.items()};c['revision']=self.revision.get().strip();c['local_networks']=[x.strip() for x in self.local.get('1.0','end').splitlines() if x.strip()]
+        for key,(var,default) in self.strict_health.items():
+            value=int(var.get())
+            if key in self.data['health'] or value!=default:c['health'][key]=value
         if BACKENDS[self.backend.get()]=='container':
             c['controller_backend']='container';c['container']={key:int(var.get()) if key in ('poll_ms','memory_max_bytes') else var.get().strip() for key,var in self.container_vars.items()}
             if self.telemetry_enabled.get():

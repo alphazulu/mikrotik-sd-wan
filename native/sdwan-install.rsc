@@ -9,7 +9,19 @@
 :global sdwanLTEAPNCapture
 :global sdwanLTEAPNApply
 :global sdwanPolicyExtended
+:global sdwanProbeNativeType
+:global sdwanConfigureProbe
 /import file-name=($dir . "sdwan-links.rsc")
+:global sdwanValidateStrict
+:global sdwanStrictConfigure
+$sdwanValidateStrict cfg=$cfg
+:global sdwanMaintenance
+:local checkedMaintenance [$sdwanMaintenance wans=($cfg->"wans") now=([:tonsec [/system/resource/get uptime]] / 1000000000)]
+# Refuse collisions before mutating any named worker/scheduler.
+:foreach ownedName in={"sdwan-strict-worker-0";"sdwan-strict-worker-1";"sdwan-strict-timeout-0";"sdwan-strict-timeout-1";"sdwan-strict-dispatch"} do={
+    :foreach id in=[/system/script/find where name=$ownedName] do={ :if ([/system/script/get $id comment] != "sdwan:v1:strict") do={ :error "foreign strict worker name collision" } }
+}
+:foreach id in=[/system/scheduler/find where name="sdwan-strict-dispatch"] do={ :if ([/system/scheduler/get $id comment] != "sdwan:v1:strict") do={ :error "foreign strict scheduler name collision" } }
 :if ([:tostr [/ip/firewall/connection/tracking/get enabled]] = "no") do={ :error "connection tracking must be enabled" }
 :foreach id in=[/ip/firewall/mangle/find where disabled=no] do={
     :local action [/ip/firewall/mangle/get $id action]
@@ -286,16 +298,9 @@
         :set tag ("sdwan:v1:probe:" . $wn . ":" . ($p->"name"))
         :set ($wanted->$tag) true
         :set id [/tool/netwatch/find where comment=$tag]
-        :if ([:len $id] = 0) do={ /tool/netwatch/add comment=$tag type=($p->"type") host=($p->"host") disabled=yes; :set id [/tool/netwatch/find where comment=$tag] }
-        /tool/netwatch/set $id type=($p->"type") host=($p->"host") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") start-delay=0s startup-delay=0s disabled=$unavailable
-        :if (($p->"type") = "dns") do={
-            /tool/netwatch/set $id dns-server=($p->"dns_server") record-type=A
-        } else={
-            /tool/netwatch/set $id port=($p->"port")
-            :if ((($p->"type") = "http-get") || (($p->"type") = "https-get")) do={ /tool/netwatch/set $id http-codes=200-299 thr-http-time=5s }
-            :if (($p->"type") = "https-get") do={ /tool/netwatch/set $id check-certificate=yes }
-            :if (($p->"type") = "tcp-conn") do={ /tool/netwatch/set $id thr-tcp-conn-time=5s }
-        }
+        :if ([:len $id] = 0) do={ /tool/netwatch/add comment=$tag type=[$sdwanProbeNativeType probe=$p] host=($p->"host") disabled=yes; :set id [/tool/netwatch/find where comment=$tag] }
+        /tool/netwatch/set $id type=[$sdwanProbeNativeType probe=$p] host=($p->"host") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") start-delay=0s startup-delay=0s disabled=$unavailable
+        $sdwanConfigureProbe pid=$id probe=$p
     }
 }
 :foreach policy in=($cfg->"policies") do={
@@ -357,6 +362,7 @@
 :if (($oldrule->"src-address") != "") do={ /routing/rule/disable [/routing/rule/find where src-address=($oldrule->"src-address") and table=($oldrule->"table")] }
 :if ([:typeof ($cfg->"takeover_routes")] = "array") do={ :foreach selector in=($cfg->"takeover_routes") do={ /ip/route/disable ($selector->".id") } }
 :if ([:typeof ($cfg->"disable_fasttrack")] = "array") do={ :foreach selector in=($cfg->"disable_fasttrack") do={ /ip/firewall/filter/disable ($selector->".id") } }
+$sdwanStrictConfigure cfg=$cfg
 :global sdwanStatusJSON "{\"controller\":\"initializing\"}"
 :if ([:len $scheduler] = 0) do={ /system/scheduler/add name=sdwan-controller interval=1s on-event="/system/script/run sdwan-controller" policy=read,write,policy,test,sensitive start-time=startup comment="sdwan:v1:scheduler" } else={ /system/scheduler/set $scheduler interval=1s disabled=no }
 :log warning "SDWAN native controller installed; probes warming up"
