@@ -34,17 +34,21 @@ class VPNTraffic:
   self.add(self.n,'ip/firewall/nat',{'chain':'dstnat','dst-address':'198.19.100.0/30','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'dst-nat','to-addresses':'10.78.3.2'})
   self.add(self.n,'ip/firewall/filter',{'chain':'forward','dst-address':'10.78.3.2','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   time.sleep(1) # allow RouterOS to publish the updated peer/address classifiers
- def connections(self):return self.a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,dst-address,dst-port,connection-mark,tcp-state,seen-reply,orig-bytes,repl-bytes,srcnat,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,timeout'},'POST')
+ def connections(self):return self.a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,src-port,dst-address,dst-port,connection-mark,tcp-state,seen-reply,orig-bytes,repl-bytes,srcnat,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,timeout'},'POST')
  def stream(self,port,mark,target='198.19.100.1',source='10.201.2.1',timeout=20,content_length=100000000):
   port=self.base+(port-59410)
   stop=self.stop
+  if not hasattr(self,'stream_stats'):self.stream_stats={}
+  stats={'requests':0,'active':0,'sent_bytes':0,'error':None};self.stream_stats[port]=stats
   class Handler(http.server.BaseHTTPRequestHandler):
    def log_message(self,*args):pass
    def do_GET(self):
-    self.send_response(200);self.send_header('Content-Length',str(content_length));self.end_headers()
+    stats['requests']+=1;stats['active']+=1
     try:
-     while not stop.wait(.2):self.wfile.write(b'x'*256);self.wfile.flush()
-    except (OSError,ConnectionError):pass
+     self.send_response(200);self.send_header('Content-Length',str(content_length));self.end_headers()
+     while not stop.wait(.2):self.wfile.write(b'x'*256);self.wfile.flush();stats['sent_bytes']+=256
+    except (OSError,ConnectionError) as error:stats['error']=type(error).__name__
+    finally:stats['active']-=1
   server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True;self.servers.append(server);threading.Thread(target=server.serve_forever,daemon=True).start()
   name=self.prefix+'-'+str(port);self.tasks.append(name)
   script=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address={source} output=none idle-timeout=60s }}','policy':'read,write,policy,test'})

@@ -1,6 +1,5 @@
 """Offline safety checks for the CHR-only long-running observer."""
 import contextlib
-import fcntl
 import importlib.util
 import io
 import json
@@ -11,11 +10,16 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('network_soak', ROOT / 'tools/network_soak.py')
-soak = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(soak)
+if sys.platform == 'win32':
+    soak = None
+else:
+    import fcntl
+    spec = importlib.util.spec_from_file_location('network_soak', ROOT / 'tools/network_soak.py')
+    soak = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(soak)
 
 
+@unittest.skipIf(soak is None, 'CHR soak uses POSIX locks on Linux/WSL')
 class NetworkSoakSafety(unittest.TestCase):
     def invoke(self, root, *arguments):
         with patch.object(sys, 'argv', ['network_soak.py', *arguments, '--lab-root', str(root)]):

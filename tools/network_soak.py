@@ -157,7 +157,7 @@ def main():
         state = a.status()
         return not state.get('error') and state.get('container', {}).get('active', False) == active and state.get('selected', {}).get('default') == 'wan1' and state.get('selected', {}).get('vpn-targets') == 'vpn1' and len(state.get('overlay', {})) == 2 and all(x['healthy'] for x in state['overlay'].values())
     def summarize(state):
-        return {key: state.get(key) for key in ('uptime_seconds', 'error', 'selected', 'states', 'samples', 'overlay', 'vpn_egress')}
+        return {key: state.get(key) for key in ('uptime_seconds', 'error', 'selected', 'states', 'samples', 'overlay', 'vpn_egress', 'last_cleanup', 'events')}
     def stable_native():
         deadline = time.monotonic() + 240
         stable = None
@@ -221,6 +221,8 @@ def main():
             'vpn': traffic.stream(59412, 'sdwan-out-vpn-targets:vpn1', content_length=1000000000),
             'branch': traffic.stream(59419, 'no-mark', target='10.201.1.2', content_length=1000000000),
         }
+        initial_connections = {x['.id']: x for x in traffic.connections()}
+        report['stream_tuples'] = {label: initial_connections[cid] for label, cid in streams.items()}
         # Applying the fixture may renegotiate a standby PPP tunnel. Do not
         # count startup/reconnect convergence as a measured steady-state soak.
         stable_native()
@@ -295,6 +297,7 @@ def main():
                     assert count > last_bytes.get(label, -1), label + ': TCP stream stalled'
                     last_bytes[label] = count
                 observation['tcp_reply_bytes'] = dict(last_bytes)
+                observation['http_streams'] = {port: dict(stats) for port, stats in traffic.stream_stats.items()}
                 if active:
                     data = web()
                     assert not data['stale'] and data['current']['actor'] == 'container'
@@ -328,6 +331,17 @@ def main():
     except BaseException as error:
         report['status'] = 'failed'
         report['failures'].append(type(error).__name__ + ': ' + str(error))
+        if traffic:
+            try:
+                ports = set(map(str, traffic.stream_stats))
+                report['traffic_failure'] = {
+                    'connections': [x for x in traffic.connections() if x.get('dst-port') in ports],
+                    'http_streams': {port: dict(stats) for port, stats in traffic.stream_stats.items()},
+                    'client_jobs': [x for x in traffic.b.call('system/script/job/print', {'.proplist': '.id,trace'}, 'POST') if any('/script:' + name + '/' in x.get('trace', '') for name in traffic.tasks)],
+                }
+                report.setdefault('last_status', {})['sitea'] = summarize(a.status())
+            except BaseException as diagnostic_error:
+                report['traffic_diagnostic_error'] = type(diagnostic_error).__name__
     finally:
         # Preserve failed/incomplete evidence. Never infer success from the VM's
         # uptime or the mere existence of a background process.
