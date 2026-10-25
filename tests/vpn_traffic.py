@@ -7,6 +7,28 @@ to the branch overlay control plane. All public peer ACLs are restored exactly.
 import http.server,json,threading,time
 from sdwan.router import Router
 
+def tcp_stream(baseline, rows):
+    # RouterOS API handles can change while the original TCP transfer continues.
+    # Bind to the complete original/reply tuples and policy, then require byte
+    # continuity and a single live HTTP request in the observer loop.
+    fields = ('src-address', 'src-port', 'dst-address', 'dst-port', 'reply-src-address', 'reply-src-port', 'reply-dst-address', 'reply-dst-port')
+    matches = [row for row in rows if all(row.get(key) == baseline.get(key) for key in fields) and row.get('connection-mark', 'no-mark') == baseline.get('connection-mark', 'no-mark') and row.get('tcp-state') == 'established' and row.get('seen-reply') == 'true']
+    assert len(matches) == 1, 'Original TCP tuple is missing or ambiguous'
+    current = matches[0]
+    assert all(int(current[key]) >= int(baseline[key]) for key in ('orig-bytes', 'repl-bytes')), 'Original TCP counters reset'
+    return current
+
+
+class Flow(str):
+ """Opaque compatible test token; RouterOS API IDs are not stable identities."""
+ def __new__(cls,row,stats):
+  value=super().__new__(cls,row['.id']);value.snapshot=dict(row);value.last=dict(row);value.http=stats;return value
+
+def same_path(flow,row):
+ # A renamed API handle must not make a still-present old marked path disappear.
+ fields=('src-address','src-port','dst-address','dst-port')
+ return bool(row.get('tcp-state')) and all(row.get(k)==flow.snapshot.get(k) for k in fields) and row.get('connection-mark','no-mark')==flow.snapshot.get('connection-mark','no-mark')
+
 class VPNTraffic:
  def __init__(self,fixture):
   self.fixture=fixture;self.a=fixture.routers['sitea'];self.h=fixture.routers['hub'];creds=json.loads((fixture.run/'credentials.json').read_text());self.b=Router(fixture.root,'api://127.0.0.1:55730',credentials_data=creds['siteb']);self.n=Router(fixture.root,'api://127.0.0.1:55731',credentials_data=creds['nata']);self.created=[];self.changed=[];self.servers=[];self.stop=threading.Event();self.prefix='vpn-egress-client-only';self.tasks=[];counter=fixture.run/'vpn-flow-counter.json';value=int(json.loads(counter.read_text()).get('counter',0)) if counter.exists() else 0;counter.write_text(json.dumps({'counter':value+1})+'\n');self.base=60000+(value%100)*40
@@ -56,7 +78,7 @@ class VPNTraffic:
   while time.monotonic()<end:
    rows=[x for x in self.connections() if x.get('src-address')==source and x.get('dst-port')==str(port)]
    for row in rows:
-    if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return row['.id']
+    if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return Flow(row,stats)
    time.sleep(.2)
   details={}
   for name,r in [('sitea',self.a),('siteb',self.b),('hub',self.h),('nata',self.n)]:
@@ -64,18 +86,28 @@ class VPNTraffic:
    details[name]={'firewall_counters':r.call('ip/firewall/filter/print',{'.proplist':'comment,chain,action,packets'},'POST'),'nat_counters':r.call('ip/firewall/nat/print',{'.proplist':'comment,chain,action,packets'},'POST'),'selected':s.get('selected'),'overlay':s.get('overlay'),'flows':[x for x in flows if x.get('dst-port')==str(port)],'routes':[x for x in routes if x.get('dst-address') in ('198.19.100.1/32','10.201.1.0/24','10.201.2.0/24')]}
   raise AssertionError({'port':port,'mark':mark,'flows':rows,'diagnostic':details})
  def assert_sessions(self,absent=(),retained=()):
-  end=time.monotonic()+3
+  end=time.monotonic()+3;problem={}
   while time.monotonic()<end:
-   rows={x['.id']:x for x in self.connections()}
-   if not set(absent)&rows.keys() and set(retained)<=rows.keys():break
+   rows=self.connections();unexpected=[row for flow in absent for row in rows if same_path(flow,row)];current=[]
+   try:
+    for flow in retained:
+     row=tcp_stream(flow.last,rows);assert flow.http['requests']==1 and flow.http['active']==1 and flow.http['error'] is None,'Retained HTTP request closed or restarted';current.append((flow,row))
+    if not unexpected:break
+    problem={'unexpected':unexpected}
+   except AssertionError as error:problem={'retained':str(error)}
    time.sleep(.1)
-  else:raise AssertionError({'unexpected':{id:rows[id] for id in set(absent)&rows.keys()},'missing':list(set(retained)-rows.keys()),'cleanup':self.a.status().get('last_cleanup')})
-  before={id:int(rows[id].get('repl-bytes',0)) for id in retained};end=time.monotonic()+20
+  else:raise AssertionError(dict(problem,cleanup=self.a.status().get('last_cleanup')))
+  before=[(flow,int(row['repl-bytes'])) for flow,row in current];end=time.monotonic()+20
   while time.monotonic()<end:
-   rows={x['.id']:x for x in self.connections()}
-   if all(id in rows and int(rows[id].get('repl-bytes',0))>size for id,size in before.items()):return
+   rows=self.connections();updated=[]
+   try:
+    for flow,size in before:
+     row=tcp_stream(flow.last,rows);assert int(row['repl-bytes'])>size,'Retained TCP stalled';assert flow.http['requests']==1 and flow.http['active']==1 and flow.http['error'] is None,'Retained HTTP request closed or restarted';updated.append((flow,row))
+    for flow,row in updated:flow.last=dict(row)
+    return
+   except AssertionError as error:problem={'retained':str(error)}
    time.sleep(.2)
-  raise AssertionError({'stalled':{id:rows.get(id) for id,size in before.items() if id not in rows or int(rows[id].get('repl-bytes',0))<=size},'cleanup':self.a.status().get('last_cleanup')})
+  raise AssertionError(dict(problem,cleanup=self.a.status().get('last_cleanup')))
  def close(self):
   self.stop.set()
   try:

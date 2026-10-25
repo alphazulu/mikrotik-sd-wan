@@ -23,7 +23,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests'), str(ROOT / 'tools')]
 from vpn_lab import VPNLab
-from vpn_traffic import VPNTraffic
+from vpn_traffic import VPNTraffic, tcp_stream
 from sdwan.container_runtime import paths, read_container
 from sdwan.router import Router
 from container_checks import source_digest
@@ -31,18 +31,6 @@ from container_checks import source_digest
 
 def digest(data):
     return hashlib.sha256(data.encode() if isinstance(data, str) else data).hexdigest()
-
-
-def tcp_stream(baseline, rows):
-    # RouterOS API handles can change while the original TCP transfer continues.
-    # Bind to the complete original/reply tuples and policy, then require byte
-    # continuity and a single live HTTP request in the observer loop.
-    fields = ('src-address', 'src-port', 'dst-address', 'dst-port', 'reply-src-address', 'reply-src-port', 'reply-dst-address', 'reply-dst-port')
-    matches = [row for row in rows if all(row.get(key) == baseline.get(key) for key in fields) and row.get('connection-mark', 'no-mark') == baseline.get('connection-mark', 'no-mark') and row.get('tcp-state') == 'established' and row.get('seen-reply') == 'true']
-    assert len(matches) == 1, 'Original TCP tuple is missing or ambiguous'
-    current = matches[0]
-    assert all(int(current[key]) >= int(baseline[key]) for key in ('orig-bytes', 'repl-bytes')), 'Original TCP counters reset'
-    return current
 
 
 def source_manifest():
@@ -233,8 +221,7 @@ def main():
             'vpn': traffic.stream(59412, 'sdwan-out-vpn-targets:vpn1', content_length=1000000000),
             'branch': traffic.stream(59419, 'no-mark', target='10.201.1.2', content_length=1000000000),
         }
-        initial_connections = {x['.id']: x for x in traffic.connections()}
-        report['stream_tuples'] = {label: initial_connections[cid] for label, cid in streams.items()}
+        report['stream_tuples'] = {label: flow.snapshot for label, flow in streams.items()}
         # Applying the fixture may renegotiate a standby PPP tunnel. Do not
         # count startup/reconnect convergence as a measured steady-state soak.
         stable_native()
@@ -260,6 +247,7 @@ def main():
         active = False
         writes = None
         last_bytes = {}
+        last_rows = {label: dict(row) for label, row in report['stream_tuples'].items()}
         last_handles = dict(streams)
         report['stream_handle_changes'] = {label: 0 for label in streams}
         report['wan_quality_samples'] = {}
@@ -326,7 +314,8 @@ def main():
                 assert a.read_file('sdwan-container-intent.json') == intent, 'Steady controller rewrote its persistent intent'
                 connections = traffic.connections()
                 for label, original in report['stream_tuples'].items():
-                    row = tcp_stream(original, connections)
+                    row = tcp_stream(last_rows[label], connections)
+                    last_rows[label] = dict(row)
                     count = int(row['repl-bytes'])
                     assert count > last_bytes.get(label, -1), label + ': TCP stream stalled'
                     last_bytes[label] = count

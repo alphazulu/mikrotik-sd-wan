@@ -32,7 +32,7 @@ Selected completed checks in this iteration:
 
 | Area | Verification |
 | --- | --- |
-| Python | 271 unit tests on Linux; Windows passes with five POSIX observer tests skipped |
+| Python | 273 unit tests on Linux; Windows passes with five POSIX observer tests skipped |
 | Container | 41 base Rust, 75 web Rust, 6 browser JS tests; 100% executable lines and functions per runtime file |
 | Scratch artifacts | Six static single-binary profiles: amd64, arm64, ARMv5, base/web |
 | Strict probes | 13 functional and 21 native/Python contract cases |
