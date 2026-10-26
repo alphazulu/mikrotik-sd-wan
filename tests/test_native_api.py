@@ -62,3 +62,25 @@ class NativeAPITests(unittest.TestCase):
         self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
 
 if __name__=='__main__':unittest.main()
+
+class BinaryAPITests(unittest.TestCase):
+    def test_raw_byte_reply_retains_nul_and_non_utf8_without_changing_text_mode(self):
+        data=bytes(range(256))
+        class Reply(BufferSocket):
+            def sendall(self,value):self.sent=value
+        word=b'=data='+data
+        response=sentence(['!re'])[:-1]+encode_length(len(word))+word+b'\0'+sentence(['!done'])
+        api=NativeAPI('none',1,'u','p');api.sock=Reply(response)
+        rows,done=api.command('/file/read',{'file':'test.bin','offset':0,'chunk-size':256},binary=True)
+        self.assertEqual(rows,[{'data':data}]);self.assertEqual(done,{})
+        self.assertIn(b'/file/read',api.sock.sent)
+    def test_binary_outbound_requires_explicit_opt_in(self):
+        api=NativeAPI('none',1,'u','p')
+        with self.assertRaisesRegex(ValueError,'explicit binary'):api.command('/file/set',{'contents':b'\0\xff'})
+    def test_binary_trap_is_readable_and_closes_session(self):
+        class Reply(BufferSocket):
+            def sendall(self,value):pass
+            def close(self):pass
+        api=NativeAPI('none',1,'u','p');api.sock=Reply(sentence(['!trap','=message=отказ'])+sentence(['!done']))
+        with self.assertRaisesRegex(RuntimeError,'отказ'):api.command('/bad',binary=True)
+        self.assertIsNone(api.sock)

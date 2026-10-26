@@ -74,6 +74,29 @@ class Router:
         if not isinstance(result,dict) or 'ret' not in result:raise RuntimeError('File contents unavailable; check sensitive permission: '+name)
         return result['ret']
 
+    def binary_chunks(self,name,*,max_bytes=64*1024*1024):
+        """Read a bounded file without Unicode corruption or RouterOS writes."""
+        if self.native is None:raise ValueError('Verified binary transfer requires the native API connection (api:// or apis://)')
+        if type(max_bytes) is not int or not 1<=max_bytes<=128*1024*1024:raise ValueError('Invalid binary read size limit')
+        found=self.file_entry(name)
+        if not found:raise ValueError('Router file not found: '+name)
+        value=self.call('file/get',{'number':found['.id'],'value-name':'size'},'POST')
+        size=int(value['ret'])
+        if not 0<=size<=max_bytes:raise ValueError('Router binary file exceeds allowed size')
+        offset=0
+        while offset<size:
+            amount=min(32768,size-offset)
+            rows,_=self.native.command('/file/read',{'file':found['name'],'offset':str(offset),'chunk-size':str(amount)},binary=True)
+            if len(rows)!=1 or not isinstance(rows[0].get('data'),bytes) or len(rows[0]['data'])!=amount:raise RuntimeError('Router returned a truncated or invalid binary chunk')
+            offset+=amount
+            yield rows[0]['data']
+
+    def file_digest(self,name,*,max_bytes=64*1024*1024):
+        import hashlib
+        result=hashlib.sha256()
+        for chunk in self.binary_chunks(name,max_bytes=max_bytes):result.update(chunk)
+        return result.hexdigest()
+
     def upload(self,name,text):
         if '/' not in name:name=self.storage_prefix+name
         found=self.file_entry(name)

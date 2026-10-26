@@ -34,9 +34,11 @@ def discover(router,progress=None):
     """Never invokes a mutation and never requests PPPoE passwords or user lists."""
     inventory={'captured_utc':datetime.now(timezone.utc).isoformat(),'warnings':[],'unreadable_paths':[]}
     for key,path in [('identity','system/identity'),('resource','system/resource')]:
-        value=rows(router.call(path+'/print',{'.proplist':'name' if key=='identity' else 'version,board-name,architecture-name,uptime'},'POST'))
+        value=rows(router.call(path+'/print',{'.proplist':'name' if key=='identity' else 'version,board-name,architecture-name,platform,cpu,cpu-count,cpu-frequency,cpu-load,total-memory,free-memory,total-hdd-space,free-hdd-space,uptime'},'POST'))
         if not value:raise ValueError('Router returned no '+key)
         inventory[key]=value[0]
+    from .platform_support import collect as collect_platform
+    inventory['platform_support']=collect_platform(router)
     for path,fields in FIELDS.items():
         if progress:progress(path)
         try:inventory[path]=rows(router.call(path+'/print',{'.proplist':fields},'POST'))

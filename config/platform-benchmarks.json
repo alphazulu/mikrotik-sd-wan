@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "controller_source_sha256": "0d023c5f0a8d1cecbe47ddb429359dc9f58f676d3036118a99c286acb26775ca",
+  "profiles": [],
+  "note": "No complete comparative performance profiles yet. Functional LTE and short soak checks are not capacity benchmarks. Recommendations must remain unmeasured until a matching, audited baseline/RSC/container report is added."
+}

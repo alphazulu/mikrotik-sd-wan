@@ -34,7 +34,7 @@ class NativeAPI:
             chunks.append(chunk);length-=len(chunk)
         return b''.join(chunks)
 
-    def _word(self):
+    def _word(self,binary=False):
         first=self._read(1)[0]
         if first<0x80:length=first
         elif first<0xC0:length=((first&0x3F)<<8)|self._read(1)[0]
@@ -43,28 +43,36 @@ class NativeAPI:
         elif first==0xF0:length=int.from_bytes(self._read(4),'big')
         else:raise RuntimeError('Unsupported RouterOS API control byte')
         if length>MAX_WORD:raise RuntimeError('RouterOS API response word exceeds limit')
-        return self._read(length).decode('utf-8',errors='replace') if length else ''
+        data=self._read(length) if length else b''
+        return data if binary else data.decode('utf-8',errors='replace')
 
-    def _talk(self,words):
+    def _talk(self,words,binary=False):
         payload=bytearray()
         for word in words:
-            data=word.encode('utf-8');payload.extend(encode_length(len(data)));payload.extend(data)
+            data=word if isinstance(word,bytes) else word.encode('utf-8');payload.extend(encode_length(len(data)));payload.extend(data)
         payload.append(0);self.sock.sendall(payload)
         rows=[];errors=[]
         while True:
             sentence=[]
             while True:
-                word=self._word()
+                word=self._word(binary=True) if binary else self._word()
                 if not word:break
                 sentence.append(word)
             if not sentence:continue
-            kind=sentence[0];values={}
+            kind=sentence[0].decode('ascii') if binary else sentence[0];values={}
             for word in sentence[1:]:
-                if word.startswith('='):
-                    key,_,value=word[1:].partition('=');values[key]=value
+                marker=b'=' if binary else '='
+                if word.startswith(marker):
+                    key,_,value=word[1:].partition(marker)
+                    if binary:key=key.decode('ascii')
+                    values[key]=value
             if kind=='!re':rows.append(values)
-            elif kind=='!trap':errors.append(values.get('message','API command rejected'))
-            elif kind=='!fatal':raise ConnectionError(values.get('message','RouterOS API fatal error'))
+            elif kind=='!trap':
+                message=values.get('message',b'API command rejected' if binary else 'API command rejected')
+                errors.append(message.decode('utf-8',errors='replace') if binary else message)
+            elif kind=='!fatal':
+                message=values.get('message',b'RouterOS API fatal error' if binary else 'RouterOS API fatal error')
+                raise ConnectionError(message.decode('utf-8',errors='replace') if binary else message)
             elif kind=='!done':
                 if errors:raise RuntimeError('; '.join(errors))
                 return rows,values
@@ -81,18 +89,21 @@ class NativeAPI:
         except Exception:
             self.close();raise
 
-    def command(self,command,attributes=None,queries=()):
+    def command(self,command,attributes=None,queries=(),*,binary=False):
         attrs=attributes or {};words=[command]
         for k,v in attrs.items():
             if isinstance(v,bool):v='yes' if v else 'no'
             if isinstance(v,list):v=','.join(str(x) for x in v)
-            words.append('='+k+'='+str(v))
+            if isinstance(v,bytes):
+                if not binary:raise ValueError('Binary API values require explicit binary mode')
+                words.append(('='+k+'=').encode('ascii')+v)
+            else:words.append('='+k+'='+str(v))
         words.extend('?'+q for q in queries)
         with self.lock:
             try:
                 if self.sock is None:self._connect()
-                return self._talk(words)
-            except (OSError,RuntimeError):
+                return self._talk(words,binary=True) if binary else self._talk(words)
+            except (OSError,RuntimeError,UnicodeError):
                 self.close();raise
 
     def call(self,path,data=None,method=None):

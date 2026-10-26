@@ -207,6 +207,8 @@ class App(tk.Tk):
         for command,button in self.action_buttons.items():
             allowed=not self.busy and self.connection_matches() and (command not in ('plan','apply','container-prepare') or self.data is not None)
             button.configure(state='normal' if allowed else 'disabled')
+        for button in getattr(self,'platform_action_buttons',[]):
+            if button.winfo_exists():button.configure(state='normal' if not self.busy and self.connection_matches() and self.data is not None else 'disabled')
         self.connect_button.configure(state='disabled' if self.busy else 'normal')
     def load_credentials(self):
         path=filedialog.askopenfilename(filetypes=[('JSON','*.json')])
@@ -275,13 +277,33 @@ class App(tk.Tk):
         if 'container' not in c and self.inventory:
             arch=self.inventory.get('resource',{}).get('architecture-name','')
             if arch in ('arm','arm64'):params['image_file']='sdwan-controller-'+('armv5' if arch=='arm' else 'arm64')+'.tar'
+        self.auto_image_name=None
+        if 'container' not in c and self.inventory:
+            try:
+                from sdwan.provisioning import image_metadata
+                item=image_metadata(self.inventory['resource'],c)
+                params['image_file']=params['storage']+'/image-'+item['profile']+'-'+item['architecture']+'-'+item['sha256'][:12]+'.tar.gz'
+                self.auto_image_name=params['image_file']
+            except (KeyError,ValueError):pass
         self.container_vars={};self.container_entries=[]
         for row,(key,label) in enumerate([('subnet','Отдельная сеть контейнера (/30)'),('storage','Каталог данных на MikroTik'),('image_file','Архив образа на MikroTik'),('poll_ms','Интервал опроса, мс'),('memory_max_bytes','Лимит памяти, байт')],2):
             var=tk.StringVar(value=str(params[key]));self.container_vars[key]=var
             ttk.Label(controller,text=label).grid(row=row,column=0,sticky='w',pady=4)
-            entry=ttk.Entry(controller,textvariable=var,width=48);entry.grid(row=row,column=1,sticky='w',pady=4);self.container_entries.append(entry)
-        ttk.Label(controller,text='Для контейнера заранее установите пакет container и разрешите device-mode с физическим подтверждением.\nЗагрузите подходящий scratch-архив на MikroTik, затем нажмите «Подготовить контейнер» и «Установить».\nПароль отдельного API-пользователя создаётся автоматически и хранится отдельно от образа и JSON. Сеть контейнера добавляется в локальные сети.',wraplength=1050).grid(row=8,columnspan=2,sticky='w',pady=10)
+            if key=='storage':
+                from sdwan.platform_support import storage_options
+                options=storage_options((self.inventory or {}).get('resource',{}),(self.inventory or {}).get('platform_support',{}))
+                entry=ttk.Combobox(controller,textvariable=var,values=[option['path'] for option in options],width=46)
+            else:entry=ttk.Entry(controller,textvariable=var,width=48)
+            entry.grid(row=row,column=1,sticky='w',pady=4);self.container_entries.append(entry)
+        self.platform_info=tk.StringVar(value='Платформа и готовность ещё не проверены.')
+        ttk.Label(controller,textvariable=self.platform_info,wraplength=1050).grid(row=8,columnspan=2,sticky='w',pady=8)
+        actions=ttk.Frame(controller);actions.grid(row=9,columnspan=2,sticky='w')
+        self.platform_action_buttons=[]
+        for label,callback in [('Проверить готовность',lambda:self.run('readiness')),('Подготовить пакеты и функции',lambda:self.run('device-prepare')),('Применить рекомендацию',self.use_recommendation)]:
+            button=ttk.Button(actions,text=label,command=callback);button.pack(side='left',padx=4);self.platform_action_buttons.append(button)
+        ttk.Label(controller,text='Для контейнера конфигуратор проверяет платформу, пакет и device-mode, загружает и проверяет scratch-образ, создаёт сеть и отдельного API-пользователя.\nУстановка пакета потребует перезагрузки. Изменение device-mode подтверждается физически; после подтверждения повторите проверку.\nПредпочтителен подходящий внешний накопитель. Автоматическая подготовка не форматирует диски и не включает запись статистики на flash.',wraplength=1050).grid(row=10,columnspan=2,sticky='w',pady=8)
         self.backend.trace_add('write',self.backend_changed)
+        self.container_vars['storage'].trace_add('write',lambda *args:self.update_auto_image())
         web=ttk.Frame(self.tabs,padding=12);self.tabs.add(web,text='Веб и статистика')
         telemetry=telemetry_settings(c);self.telemetry_enabled=tk.BooleanVar(value=telemetry['enabled'])
         self.telemetry_check=ttk.Checkbutton(web,text='Включить веб-интерфейс и RAM-статистику в локальном контейнере',variable=self.telemetry_enabled,command=self.telemetry_changed)
@@ -359,12 +381,47 @@ class App(tk.Tk):
         else:
             c.pop('controller_backend',None);c.pop('container',None)
         return validate(c)
+    def update_auto_image(self):
+        if not getattr(self,'auto_image_name',None) or self.container_vars['image_file'].get()!=self.auto_image_name:return
+        try:
+            from sdwan.provisioning import image_metadata
+            cfg={'container':{'telemetry':{'enabled':self.telemetry_enabled.get() if hasattr(self,'telemetry_enabled') else False}}}
+            item=image_metadata((self.inventory or {}).get('resource',{}),cfg)
+            name=self.container_vars['storage'].get().strip()+'/image-'+item['profile']+'-'+item['architecture']+'-'+item['sha256'][:12]+'.tar.gz'
+            self.container_vars['image_file'].set(name);self.auto_image_name=name
+        except (KeyError,ValueError):pass
+
+    def platform_summary(self,resource=None,capabilities=None,report=None):
+        from sdwan.platform_support import assess
+        resource=resource or (self.inventory or {}).get('resource',{})
+        capabilities=capabilities or (self.inventory or {}).get('platform_support',{})
+        if report is None:
+            cfg=copy.deepcopy(self.data or {})
+            cfg['controller_backend']=BACKENDS[self.backend.get()]
+            try:cfg['container']={key:int(var.get()) if key in ('poll_ms','memory_max_bytes') else var.get().strip() for key,var in self.container_vars.items()}
+            except ValueError:return
+            catalog=json.loads((ROOT/'config/platform-benchmarks.json').read_text())
+            report=assess(resource,capabilities,cfg,catalog)
+        self.platform_recommendation=report['recommendation']
+        def memory(value):
+            try:return str(round(int(value)/1048576,1))+' MiB'
+            except (ValueError,TypeError):return 'неизвестно'
+        blocked=[row['key'] for row in report['checks'] if row['state']!='ready']
+        self.platform_info.set(str(resource.get('board-name','Неизвестная модель'))+' · '+str(resource.get('architecture-name','?'))+' · CPU '+str(resource.get('cpu-count','?'))+' · RAM свободно '+memory(resource.get('free-memory'))+' из '+memory(resource.get('total-memory'))+'\n'+('Пакеты, функции и ресурсы доступны; перед установкой проверьте план.' if not blocked else 'Требует подготовки: '+', '.join(blocked))+ '\n'+report['recommendation']['reason'])
+
+    def use_recommendation(self):
+        self.platform_summary()
+        wanted=self.platform_recommendation['backend']
+        self.backend.set(next(label for label,value in BACKENDS.items() if value==wanted))
+
     def backend_changed(self,*args):
+        if hasattr(self,'platform_info'):self.platform_summary()
         state='normal' if BACKENDS.get(self.backend.get())=='container' else 'disabled'
         for widget in self.container_entries:widget.configure(state=state)
         if hasattr(self,'telemetry_check'):
             self.telemetry_check.configure(state=state);self.telemetry_changed(update_image=False)
     def telemetry_changed(self,update_image=True):
+        if update_image:self.update_auto_image()
         enabled=self.telemetry_enabled.get();container=BACKENDS.get(self.backend.get())=='container'
         for widget in self.telemetry_entries:widget.configure(state='normal' if enabled and container else 'disabled')
         self.telemetry_check.configure(state='normal' if container else 'disabled')
@@ -405,7 +462,7 @@ class App(tk.Tk):
         if self.busy:return
         try:
             if not self.connection_matches():raise ValueError('Подключитесь к MikroTik и получите его настройки.')
-            config=self.collect() if command in ('plan','apply','container-prepare','web-token') else None
+            config=self.collect() if command in ('plan','apply','container-prepare','web-token','readiness','device-prepare') else None
             values=self.connection_values();expected=self.inventory['identity']['name'];self.busy=True;self.refresh_buttons()
             self.log.insert('end',f'\n--- {command} ---\n');self.log.see('end')
             def work():
@@ -415,11 +472,26 @@ class App(tk.Tk):
                     if router.call('system/identity')['name']!=expected:raise ValueError('Имя подключённого роутера изменилось; получите настройки заново.')
                     spec=importlib.util.spec_from_file_location('sdwan_deploy_cli',ROOT/'sdwan.py');cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
                     with contextlib.redirect_stdout(output):
-                        if command=='plan':print(json.dumps(cli.preflight(router,config,expected),indent=2,ensure_ascii=False))
-                        elif command=='apply':cli.apply(router,config,expected)
+                        if command in ('readiness','plan','apply'):
+                            from sdwan.platform_support import assess,collect
+                            resource=router.call('system/resource');capabilities=collect(router)
+                            report=assess(resource,capabilities,config,json.loads((ROOT/'config/platform-benchmarks.json').read_text()))
+                            if command=='readiness':
+                                self.messages.put(('platform-readiness',(values,resource,capabilities,report)));return
+                            print(json.dumps({'readiness':report},indent=2,ensure_ascii=False))
+                            if not report['ready']:raise ValueError('Устройство требует подготовки. Смотрите результаты проверки и кнопку «Подготовить пакеты и функции».')
+                            if command=='plan':print(json.dumps(cli.preflight(router,config,expected),indent=2,ensure_ascii=False))
+                            else:
+                                if config.get('controller_backend')=='container':
+                                    from sdwan.provisioning import prepare_container
+                                    print(json.dumps(prepare_container(router,config,expected),indent=2,ensure_ascii=False))
+                                cli.apply(router,config,expected)
                         elif command=='container-prepare':
-                            from sdwan.container_runtime import prepare
-                            print(json.dumps(prepare(router,config,expected),indent=2,ensure_ascii=False))
+                            from sdwan.provisioning import prepare_container
+                            print(json.dumps(prepare_container(router,config,expected),indent=2,ensure_ascii=False))
+                        elif command=='device-prepare':
+                            from sdwan.provisioning import prepare_device
+                            print(json.dumps(prepare_device(router,config,expected,progress=lambda message:self.messages.put(('progress',message))),indent=2,ensure_ascii=False))
                         elif command=='web-token':
                             from sdwan.container_runtime import paths,check_ready
                             if not telemetry_settings(config)['enabled']:raise ValueError('Веб-интерфейс выключен.')
@@ -464,6 +536,14 @@ class App(tk.Tk):
             elif kind=='diagnostics_error':
                 values,error=payload
                 if values==self.connection_values():self.diagnostics.clear('Не удалось обновить диагностику: '+error)
+            elif kind=='platform-readiness':
+                values,resource,capabilities,report=payload
+                if self.connection_matches() and values==self.connection_values():
+                    self.inventory['resource']=resource;self.inventory['platform_support']=capabilities
+                    self.platform_summary(resource,capabilities,report)
+                    self.log.insert('end',json.dumps(report,indent=2,ensure_ascii=False)+'\n');self.log.see('end')
+            elif kind=='progress':
+                self.busy=True;self.log.insert('end',payload+'\n');self.log.see('end')
             elif kind=='operation':
                 output,code=payload;self.log.insert('end',output+f'\nКод завершения: {code}\n');self.log.see('end')
             elif kind=='web-token':
