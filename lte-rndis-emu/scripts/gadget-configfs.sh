@@ -10,10 +10,17 @@ fail() {
     exit 3
 }
 
-if [ -r /proc/config.gz ]; then
-    if zcat /proc/config.gz | grep -q '^# CONFIG_USB_SUPPORT is not set$'; then
-        fail "CONFIG_USB_SUPPORT is not set. Not loading dummy_hcd or libcomposite. Use: python3 -m lte_rndis_emu serve --uplink IFACE"
-    fi
+# Decide before loading anything; USB host support alone does not imply gadget support.
+EMU_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if ! PYTHONPATH="$EMU_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 -c '
+from lte_rndis_emu.probe import report
+import sys
+r = report()
+p = r["decision"]["path"]
+print("gadget-configfs: probe path=" + p, file=sys.stderr)
+sys.exit(0 if p == "configfs-dummy-hcd" else 3)
+'; then
+    fail "no proven gadget UDC; no modules loaded. Use userspace usbredir."
 fi
 
 if ! command -v modprobe >/dev/null 2>&1; then

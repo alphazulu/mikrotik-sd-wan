@@ -18,7 +18,7 @@ from lte_rndis_emu.device import UsbDevice, parse_mac
 from lte_rndis_emu.probe import report
 from lte_rndis_emu.state import LteState
 from lte_rndis_emu.uplink import UplinkError, open_uplink
-from lte_rndis_emu.usbredir import Session
+from lte_rndis_emu.usbredir import ProtocolError, Session
 
 
 def _loopback(host: str) -> str:
@@ -133,6 +133,12 @@ def serve(args) -> int:
         server.bind((host, port))
     except OSError as exc:
         print(f"usbredir bind failed: {exc}", file=sys.stderr)
+        server.close()
+        uplink.close()
+        if control is not None:
+            control.shutdown()
+            control.server_close()
+            control.serve_forever_thread.join(timeout=2)
         return 2
     server.listen(1)
     server.setblocking(False)
@@ -160,24 +166,36 @@ def serve(args) -> int:
                 return True
             except OSError:
                 return False
+            if sent == 0:
+                return False
             del out[:sent]
         return True
+
+    def drop_client():
+        nonlocal client, session
+        if client is not None:
+            client.close()
+        client = None
+        session = None
+        device.usb_reset()
+        out.clear()
 
     try:
         while True:
             watch = [server]
             if client is not None:
                 watch.append(client)
-            uplink_fd = uplink.fileno()
-            if uplink_fd is not None:
-                watch.append(uplink_fd)
+            uplink_fds = (uplink.filenos() if hasattr(uplink, "filenos")
+                          else ([] if uplink.fileno() is None else [uplink.fileno()]))
+            watch.extend(uplink_fds)
             write_set = [client] if client is not None and out else []
-            readable, writable, _ = select.select(watch, write_set, [], 0.5)
+            uplink_writes = uplink.writable() if hasattr(uplink, "writable") else []
+            readable, writable, _ = select.select(watch, write_set + uplink_writes, [], 0.5)
+            if uplink_writes and any(fd in writable for fd in uplink_writes):
+                uplink.flush()
             if client is not None and client in writable:
                 if not flush():
-                    _drop_client()
-                    client = None
-                    session = None
+                    drop_client()
             if server in readable:
                 extra, addr = server.accept()
                 peer = addr[0]
@@ -211,16 +229,22 @@ def serve(args) -> int:
                     out.clear()
                 else:
                     assert session is not None
-                    session.receive(data)
+                    try:
+                        session.receive(data)
+                    except (ProtocolError, ValueError) as exc:
+                        print(f"usbredir protocol error: {exc}", file=sys.stderr)
+                        drop_client()
+                        continue
                     if not flush():
                         client.close()
                         client = None
                         session = None
                         device.usb_reset()
                         out.clear()
-            if uplink_fd is not None and uplink_fd in readable and session is not None:
+            if any(fd in readable for fd in uplink_fds):
                 for frame in uplink.drain():
-                    session.deliver_rx(frame)
+                    if session is not None:
+                        session.deliver_rx(frame)
                 if client is not None and not flush():
                     client.close()
                     client = None
@@ -236,10 +260,8 @@ def serve(args) -> int:
         uplink.close()
         if control is not None:
             control.shutdown()
-
-
-def _drop_client() -> None:
-    return None
+            control.server_close()
+            control.serve_forever_thread.join(timeout=2)
 
 
 def log_exclusive() -> None:
