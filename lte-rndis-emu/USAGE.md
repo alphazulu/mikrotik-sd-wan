@@ -18,7 +18,7 @@ python3 -m lte_rndis_emu probe
 - `configfs-dummy-hcd` — поднять `scripts/gadget-configfs.sh`, убедиться через `lsusb`, затем пробовать `usb-host`. Если libusb устройство не отдаёт, тот же гаджет отдать через `usbredirserver` на `127.0.0.1`. `usbip` с usbredir не смешивать.
 - `unproven` — остановиться и приложить вывод probe. Не угадывать путь.
 
-`scripts/gadget-configfs.sh` сам выходит с кодом 3, если `CONFIG_USB_SUPPORT` выключен.
+`scripts/gadget-configfs.sh` сначала выполняет `probe` и выходит с кодом 3 без загрузки модулей, если путь не `configfs-dummy-hcd`. Одного `CONFIG_USB_SUPPORT=y` недостаточно.
 
 ## Контракт команды
 
@@ -61,6 +61,38 @@ CHR lte  --usbredir/RNDIS-->  этот процесс  --L2-->  --uplink
 - Встречный кадр с интерфейса заворачивается в `REMOTE_NDIS_PACKET_MSG` и уходит в bulk IN.
 - IP, DHCP, NAT и DNS этот процесс не разбирает и не отвечает. Magic cookie DHCP, если он есть в кадре, уходит на uplink байт в байт.
 - Адресацию вешает агент на этот tap или дальше по мосту. Пример, не часть эмулятора: `dnsmasq` на `lte0`.
+
+### WSL без CAP_NET_ADMIN / CAP_NET_RAW
+
+EPERM при TAP или AF_PACKET остаётся ошибкой этого способа. Эмулятор не создаёт
+фиктивный `lte0`. Для такого хоста есть отдельный **реальный L2-транспорт** QEMU:
+
+```bash
+python3 -m lte_rndis_emu serve --uplink socket:127.0.0.1:24322 --gate
+```
+
+Дождаться `ready`, затем запустить виртуальный ISP с отдельной Ethernet NIC:
+
+```text
+-netdev socket,id=lte-uplink,connect=127.0.0.1:24322
+-device virtio-net-pci,netdev=lte-uplink,mac=02:12:d1:14:db:01
+```
+
+USB подключается к DUT через `qemu-args`, Ethernet — к **другой** VM (ISP).
+Порт 24322 принадлежит этому профилю; не подключать к нему действующие ISP стенда.
+Пакеты идут как Ethernet в TCP: 4 байта длины в network byte order, затем кадр.
+Принимается один loopback-клиент; частичные TCP-записи собираются, неверная длина
+отключает клиента. Буферы ограничены. Привилегии, USB/IP и модули ядра не нужны.
+
+На ISP настроить `192.0.2.1/24`, DHCP-пул `192.0.2.10-192.0.2.50`, gateway
+`192.0.2.1` и, если нужен внешний доступ, NAT через отдельный uplink ISP.
+DHCP обслуживает ISP, а не этот процесс. RouterOS создаёт для HiLink динамический
+DHCP-client через `/interface/lte/apn`; его параметры изменять через APN.
+
+При перезапуске эмулятора QEMU usbredir переподключится, если поддержан `reconnect`.
+Старый QEMU socket netdev автоматически **не переподключается**: отдельно
+перезапустить только выделенную ISP VM или пересоздать её socket netdev.
+На физическом интерфейсе прежний способ `--uplink lte0` по-прежнему требует прав.
 
 Создать tap на лабораторном хосте, где есть `ip` и `/dev/net/tun`:
 
@@ -150,11 +182,11 @@ if name == "edge" and os.environ.get("LTE_RNDIS_EMU") == "1":
 
 Не использовать `usbip` вместе с usbredir. У QEMU нет универсального `-device usbip`. `usbredirserver` оборачивает реальное устройство из libusb; пока гаджета в `lsusb` нет, запускать его незачем. `probe` сохраняет `usbredirserver --help` только если бинарник есть, и сам редирект не делает.
 
-Горячий `device_add` по QMP не проверен. Надёжный путь — аргументы до старта edge.
+Горячее добавление контроллера и устройства после старта службы проверено на отдельном x86; базовый lab использует аргументы запуска. Надёжный путь — аргументы до старта edge.
 
 ## Критерии по шагам
 
-1. На хосте QEMU интерфейс uplink существует (`ip link show lte0`). Если `ip tuntap` или `AF_PACKET` возвращают EPERM, записать ошибку и остановиться. Это не заменяется успешным `enumerate`.
+1. Для AF_PACKET интерфейс существует (`ip link show lte0`); EPERM означает отказ этого способа. Для явно выбранного `socket:` проверить реальный Ethernet с отдельным ISP. Наличие `enumerate` не заменяет передачу кадров ни в одном способе.
 2. `enumerate` или, на ядре с USB, `lsusb`: id `12d1:14db`, RNDIS `02/02/ff`.
 3. QEMU: монитор или QMP `info usb` показывает устройство на `xhci`. Это ещё не RouterOS.
 4. В CHR: `/system/resource/usb/print` (и `/system/resource/hardware/print detail`, если эта команда в данной версии есть). Устройство видно как USB.
@@ -169,3 +201,21 @@ if name == "edge" and os.environ.get("LTE_RNDIS_EMU") == "1":
 - Не отвечает на AT в профиле `hilink`.
 - Не эмулирует SIM, регистрацию в сети оператора и полосу радио. `imei`/`imsi` в JSON синтетические.
 - Само по себе не доказывает `/interface lte`. Это проверяется только на живом CHR по шагам выше, с сырым выводом команд.
+
+## Проверено на RouterOS 7.24.5
+
+См. [VALIDATION.md](VALIDATION.md): на отдельных x86 L6 и CHR получены настоящий
+`lte1`, DHCP через APN, ICMP и TCP через RNDIS. В этой версии команда
+`/system/resource/usb/print` отсутствует (syntax error); USB-устройство видно в
+`/system/resource/hardware/print detail without-paging where type=usb`.
+
+`lab.py` уже добавляет `qemu-args` только при `LTE_RNDIS_EMU=1` и только для `edge`.
+По умолчанию команды всех VM прежние; up/down не менялись. Не перезапускать
+чужие запущенные узлы для этой проверки. Отдельный x86 запускается по
+[X86-LAB.md](X86-LAB.md), с сохранением IDE `bus=0,unit=0,media=disk`.
+
+Ограничение HiLink: `/interface/lte/monitor lte1 once` показывает время сессии,
+но синтетические RSSI/APN/оператор из HTTP не становятся радиоданными RouterOS.
+`--gate` меняет передачу пакетов при POST регистрации; это имитация потери
+доступности для SLA, а не аппаратного отключения SIM или смены оператора.
+Тесты TAP выполняются только с явным `LTE_EMU_TAP_TEST=1`.

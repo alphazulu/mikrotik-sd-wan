@@ -48,8 +48,16 @@ class _Handler(BaseHTTPRequestHandler):
         if path != "/lte":
             self._json(404, {"error": "not found"})
             return
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 0:
+                raise ValueError("negative length")
+        except ValueError:
+            self.close_connection = True
+            self._json(400, {"error": "invalid Content-Length"})
+            return
         if length > 65536:
+            self.close_connection = True
             self._json(413, {"error": "body too large"})
             return
         raw = self.rfile.read(length) if length else b""
@@ -59,7 +67,7 @@ class _Handler(BaseHTTPRequestHandler):
         except StateError as exc:
             self._json(400, {"error": str(exc)})
             return
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self._json(400, {"error": "invalid JSON"})
             return
         self._json(200, self.server.device.snapshot())

@@ -23,10 +23,7 @@ def _config_text() -> str | None:
                 return handle.read()
         except OSError:
             return None
-    for path in sorted(os.listdir("/boot")) if os.path.isdir("/boot") else []:
-        if path.startswith("config-"):
-            return _read_text(os.path.join("/boot", path))
-    return None
+    return _read_text("/boot/config-" + os.uname().release)
 
 
 def _flag(config: str | None, name: str) -> bool | None:

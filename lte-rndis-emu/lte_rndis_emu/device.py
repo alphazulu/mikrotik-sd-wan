@@ -42,6 +42,9 @@ def parse_mac(text: str) -> bytes:
 
 
 class UsbDevice:
+    MAX_RX_PACKETS = 256
+    MAX_RX_BYTES = 1 << 20
+
     def __init__(self, identity: UsbIdentity, host_mac: bytes, state: LteState, on_tx, uplink_name: str, gate: bool):
         self.identity = identity
         self.descriptors = Descriptors(identity)
@@ -58,6 +61,7 @@ class UsbDevice:
         self.rx_pkts: deque[bytes] = deque()
         self.at_pkts: deque[bytes] = deque()
         self._out_buf = b""
+        self.rx_bytes = 0
         self._notify = False
         self._line_coding = b"\x00\xc2\x01\x00\x00\x00\x08"  # 115200 8N1
         self.counters = {"tx_frames": 0, "rx_frames": 0, "dropped": 0}
@@ -78,6 +82,7 @@ class UsbDevice:
             self.at.reset()
             self.responses.clear()
             self.rx_pkts.clear()
+            self.rx_bytes = 0
             self.at_pkts.clear()
             self._out_buf = b""
             self._notify = False
@@ -142,6 +147,8 @@ class UsbDevice:
                 return ST_STALL, b""
             if not queue:
                 return None
+            if queue is self.rx_pkts:
+                self.rx_bytes -= len(queue[0])
             if wlen < len(queue[0]):
                 queue.popleft()
                 self.counters["dropped"] += 1
@@ -155,7 +162,12 @@ class UsbDevice:
             if not self._forward_allowed_unlocked():
                 self.counters["dropped"] += 1
                 return
-            self.rx_pkts.append(wrap_ethernet(bytes(frame)))
+            packet = wrap_ethernet(bytes(frame))
+            if len(self.rx_pkts) >= self.MAX_RX_PACKETS or self.rx_bytes + len(packet) > self.MAX_RX_BYTES:
+                self.counters["dropped"] += 1
+                return
+            self.rx_pkts.append(packet)
+            self.rx_bytes += len(packet)
             self.rndis.rx_ok += 1
             self.counters["rx_frames"] += 1
 

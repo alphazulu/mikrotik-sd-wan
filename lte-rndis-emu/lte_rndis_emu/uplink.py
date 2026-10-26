@@ -94,9 +94,125 @@ class PacketUplink:
         self._sock.close()
 
 
+class SocketUplink:
+    """QEMU socket netdev: a network-order length followed by Ethernet bytes.
+
+    One loopback peer, bounded buffers, no privileges, IP or DHCP server.
+    QEMU connects using ``-netdev socket,id=lte,connect=127.0.0.1:PORT``.
+    """
+
+    MAX_FRAME = 65535
+    MAX_QUEUE = 1 << 20
+
+    def __init__(self, address: str):
+        try:
+            host, port = address.rsplit(":", 1)
+            if host != "127.0.0.1":
+                raise ValueError("only 127.0.0.1 is allowed")
+            self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server.bind((host, int(port)))
+            self.server.listen(1)
+            self.server.setblocking(False)
+        except (OSError, ValueError) as exc:
+            if hasattr(self, "server"):
+                self.server.close()
+            raise UplinkError(f"socket uplink: {exc}") from exc
+        self.name = f"socket:127.0.0.1:{self.server.getsockname()[1]}"
+        self.peer = None
+        self.rx = bytearray()
+        self.tx = bytearray()
+        self.counters = {"tx_frames": 0, "rx_frames": 0, "disconnects": 0, "invalid": 0}
+
+    def filenos(self):
+        return [self.server] + ([self.peer] if self.peer is not None else [])
+
+    def writable(self):
+        return [self.peer] if self.peer is not None and self.tx else []
+
+    def _disconnect(self):
+        if self.peer is not None:
+            self.peer.close()
+            self.peer = None
+            self.counters["disconnects"] += 1
+        self.rx.clear()
+        self.tx.clear()
+
+    def send(self, frame: bytes) -> None:
+        if self.peer is None:
+            raise OSError("socket uplink has no peer")
+        if not 14 <= len(frame) <= self.MAX_FRAME:
+            raise OSError("invalid Ethernet frame length")
+        if len(self.tx) + len(frame) + 4 > self.MAX_QUEUE:
+            raise BlockingIOError("socket uplink queue full")
+        self.tx.extend(struct.pack("!I", len(frame)) + frame)
+        self.counters["tx_frames"] += 1
+        self.flush()
+
+    def flush(self):
+        while self.peer is not None and self.tx:
+            try:
+                sent = self.peer.send(self.tx)
+                if sent == 0:
+                    raise ConnectionError("closed uplink")
+            except BlockingIOError:
+                break
+            except OSError:
+                self._disconnect()
+                break
+            del self.tx[:sent]
+
+    def drain(self) -> list[bytes]:
+        # Accept/drain even before USB attaches, so a pending peer never spins
+        # the select loop. Never retain Ethernet from a previous USB session.
+        try:
+            extra, address = self.server.accept()
+        except BlockingIOError:
+            pass
+        else:
+            if self.peer is not None or address[0] != "127.0.0.1":
+                extra.close()
+            else:
+                extra.setblocking(False)
+                self.peer = extra
+        frames = []
+        budget = self.MAX_QUEUE
+        while self.peer is not None and budget > 0:
+            try:
+                data = self.peer.recv(min(65536, budget))
+            except BlockingIOError:
+                break
+            except OSError:
+                self._disconnect()
+                break
+            if not data:
+                self._disconnect()
+                break
+            budget -= len(data)
+            self.rx.extend(data)
+            while len(self.rx) >= 4:
+                length = struct.unpack_from("!I", self.rx)[0]
+                if not 14 <= length <= self.MAX_FRAME:
+                    self.counters["invalid"] += 1
+                    self._disconnect()
+                    return frames
+                if len(self.rx) < length + 4:
+                    break
+                frames.append(bytes(self.rx[4:4 + length]))
+                del self.rx[:4 + length]
+                self.counters["rx_frames"] += 1
+        return frames
+
+    def close(self):
+        self._disconnect()
+        self.server.close()
+
+
 def open_uplink(name: str):
     if name in ("", "none"):
         return MemoryUplink()
+    if name.startswith("socket:"):
+        return SocketUplink(name[len("socket:"):])
     return PacketUplink(name)
 
 
