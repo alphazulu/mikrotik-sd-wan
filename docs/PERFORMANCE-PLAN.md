@@ -45,3 +45,56 @@
 [MikroTik Traffic Generator](https://help.mikrotik.com/docs/spaces/ROS/pages/128221376/Traffic+Generator),
 [iperf3](https://software.es.net/iperf/invoking.html),
 [TRex ASTF](https://trex-tgn.cisco.com/trex/doc/trex_astf.html).
+
+## Воспроизводимый внешний генератор
+
+`tools/performance_lab.py` предназначен только для отдельного стенда x86 L6,
+подготовленного для LTE acceptance. Это не универсальная команда для рабочего
+маршрутизатора. Драйвер проверяет имена QMP, loopback API, лицензию L6, отсутствие
+действующего SD-WAN и предыдущих тестовых объектов; занимает блокировки обоих
+стендов. Исходный лицензированный диск пользователя не используется: нужна
+рабочая копия стенда с прежней геометрией IDE
+`format=qcow2,bus=0,unit=0,media=disk`.
+
+Два Linux-генератора работают в RAM, по 1 vCPU и 384 MiB, без дисков. Основа —
+официальный Alpine virt 3.22.7 ISO с проверяемым SHA256; пакеты iperf3 проверяет
+`apk` доверенными ключами из исходного initramfs. На хосте не нужны TAP,
+AF_PACKET, root или смена ядра. Сеть данных использует QEMU TCP socket links,
+управление — фиксированные loopback QMP/serial порты 24500/24501 и 24510/24511.
+
+Драйвер временно заменяет процессы своего DUT и CHR-клиента, добавляет два
+Ethernet WAN и запускает Linux-клиента на прежнем LAN. Процессы других стендов
+не останавливаются. До изменения топологии сохраняется `recovery.json`.
+Конфигурация каждого backend устанавливается штатным защищённым механизмом и
+возвращается штатным rollback. Перед возвратом исходных QEMU аргументов RouterOS
+штатно завершает работу: мгновенный QMP quit не доказывает сохранение последних
+изменений на диске. Отсутствие тестовых объектов и L6 проверяется после загрузки.
+
+Подготовьте ISO в `<lab-root>/runtime/performance-lab/images/` и исходные launch/
+credentials файлы своего LTE-стенда. Сначала выполните короткую проверку:
+
+```bash
+python3 tools/performance_lab.py --lab-root /path/to/SD-WAN --seconds 5 --repeats 1 --smoke
+```
+
+Полная серия:
+
+```bash
+python3 tools/performance_lab.py --lab-root /path/to/SD-WAN --seconds 10 --repeats 2
+python3 tools/performance_summary.py /path/to/SD-WAN/runtime/performance-lab/runtime/comparison.json --output /path/to/SD-WAN/runtime/performance-lab/runtime/summary.json
+```
+
+Ожидаются 112 измерений: четыре проверки запаса генераторов (до и после) и по 27
+для baseline-before/RSC/контейнера/baseline-after. В каждом режиме повторяются
+TCP forward/reverse/bidir/P4 и UDP payload 64/512/1472 байт при 5/20/50 Mbit/s;
+отдельный TCP-клиент закреплён за WAN2. Оба backend дополнительно проходят
+blackhole WAN1 под TCP-нагрузкой с проверкой сохранения исходного WAN2 TCP tuple
+и передачи данных после failover/failback. Это не тест LTE-радиоканала, VPN-шифрования
+или CPS. Для них нужны отдельные сценарии.
+
+Сырые JSON, логи и версии генераторов сохраняются на хосте в частном `runtime/`.
+`comparison_complete` означает полноту серии, а не отсутствие потерь под каждой
+предложенной нагрузкой: нужно отдельно анализировать потери, SLA и выбор каналов.
+Ошибки транспорта результатов или восстановления не превращаются в успешный тест.
+Если остался `recovery.json`, повторный запуск блокируется; сначала разберите
+ошибку и восстановите свой стенд, сохранив baseline и доказательства.
