@@ -31,7 +31,7 @@ def same_path(flow,row):
 
 class VPNTraffic:
  def __init__(self,fixture):
-  self.fixture=fixture;self.a=fixture.routers['sitea'];self.h=fixture.routers['hub'];creds=json.loads((fixture.run/'credentials.json').read_text());self.b=Router(fixture.root,'api://127.0.0.1:55730',credentials_data=creds['siteb']);self.n=Router(fixture.root,'api://127.0.0.1:55731',credentials_data=creds['nata']);self.created=[];self.changed=[];self.servers=[];self.stop=threading.Event();self.prefix='vpn-egress-client-only';self.tasks=[];counter=fixture.run/'vpn-flow-counter.json';value=int(json.loads(counter.read_text()).get('counter',0)) if counter.exists() else 0;counter.write_text(json.dumps({'counter':value+1})+'\n');self.base=60000+(value%100)*40
+  self.fixture=fixture;self.a=fixture.routers['sitea'];self.h=fixture.routers['hub'];creds=json.loads((fixture.run/'credentials.json').read_text());self.b=Router(fixture.root,'api://127.0.0.1:55730',credentials_data=creds['siteb']);self.n=Router(fixture.root,'api://127.0.0.1:55731',credentials_data=creds['nata']);self.created=[];self.changed=[];self.servers=[];self.stop=threading.Event();self.prefix='vpn-egress-client-only';self.tasks=[];self.stream_specs={};self.stream_stats={};self.stream_generations={};counter=fixture.run/'vpn-flow-counter.json';value=int(json.loads(counter.read_text()).get('counter',0)) if counter.exists() else 0;counter.write_text(json.dumps({'counter':value+1})+'\n');self.base=60000+(value%100)*40
  def add(self,r,menu,data):
   if r is self.a and menu=='ip/firewall/filter' and data.get('chain')=='forward' and data.get('place-before')=='0':
    rules=r.call(menu+'/print',{'.proplist':'.id,chain,comment'},'POST');barriers=[i for i,x in enumerate(rules) if x.get('comment') in ('sdwan-container:no-forward','sdwan-container:no-forward-to-container')]
@@ -57,34 +57,73 @@ class VPNTraffic:
   self.add(self.n,'ip/firewall/filter',{'chain':'forward','dst-address':'10.78.3.2','protocol':'tcp','dst-port':f'{self.base}-{self.base+29}','action':'accept','place-before':'0'})
   time.sleep(1) # allow RouterOS to publish the updated peer/address classifiers
  def connections(self):return self.a.call('ip/firewall/connection/print',{'.proplist':'.id,src-address,src-port,dst-address,dst-port,connection-mark,tcp-state,seen-reply,orig-bytes,repl-bytes,srcnat,reply-src-address,reply-src-port,reply-dst-address,reply-dst-port,timeout'},'POST')
+ def _generation(self,spec):
+  generation=len(self.stream_generations[spec['port']])+1
+  stats={'generation':generation,'requests':0,'active':0,'sent_bytes':0,'error':None}
+  spec['stats']=stats;spec['stop']=threading.Event();spec['connections']=set()
+  self.stream_stats[spec['port']]=stats;self.stream_generations[spec['port']].append(stats)
+  return stats
  def stream(self,port,mark,target='198.19.100.1',source='10.201.2.1',timeout=20,content_length=100000000):
   port=self.base+(port-59410)
-  stop=self.stop
-  if not hasattr(self,'stream_stats'):self.stream_stats={}
-  stats={'requests':0,'active':0,'sent_bytes':0,'error':None};self.stream_stats[port]=stats
+  assert port not in self.stream_specs,'Do not duplicate an existing stream endpoint'
+  spec={'port':port,'target':target,'source':source,'lock':threading.Lock()}
+  self.stream_specs[port]=spec;self.stream_generations[port]=[];self._generation(spec)
+  owner=self
   class Handler(http.server.BaseHTTPRequestHandler):
    def log_message(self,*args):pass
    def do_GET(self):
-    stats['requests']+=1;stats['active']+=1
+    with spec['lock']:
+     stats=spec['stats'];stop=spec['stop'];connections=spec['connections']
+     stats['requests']+=1;stats['active']+=1;connections.add(self.connection)
     try:
      self.send_response(200);self.send_header('Content-Length',str(content_length));self.end_headers()
-     while not stop.wait(.2):self.wfile.write(b'x'*256);self.wfile.flush();stats['sent_bytes']+=256
+     while not owner.stop.is_set() and not stop.wait(.2):
+      self.wfile.write(b'x'*256);self.wfile.flush();stats['sent_bytes']+=256
     except (OSError,ConnectionError) as error:stats['error']=type(error).__name__
-    finally:stats['active']-=1
+    finally:
+     with spec['lock']:stats['active']-=1;connections.discard(self.connection)
   server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True;self.servers.append(server);threading.Thread(target=server.serve_forever,daemon=True).start()
-  name=self.prefix+'-'+str(port);self.tasks.append(name)
-  script=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address={source} output=none idle-timeout=60s }}','policy':'read,write,policy,test'})
-  self.b.call('system/script/run',{'number':script},'POST');end=time.monotonic()+timeout
+  name=self.prefix+'-'+str(port);self.tasks.append(name);spec['name']=name
+  spec['script']=self.add(self.b,'system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{target}:{port}/stream" src-address={source} output=none idle-timeout=60s }}','policy':'read,write,policy,test'})
+  return self._launch_stream(spec,mark,timeout)
+ def _launch_stream(self,spec,mark,timeout):
+  self.b.call('system/script/run',{'number':spec['script']},'POST')
+  if timeout is None:return None
+  end=time.monotonic()+timeout
   while time.monotonic()<end:
-   rows=[x for x in self.connections() if x.get('src-address')==source and x.get('dst-port')==str(port)]
-   for row in rows:
-    if row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark:return Flow(row,stats)
+   rows=[x for x in self.connections() if x.get('src-address')==spec['source'] and x.get('dst-port')==str(spec['port'])]
+   flow=self.find_stream(spec['port'],mark,rows)
+   if flow is not None:return flow
    time.sleep(.2)
-  details={}
-  for name,r in [('sitea',self.a),('siteb',self.b),('hub',self.h),('nata',self.n)]:
-   s=r.status();flows=r.call('ip/firewall/connection/print',{'.proplist':'src-address,dst-address,src-port,dst-port,tcp-state,connection-mark,seen-reply,orig-bytes,repl-bytes'},'POST');routes=r.call('ip/route/print',{'.proplist':'dst-address,gateway,active,blackhole,routing-table'},'POST')
-   details[name]={'firewall_counters':r.call('ip/firewall/filter/print',{'.proplist':'comment,chain,action,packets'},'POST'),'nat_counters':r.call('ip/firewall/nat/print',{'.proplist':'comment,chain,action,packets'},'POST'),'selected':s.get('selected'),'overlay':s.get('overlay'),'flows':[x for x in flows if x.get('dst-port')==str(port)],'routes':[x for x in routes if x.get('dst-address') in ('198.19.100.1/32','10.201.1.0/24','10.201.2.0/24')]}
-  raise AssertionError({'port':port,'mark':mark,'flows':rows,'diagnostic':details})
+  raise AssertionError({'port':spec['port'],'mark':mark,'flows':rows,'http_generation':dict(spec['stats']),'selected':self.a.status().get('selected')})
+ def find_stream(self,port,mark,rows):
+  spec=self.stream_specs[port];stats=spec['stats']
+  matches=[row for row in rows if row.get('src-address')==spec['source'] and row.get('dst-port')==str(port) and row.get('tcp-state')=='established' and row.get('seen-reply')=='true' and row.get('connection-mark','no-mark')==mark]
+  assert len(matches)<=1,'Replacement TCP tuple is ambiguous'
+  if matches and stats['requests']==1 and stats['active']==1 and stats['error'] is None:
+   flow=Flow(matches[0],stats);flow.port=port;return flow
+  return None
+ def stop_stream(self,flow):
+  import socket
+  spec=self.stream_specs[flow.port]
+  assert flow.http is spec['stats'],'Cannot stop a different HTTP generation'
+  # Delete only the RAM job of this pre-created script. No script/file rewrite.
+  for job in self.b.call('system/script/job/print',{'.proplist':'.id,trace'},'POST'):
+   if '/script:'+spec['name']+'/' in job.get('trace',''):
+    self.b.call('system/script/job/'+job['.id'],method='DELETE')
+  with spec['lock']:
+   spec['stop'].set()
+   for connection in list(spec['connections']):
+    try:connection.shutdown(socket.SHUT_RDWR)
+    except OSError:pass
+  end=time.monotonic()+5
+  while spec['stats']['active'] and time.monotonic()<end:time.sleep(.05)
+  assert spec['stats']['active']==0,'Retired HTTP generation did not close'
+ def restart_stream(self,flow,mark,timeout=20):
+  assert not any(same_path(flow,row) for row in self.connections()),'Prove old marked tuple retirement before restarting'
+  spec=self.stream_specs[flow.port];self.stop_stream(flow)
+  with spec['lock']:self._generation(spec)
+  return self._launch_stream(spec,mark,timeout)
  def assert_sessions(self,absent=(),retained=()):
   end=time.monotonic()+3;problem={}
   while time.monotonic()<end:

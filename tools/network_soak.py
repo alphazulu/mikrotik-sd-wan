@@ -23,7 +23,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests'), str(ROOT / 'tools')]
 from vpn_lab import VPNLab
-from vpn_traffic import VPNTraffic, tcp_stream
+from vpn_traffic import VPNTraffic, tcp_stream, same_path
+from soak_observer import EventCursor, FlowObserver, expected_selection, validate_intent
 from sdwan.container_runtime import paths, read_container
 from sdwan.router import Router
 from container_checks import source_digest
@@ -70,6 +71,8 @@ def main():
     parser.add_argument('--hours', type=float, default=48)
     parser.add_argument('--native-hours', type=float, default=24)
     parser.add_argument('--sample-seconds', type=int, default=30)
+    parser.add_argument('--control-seconds', type=float, default=2)
+    parser.add_argument('--force-smoke-failover', action='store_true', help='Drop only synthetic VPN1 probe packets in BOTH smoke phases')
     parser.add_argument('--max-rss-mib', type=int, default=32, help='Lab process RSS ceiling, not a physical-router guarantee')
     parser.add_argument('--smoke-seconds', type=int, help='Short driver check, explicitly not a release soak')
     args = parser.parse_args()
@@ -89,6 +92,10 @@ def main():
         return
     if not 5 <= args.sample_seconds <= 300:
         parser.error('sample-seconds must be 5..300')
+    if not .5 <= args.control_seconds <= 5:
+        parser.error('control-seconds must be .5..5')
+    if args.force_smoke_failover and not args.smoke_seconds:
+        parser.error('forced transitions are only allowed in a labelled smoke test')
     if args.max_rss_mib < 1:
         parser.error('max-rss-mib must be positive')
     if args.smoke_seconds:
@@ -131,6 +138,8 @@ def main():
     forwarded = False
     nat = None
     token = None
+    forced_rule = None
+    forced_phases = {}
     manifest = source_manifest()
     cli_spec = importlib.util.spec_from_file_location('network_soak_cli', ROOT / 'sdwan.py')
     cli = importlib.util.module_from_spec(cli_spec)
@@ -155,7 +164,11 @@ def main():
             connection.close()
     def ready(active):
         state = a.status()
-        return not state.get('error') and state.get('container', {}).get('active', False) == active and state.get('selected', {}).get('default') == 'wan1' and state.get('selected', {}).get('vpn-targets') == 'vpn1' and len(state.get('overlay', {})) == 2 and all(x['healthy'] for x in state['overlay'].values())
+        try:
+            choice = expected_selection(cfg, state)
+            return state.get('container', {}).get('active', False) == active and state['selected'] == choice and all(x != 'none' for x in choice.values()) and len(state.get('overlay', {})) == 2 and all(x['healthy'] for x in state['overlay'].values())
+        except (AssertionError, KeyError):
+            return False
     def summarize(state):
         return {key: state.get(key) for key in ('uptime_seconds', 'error', 'selected', 'states', 'samples', 'overlay', 'vpn_egress', 'last_cleanup', 'events')}
     def stable_native():
@@ -216,23 +229,28 @@ def main():
         traffic = VPNTraffic(v)
         traffic.prepare()
         traffic.add(a, 'ip/firewall/address-list', {'list': 'network-container-future-list', 'address': '198.19.100.1'})
+        # Startup convergence is not measured, and cannot invalidate a transfer
+        # that has not yet been created.
+        stable_native()
+        initial = a.status()['selected']
         streams = {
-            'ordinary': traffic.stream(59410, 'sdwan-out-default:wan1', target='198.19.100.2', content_length=1000000000),
-            'vpn': traffic.stream(59412, 'sdwan-out-vpn-targets:vpn1', content_length=1000000000),
+            'ordinary': traffic.stream(59410, 'sdwan-out-default:' + initial['default'], target='198.19.100.2', content_length=1000000000),
+            'vpn': traffic.stream(59412, 'sdwan-out-vpn-targets:' + initial['vpn-targets'], content_length=1000000000),
             'branch': traffic.stream(59419, 'no-mark', target='10.201.1.2', content_length=1000000000),
         }
         report['stream_tuples'] = {label: flow.snapshot for label, flow in streams.items()}
         # Applying the fixture may renegotiate a standby PPP tunnel. Do not
         # count startup/reconnect convergence as a measured steady-state soak.
-        stable_native()
         nat = a.call('ip/firewall/nat/add', {'chain': 'dstnat', 'in-interface': 'ether1', 'src-address': '10.78.1.2', 'protocol': 'tcp', 'dst-address': '10.78.1.15', 'dst-port': '58880', 'action': 'dst-nat', 'to-addresses': '172.31.255.2', 'to-ports': '8080', 'comment': 'sdwan-network-soak', 'place-before': '0'}, 'POST')['ret']
         result = v.lab.qmp('sitea', 'human-monitor-command', {'command-line': 'hostfwd_add n1 tcp:127.0.0.1:45880-10.78.1.15:58880'})
         assert not result, 'Soak observer forwarding port is occupied'
         forwarded = True
         token = a.read_file(paths(cfg)['web_token'])
         baseline_files = {}
+        configurations = {}
         for name, router in v.routers.items():
             configuration = router.read_file('sdwan-active.json')
+            configurations[name] = json.loads(configuration)
             baseline_files[name] = {'sdwan-active.json': digest(configuration)}
             with tempfile.TemporaryDirectory(prefix='network-soak-source-') as folder:
                 package = cli.bundle(json.loads(configuration), folder)
@@ -246,9 +264,13 @@ def main():
         write_json(report_path, report)
         active = False
         writes = None
-        last_bytes = {}
-        last_rows = {label: dict(row) for label, row in report['stream_tuples'].items()}
         last_handles = dict(streams)
+        cursors = {name: EventCursor(router.status(), configurations[name]) for name,router in v.routers.items()}
+        flow_observer = FlowObserver(streams, {'ordinary':'default', 'vpn':'vpn-targets'}, time.monotonic(), tcp_stream, same_path)
+        next_sample = 0
+        last_control = time.monotonic()
+        pending_intent_events = []
+        backend_claim = False
         report['stream_handle_changes'] = {label: 0 for label in streams}
         report['wan_quality_samples'] = {}
         last_uptime = {}
@@ -262,26 +284,64 @@ def main():
                     a.call('container/start', {'numbers': read_container(a)['.id']}, 'POST')
                     wait(lambda: ready(True))
                     active = True
+                    backend_claim = True
                     wait(lambda: not web()['stale'] and web()['current']['actor'] == 'container')
                     writes = web()['resources']['write_bytes']
                     # A fresh process must publish one fenced ownership claim.
                     # No-write assertions apply within each steady phase, not
                     # across that explicit controller start/instance change.
-                    next_intent = a.read_file('sdwan-container-intent.json')
-                    old_fields = json.loads(intent) if intent.strip() else {}
-                    new_fields = json.loads(next_intent)
-                    report['backend_transition'] = {
-                        'intent_before_sha256': digest(intent),
-                        'intent_after_sha256': digest(next_intent),
-                        'changed_fields': sorted(key for key in old_fields.keys() | new_fields.keys() if old_fields.get(key) != new_fields.get(key)),
-                    }
-                    intent = next_intent
                     report.update(phase='container', container_started_utc=time.time())
-                assert source_manifest() == manifest, 'Frozen runtime or fixture source changed during soak'
                 phase = 'container' if active else 'native'
+                now = time.monotonic()
+                assert now-last_control <= 20, 'Control observation gap exceeded 20s; evidence is inconclusive'
+                if args.force_smoke_failover:
+                    phase_elapsed = elapsed - (native if active else 0)
+                    forced = forced_phases.setdefault(phase, {})
+                    if phase_elapsed >= 10 and not forced:
+                        forced_rule = a.call('ip/firewall/filter/add', {'chain':'output', 'out-interface':'vpn-exit-wg', 'dst-address':'198.19.100.1', 'protocol':'tcp', 'dst-port':'58081-58083', 'action':'drop', 'comment':'sdwan-network-soak-forced', 'place-before':'0'}, 'POST')['ret']
+                        forced['failed_at_seconds'] = elapsed
+                    elif forced_rule and phase_elapsed >= 32:
+                        a.call('ip/firewall/filter/' + forced_rule, method='DELETE')
+                        forced_rule = None
+                        forced['recovered_at_seconds'] = elapsed
+                frames = {name:router.status() for name,router in v.routers.items()}
+                connections = traffic.connections()
+                verify = a.status()
+                # A cutover between status and conntrack reads needs another
+                # observation, not permission to retire an unrelated transfer.
+                if verify.get('selected') != frames['sitea'].get('selected') or verify.get('events') != frames['sitea'].get('events'):
+                    time.sleep(min(.2, args.control_seconds))
+                    continue
+                events = {}
+                for name,frame in frames.items():
+                    choice = expected_selection(configurations[name], frame)
+                    events[name] = cursors[name].advance(frame, choice)
+                    report.setdefault('last_status', {})[name] = summarize(frame)
+                flow_observer.tick(frames['sitea'], events['sitea'], connections, now, traffic)
+                report['traffic_observer'] = flow_observer.summary()
+                report['forced_transitions'] = forced_phases
+                pending_intent_events.extend(events['sitea'])
+                next_intent = a.read_file('sdwan-container-intent.json')
+                if next_intent != intent:
+                    receipt = validate_intent(intent, next_intent, cfg, frames['sitea'], pending_intent_events, backend_claim)
+                    report.setdefault('intent_transitions', []).append(dict(receipt, elapsed_seconds=elapsed, before_sha256=digest(intent), after_sha256=digest(next_intent)))
+                    intent = next_intent
+                    pending_intent_events.clear()
+                    backend_claim = False
+                    if active:
+                        writes = web()['resources']['write_bytes']
+                last_control = now
+                report['control_samples'] = report.get('control_samples', 0) + 1
+                report.update(elapsed_seconds=round(elapsed,3), checkpoint_utc=time.time())
+                write_json(report_path, report)
+                if elapsed < next_sample:
+                    time.sleep(min(args.control_seconds, max(0,total-(time.monotonic()-started))))
+                    continue
+                next_sample = elapsed + args.sample_seconds
+                assert source_manifest() == manifest, 'Frozen runtime or fixture source changed during soak'
                 observation = {'elapsed_seconds': round(time.monotonic() - started, 3), 'phase': phase, 'nodes': {}}
                 for name, router in v.routers.items():
-                    state = router.status()
+                    state = frames[name]
                     report.setdefault('last_status', {})[name] = summarize(state)
                     assert not state.get('error'), name + ': controller error'
                     assert state.get('enabled') is True, name + ': controller scheduler disabled'
@@ -289,11 +349,9 @@ def main():
                     assert len(state.get('overlay', {})) == expected and all(x['healthy'] for x in state['overlay'].values()), name + ': inner SLA closed'
                     neighbors = router.call('routing/ospf/neighbor/print', {'.proplist': 'state'}, 'POST')
                     assert sum(x.get('state', '').lower() == 'full' for x in neighbors) == expected, name + ': OSPF adjacency lost'
-                    assert state['selected']['default'] == 'wan1', name + ': unexpected default selection'
                     if name == 'sitea':
-                        assert state.get('container', {}).get('active', False) == active and state['selected']['vpn-targets'] == 'vpn1', 'Unexpected active backend or preferred VPN'
+                        assert state.get('container', {}).get('active', False) == active, 'Unexpected active backend'
                         assert len(state['states']) == 4, 'One of four WAN SLA reports is missing'
-                        assert all(state['states']['default/' + wan]['state'] == 'healthy' for wan in ('wan1', 'vpn1')), 'A selected WAN resource SLA closed'
                         for key, detail in state['states'].items():
                             counts = report['wan_quality_samples'].setdefault(key, {})
                             quality = detail['state']
@@ -311,22 +369,10 @@ def main():
                     observation['nodes'][name] = {'selected': state['selected'], 'resources': resource, 'full_neighbors': expected}
                     if name == 'sitea':
                         observation['nodes'][name].update(states=state['states'], samples=state['samples'], events=state.get('events', []))
-                assert a.read_file('sdwan-container-intent.json') == intent, 'Steady controller rewrote its persistent intent'
-                connections = traffic.connections()
-                for label, original in report['stream_tuples'].items():
-                    row = tcp_stream(last_rows[label], connections)
-                    last_rows[label] = dict(row)
-                    count = int(row['repl-bytes'])
-                    assert count > last_bytes.get(label, -1), label + ': TCP stream stalled'
-                    last_bytes[label] = count
-                    if row['.id'] != last_handles[label]:
-                        report['stream_handle_changes'][label] += 1
-                        last_handles[label] = row['.id']
-                    stats = traffic.stream_stats[int(original['dst-port'])]
-                    assert stats['requests'] == 1 and stats['active'] == 1 and stats['error'] is None, label + ': HTTP transfer closed or restarted'
-                observation['tcp_reply_bytes'] = dict(last_bytes)
-                observation['stream_handles'] = dict(last_handles)
-                observation['http_streams'] = {port: dict(stats) for port, stats in traffic.stream_stats.items()}
+                observation['tcp_reply_bytes'] = dict(flow_observer.last_bytes)
+                observation['stream_handles'] = {label:str(flow) for label,flow in streams.items()}
+                observation['http_streams'] = {port:dict(stats) for port,stats in traffic.stream_stats.items()}
+                observation['http_generations'] = {port:[dict(stats) for stats in generations] for port,generations in traffic.stream_generations.items()}
                 if active:
                     data = web()
                     assert not data['stale'] and data['current']['actor'] == 'container'
@@ -354,8 +400,12 @@ def main():
                 report['phase_samples'][phase] += 1
                 report.update(elapsed_seconds=round(time.monotonic() - started, 3), checkpoint_utc=time.time(), resources=resources)
                 write_json(report_path, report)
-                time.sleep(min(args.sample_seconds, max(0, total - (time.monotonic() - started))))
+                time.sleep(min(args.control_seconds, max(0, total - (time.monotonic() - started))))
         assert active and all(x > 0 for x in report['phase_samples'].values())
+        assert not flow_observer.pending, 'Unverified transition remains at measurement end'
+        if args.force_smoke_failover:
+            assert set(forced_phases) == {'native','container'} and all('recovered_at_seconds' in row for row in forced_phases.values()), 'Both forced smoke phases must recover'
+            assert len(flow_observer.transitions) >= 4, 'Forced smoke did not prove failover/failback in both phases'
         report.update(elapsed_seconds=round(time.monotonic() - started, 3), status='restoring')
     except BaseException as error:
         report['status'] = 'failed'
@@ -375,6 +425,8 @@ def main():
         # Preserve failed/incomplete evidence. Never infer success from the VM's
         # uptime or the mere existence of a background process.
         try:
+            if forced_rule:
+                a.call('ip/firewall/filter/' + forced_rule, method='DELETE')
             if applied:
                 stop_container()
             if forwarded:
