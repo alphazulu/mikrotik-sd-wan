@@ -5,6 +5,42 @@ production router was accessed or changed. The controller stays on RouterOS;
 the external Python/Tk utility configures and observes it through the API.
 This is a development checkpoint, not completed release acceptance.
 
+## Cached intent priority regression
+
+The RouterOS container adapter formerly accepted any still-eligible cached WAN,
+even after a higher-priority WAN had recovered in the current native SLA window.
+It could also accept cached `none` while a current eligible WAN existed. The
+adapter now accepts intent only when it agrees with the current native priority
+choice; otherwise that native choice remains effective for the tick.
+
+The actual native selector and derived guard were executed on owned CHR and x86
+RouterOS 7.24.5: 20 cases per device pass, and the historical guard reproduces
+seven counterexamples on each. The separate USB RNDIS container regression also
+passes seven checks: fresh admission, both incoming WAN API return paths, real
+TCP/NAT failover/failback, unaffected original backup TCP/HTTP/API retention and
+protected APN rollback. That test compares uploaded generated controller,
+installer and watchdog files against the tested source and verifies the actual
+controller script, not only the native library hashes. The exact CI base image
+is unchanged. These checks do not replace the final frozen-source smoke/soak.
+
+## SSTP quality observation in the virtual fixture
+
+A later four-WAN warm-up did not obtain 60 continuous seconds within its existing
+SLA because the SSTP exit repeatedly exceeded 100 ms jitter. An ICMP cadence
+experiment at 50/100/50 ms, with unchanged thresholds, counted 13/13/16 samples
+above that jitter limit out of 73 samples per phase; maxima were
+132.336/139.327/141.400 ms. Changing cadence did not resolve the observation.
+The configuration was restored; those warm-up attempts remain failed checks.
+No general SSTP implementation defect was established by this observation.
+
+The final healthy-start fixture therefore uses its existing WireGuard and
+L2TP/IPsec exits, with the same SLA thresholds and original probe cadence. This
+does not establish long-term SSTP stability or authorize a physical-device
+performance recommendation. Earlier SSTP functional checks below remain scoped
+to their original test conditions.
+
+## Earlier functional matrix
+
 | Checks | Result |
 | --- | --- |
 | Python unit suite | 265 PASS |

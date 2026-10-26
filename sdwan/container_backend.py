@@ -34,7 +34,9 @@ def controller_source(root: Path, config=None) -> str:
                 :local state ($sdwanState->(($policy->"profile") . "/" . $wanted))
                 :if (((($maintenance->$wanted)->"admit") = true) && (($state = "healthy") || (($state = "degraded") && ($policy->"allow_degraded")))) do={ :set eligible true }
             }
-            :if ($eligible) do={ :set selected $wanted; :set containerDecision true }
+            # A still-healthy backup (or cached none) cannot override a
+            # higher-priority path admitted by this tick's native SLA.
+            :if ($eligible && ($wanted = $selected)) do={ :set selected $wanted; :set containerDecision true }
         }
         :local decision [:toarray ""]
 ''')

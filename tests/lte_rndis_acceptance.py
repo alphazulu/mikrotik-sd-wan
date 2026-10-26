@@ -17,6 +17,7 @@ from pathlib import Path
 import socket
 import sys
 import threading
+import tempfile
 import time
 import urllib.request
 
@@ -52,6 +53,7 @@ class Fixture:
         self.created=[];self.restore=[];self.servers=[];self.flows=[];self.remotes={};self.hostforwards=[]
         self.stop=threading.Event();self.routers={};self.applied=False;self.cleanup_armed=False
         self.report={'pass':False,'inventory_adapter':False,'production_modified':False,'checks':[],
+                     'adapter_source_sha256':hashlib.sha256((ROOT/'sdwan/container_backend.py').read_bytes()).hexdigest(),
                      'native_sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT/'native').glob('*.rsc'))}}
     def record(self,name,**evidence):
         self.report['checks'].append({'check':name,'pass':True,**evidence})
@@ -183,6 +185,15 @@ class Fixture:
             self.report['container_image_id']=BASE_IMAGE
         self.applied=True
         with contextlib.redirect_stdout(io.StringIO()):self.cli.apply(self.a,cfg,'MikroTik')
+        with tempfile.TemporaryDirectory(prefix='rndis-source-proof-') as directory:
+            payload=self.cli.bundle(cfg,Path(directory));digests={}
+            for name in ('sdwan-controller.rsc','sdwan-install.rsc','sdwan-deploy-watchdog.rsc'):
+                actual=self.a.read_file(name);expected=(payload/name).read_text()
+                assert actual==expected,'Installed runtime differs from tested source: '+name
+                digests[name]=hashlib.sha256(actual.encode()).hexdigest()
+            self.report.setdefault('generated_sources',{})[backend]=digests
+            scripts=self.a.call('system/script/print',{'.proplist':'name,source','.query':['name=sdwan-controller']},'POST')
+            assert len(scripts)==1 and scripts[0]['source']==(payload/'sdwan-controller.rsc').read_text(),'Active controller script differs from uploaded source'
         if backend=='container':
             row=next(row for row in self.a.call('container') if row['name']=='sdwan-container-controller')
             if row.get('running')!='true':self.a.call('container/start',{'numbers':row['.id']},'POST')

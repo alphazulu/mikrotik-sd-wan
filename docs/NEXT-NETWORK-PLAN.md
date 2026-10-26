@@ -32,7 +32,7 @@ Selected completed checks in this iteration:
 
 | Area | Verification |
 | --- | --- |
-| Python | 273 unit tests on Linux; Windows passes with five POSIX observer tests skipped |
+| Python | 348 unit tests on Linux and Windows; Windows skips 14 POSIX-only cases |
 | Container | 41 base Rust, 75 web Rust, 6 browser JS tests; 100% executable lines and functions per runtime file |
 | Scratch artifacts | Six static single-binary profiles: amd64, arm64, ARMv5, base/web |
 | Strict probes | 13 functional and 21 native/Python contract cases |
@@ -47,6 +47,13 @@ Selected completed checks in this iteration:
 | Windows GUI | Four offline suites pass; earlier unified GUI inventory checks also passed read-only |
 
 These are scoped results, not a claim that the complete release gate has passed.
+
+The derived RouterOS container adapter additionally checks cached intent against
+the current native priority choice. The previous eligibility-only guard could
+retain a healthy backup after a preferred WAN recovered, or accept stale `none`.
+The real RouterOS component regression reproduces seven old counterexamples and
+passes all 20 corrected cases on each owned CHR/x86 node. The frozen forced
+smoke and 48-hour gate must still pass after that behavior change.
 The plain-DNS cold TCP handshake took 20.388 s within a 60 s cold-start test bound;
 the DoH run took 0.832 s. The first delay's cause has not been established.
 Default SLA limits were not relaxed to obtain these results. The functional QEMU
