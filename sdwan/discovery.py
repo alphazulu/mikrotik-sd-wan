@@ -11,7 +11,7 @@ FIELDS={
  'ip/address':'.id,address,network,interface,actual-interface,disabled,dynamic,invalid',
  'ip/route':'.id,dst-address,gateway,immediate-gw,routing-table,distance,comment,disabled,dynamic,active,static,dhcp,modem,vpn,vrf-interface',
  'routing/rule':'.id,src-address,dst-address,table,action,disabled,comment',
- 'ip/dhcp-client':'.id,interface,status,address,gateway,disabled,add-default-route,default-route-tables',
+ 'ip/dhcp-client':'.id,interface,status,address,gateway,disabled,dynamic,add-default-route,default-route-tables',
  'interface/pppoe-client':'.id,name,interface,disabled,running,add-default-route',
  'interface/lte':'.id,name,disabled,running,apn-profiles,apn-profile',
  'interface/lte/apn':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface,use-peer-dns,use-network-apn',
@@ -19,7 +19,7 @@ FIELDS={
  'interface/list/member':'interface,list,disabled',
  'ip/firewall/nat':'.id,chain,action,out-interface,out-interface-list,disabled',
  'ip/firewall/filter':'.id,chain,action,disabled,dynamic',
- 'ip/firewall/mangle':'.id,chain,action,new-routing-mark,disabled,comment',
+ 'ip/firewall/mangle':'.id,chain,action,new-routing-mark,new-connection-mark,connection-mark,src-address,dst-address,src-address-list,dst-address-list,in-interface,out-interface,protocol,src-port,dst-port,passthrough,jump-target,route-dst,disabled,comment',
  'ip/firewall/raw':'.id,chain,action,disabled',
 }
 
@@ -137,7 +137,9 @@ def candidates(inventory):
         name=iface['name'];addresses=[];networks=[];dynamic=False
         kind_error=''
         try:kind=inferred_kind(name,inventory.get('ip/dhcp-client',[]),inventory.get('interface/pppoe-client',[]),inventory.get('interface/lte',[]))
-        except ValueError as error:kind='static';kind_error=str(error)
+        except ValueError as error:
+            kind='lte' if any(row.get('name')==name for row in inventory.get('interface/lte',[])) else 'static'
+            kind_error=str(error)
         if known.get(name,{}).get('kind')=='dhcp' and any(row.get('interface')==name for row in inventory.get('ip/dhcp-client',[])):kind='dhcp'
         apn_profile=''
         if kind=='lte':
@@ -146,7 +148,9 @@ def candidates(inventory):
             if len(profiles)==1:apn_profile=profiles[0]
             if len(profiles)!=1:kind_error='LTE требует ровно один APN профиль'
             if 'interface/lte/apn' in inventory.get('unreadable_paths',[]):kind_error='Нет доступа к APN профилям LTE'
-        elif iface.get('type','').lower()=='lte':kind_error='Не удалось прочитать параметры native LTE; переподключитесь с правами чтения LTE/APN'
+        elif iface.get('type','').lower()=='lte' and not kind_error:
+            details=next((warning for warning in inventory.get('warnings',[]) if warning.startswith('interface/lte:')),'Меню /interface/lte не вернуло запись этого интерфейса.')
+            kind_error='Не удалось получить сведения LTE: '+details+' Проверьте доступность меню LTE и права пользователя API.'
         peers=[]
         for a in inventory.get('ip/address',[]):
             if a.get('interface')!=name or truth(a.get('disabled')) or truth(a.get('invalid')):continue
@@ -201,7 +205,7 @@ def candidates(inventory):
     return result
 
 
-def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None):
+def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None,allow_foreign_mangle=False):
     """Generate from explicit user-selected interfaces; never guess a missing gateway."""
     from .config import validate
     unknown=set(inventory.get('unreadable_paths',[])) & {'interface/pppoe-client','ip/firewall/filter','ip/firewall/mangle','ip/firewall/raw'}
@@ -305,7 +309,7 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
     if fasttrack:base['disable_fasttrack']=fasttrack
     else:base.pop('disable_fasttrack',None)
     marked=[m for m in inventory.get('ip/firewall/mangle',[]) if m.get('action') in ('mark-routing','mark-connection','route') and not truth(m.get('disabled')) and not m.get('comment','').startswith('sdwan:v1:')]
-    if marked:raise ValueError('Обнаружены сторонние активные mangle mark-routing/mark-connection/route. Нужна явная согласованная схема политик перед генерацией.')
+    if marked and not allow_foreign_mangle:raise ValueError('Обнаружены сторонние активные mangle mark-routing/mark-connection/route. Для подготовки черновика используйте мастер; перед установкой требуется миграция правил.')
     if any(r.get('action')=='notrack' and not truth(r.get('disabled')) for r in inventory.get('ip/firewall/raw',[])):raise ValueError('Активные RAW notrack несовместимы с маркировкой соединений SD-WAN.')
     base['revision']='wizard-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     return validate(base)

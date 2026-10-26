@@ -17,6 +17,7 @@ from tkinter import ttk,filedialog,messagebox
 from sdwan.config import validate
 from sdwan.router import Router
 from sdwan.discovery import discover
+from sdwan import migration
 from sdwan.wizard_ui import SetupWizard
 from sdwan.diagnostics_ui import DiagnosticsPanel
 from sdwan.policies import ordered,conflicts
@@ -162,7 +163,7 @@ class Table(ttk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__();self.title('MikroTik SD-WAN — мастер настройки');self.geometry('1260x920');self.minsize(1020,760)
-        self.path=ROOT/'config/discovered.json';self.messages=queue.Queue();self.busy=False;self.data=None;self.inventory=None;self.bound_connection=None
+        self.path=ROOT/'config/discovered.json';self.messages=queue.Queue();self.busy=False;self.data=None;self.inventory=None;self.bound_connection=None;self.migration_report=migration.review()
         top=ttk.Frame(self,padding=8);top.pack(fill='x')
         for label,fn in [('Открыть JSON',self.open),('Сохранить JSON',self.save),('Проверить',self.check),('Файлы RouterOS',self.export)]:ttk.Button(top,text=label,command=fn).pack(side='left',padx=3)
         ttk.Label(top,text='Все решения SD-WAN выполняются на MikroTik.').pack(side='right')
@@ -185,6 +186,8 @@ class App(tk.Tk):
         self.review=ttk.Frame(self.steps,padding=6);self.steps.add(self.review,text='3. Конфигурация и установка')
         self.summary=tk.StringVar(value='После подключения выберите WAN на шаге 1 и создайте конфигурацию на шаге 2.')
         ttk.Label(self.review,textvariable=self.summary,wraplength=1160).pack(fill='x',pady=4)
+        self.migration_status=tk.StringVar()
+        ttk.Label(self.review,textvariable=self.migration_status,foreground='#a33400',wraplength=1160).pack(fill='x')
         operations=ttk.Frame(self.review,padding=4);operations.pack(fill='x');self.op_buttons=[];self.action_buttons={}
         for label,cmd in [('План изменений','plan'),('Подготовить контейнер','container-prepare'),('Установить на MikroTik','apply'),('Состояние','status'),('Журнал решений','events'),('Откат к исходному','rollback')]:
             button=ttk.Button(operations,text=label,command=lambda c=cmd:self.run(c));button.pack(side='left',padx=4);self.op_buttons.append(button);self.action_buttons[cmd]=button
@@ -206,6 +209,7 @@ class App(tk.Tk):
         if not hasattr(self,'action_buttons'):return
         for command,button in self.action_buttons.items():
             allowed=not self.busy and self.connection_matches() and (command not in ('plan','apply','container-prepare') or self.data is not None)
+            if command=='apply' and self.migration_report.get('blocking_rules'):allowed=False
             button.configure(state='normal' if allowed else 'disabled')
         for button in getattr(self,'platform_action_buttons',[]):
             if button.winfo_exists():button.configure(state='normal' if not self.busy and self.connection_matches() and self.data is not None else 'disabled')
@@ -240,9 +244,14 @@ class App(tk.Tk):
         threading.Thread(target=work,daemon=True).start()
     def accept_generated(self,c,inventory):
         name=inventory['identity']['name'];safe=re.sub(r'[^A-Za-z0-9_.-]','_',name)
+        self.migration_report=migration.review(inventory)
         self.path=ROOT/'config'/('discovered-'+safe+'.json');self.render_config(c)
         self.summary.set(f"Конфигурация для {name}: {len(c['wans'])} WAN, {len(c['policies'])} политик. Приоритет: {' → '.join(w['interface'] for w in c['wans'])}. Чтение и генерация не изменили MikroTik. Изменения устанавливаются отдельной кнопкой.")
         self.steps.select(self.review);self.refresh_buttons()
+        if self.migration_report['blocking_rules']:
+            self.tabs.select(self.migration_tab)
+            self.log.insert('end','\n'+migration.text(self.migration_report))
+            messagebox.showwarning('Создан черновик — требуется миграция',f"Конфигурация создана. Установка заблокирована: сторонних mangle-правил {len(self.migration_report['blocking_rules'])}.\nРазберите их во вкладке «Переход со старых правил» и перенесите нужные политики перед отключением. Все mangle отключать не нужно.\nОтчёт будет сохранён рядом с JSON и файлами RouterOS.",parent=self)
         self.log.insert('end','\nКонфигурация создана из прочитанных настроек. Локальные сети: '+', '.join(c['local_networks'])+'\n')
         self.log.insert('end','Включены connection/routing marks: симметричные ответы WAN и DNAT, привязка потоков к WAN и выборочная очистка conntrack при переключении/возврате.\n')
         if c.get('disable_fasttrack'):self.log.insert('end','В план включено отключение FastTrack для корректной работы политик. Исходное состояние сохраняется для отката.\n')
@@ -329,6 +338,7 @@ class App(tk.Tk):
         ttk.Label(retention,text='Сохранять последних транзакций (1–20), дополнительно текущую и связанные файлы:').pack(side='left')
         ttk.Spinbox(retention,from_=1,to=20,textvariable=self.backup_keep,width=5).pack(side='left',padx=6)
         ttk.Label(settings,text='Очистка запускается один раз после подтверждения установки. При pending/recovery или непонятном журнале ничего не удаляется.',wraplength=1000).pack(anchor='w',pady=5)
+        self.render_migration()
         self.title('MikroTik SD-WAN — '+str(self.path))
     def vpn_configure(self):
         if self.busy:return
@@ -352,8 +362,19 @@ class App(tk.Tk):
             dialog=PolicyDialog(self,self.collect(),self.inventory or {})
             if dialog.result:self.render_config(dialog.result)
         except (ValueError,KeyError) as error:messagebox.showerror('Правило WAN',str(error),parent=self)
+    def render_migration(self):
+        blocked=bool(self.migration_report.get('blocking_rules'))
+        self.migration_status.set('ЧЕРНОВИК: перед установкой перенесите нужную логику и отключите или согласуйте конфликтующие старые правила. Затем заново получите настройки и создайте конфигурацию.' if blocked else '')
+        self.migration_tab=ttk.Frame(self.tabs,padding=8)
+        self.tabs.add(self.migration_tab,text='Переход со старых правил')
+        self.migration_view=tk.Text(self.migration_tab,wrap='word',font=('Consolas',10))
+        scroll=ttk.Scrollbar(self.migration_tab,command=self.migration_view.yview)
+        self.migration_view.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right',fill='y');self.migration_view.pack(fill='both',expand=True)
+        self.migration_view.insert('1.0',migration.text(self.migration_report));self.migration_view.configure(state='disabled')
+
     def load(self,path):
-        self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
+        self.path=Path(path);c=json.loads(self.path.read_text(encoding='utf-8-sig'));self.migration_report=migration.read(self.path);self.render_config(c);self.steps.select(self.review);self.refresh_buttons()
     def collect(self):
         if self.data is None:raise ValueError('Сначала получите настройки и создайте конфигурацию, либо откройте готовый JSON.')
         c=copy.deepcopy(self.data);c['wans']=self.wans.rows;c['policies']=self.policies.rows
@@ -444,11 +465,13 @@ class App(tk.Tk):
     def save(self):
         try:
             c=self.collect();p=filedialog.asksaveasfilename(initialfile=self.path.name,initialdir=self.path.parent,defaultextension='.json',filetypes=[('JSON','*.json')])
-            if p:Path(p).write_text(json.dumps(c,indent=2,ensure_ascii=False)+'\n',encoding='utf-8');self.path=Path(p);self.title('MikroTik SD-WAN — '+p)
+            if p:
+                Path(p).write_text(json.dumps(c,indent=2,ensure_ascii=False)+'\n',encoding='utf-8');self.path=Path(p);self.title('MikroTik SD-WAN — '+p)
+                migration.write(self.migration_report,self.path.parent,basename=self.path.name+'.migration')
         except Exception as e:messagebox.showerror('Проверка',str(e))
     def check(self):
         try:
-            c=self.collect();overlaps=conflicts(c);messagebox.showinfo('Конфигурация корректна',f'{len(c["wans"])} WAN, {len(c["sla_profiles"])} SLA, {len(c["policies"])} политик.\nКонтроллер: {self.backend.get()}.\nПересечений с явным приоритетом: {len(overlaps)}.\n'+ '\n'.join(x['first']+' → '+x['later']+(' (полностью перекрыта)' if x['shadowed'] else '') for x in overlaps))
+            c=self.collect();overlaps=conflicts(c);messagebox.showinfo('Синтаксис корректен — требуется миграция' if self.migration_report.get('blocking_rules') else 'Конфигурация корректна',('Установка заблокирована сторонними mangle. См. вкладку перехода.\n' if self.migration_report.get('blocking_rules') else '')+f'{len(c["wans"])} WAN, {len(c["sla_profiles"])} SLA, {len(c["policies"])} политик.\nКонтроллер: {self.backend.get()}.\nПересечений с явным приоритетом: {len(overlaps)}.\n'+ '\n'.join(x['first']+' → '+x['later']+(' (полностью перекрыта)' if x['shadowed'] else '') for x in overlaps))
         except Exception as e:messagebox.showerror('Проверка',str(e))
     def export(self):
         try:
@@ -456,12 +479,14 @@ class App(tk.Tk):
             if not dest:return
             from importlib.util import spec_from_file_location,module_from_spec
             spec=spec_from_file_location('deploy_cli',ROOT/'sdwan.py');m=module_from_spec(spec);spec.loader.exec_module(m);m.bundle(c,dest)
-            messagebox.showinfo('Готово',f'Созданы JSON конфигурации и {len(m.FILES)} файлов .rsc.\nДля защищённой установки используйте кнопку установки через API; ручная процедура описана в документации.')
+            migration.write(self.migration_report,dest)
+            messagebox.showinfo('Готово',f'Созданы JSON конфигурации и {len(m.FILES)} файлов .rsc.\nОтчёт перехода: MIGRATION-REVIEW.txt и MIGRATION-REVIEW.json. При конфликтах это черновик; до применения нужна миграция старых правил.\nДля защищённой установки используйте кнопку установки через API; ручная процедура описана в документации.')
         except Exception as e:messagebox.showerror('Экспорт',str(e))
     def run(self,command):
         if self.busy:return
         try:
             if not self.connection_matches():raise ValueError('Подключитесь к MikroTik и получите его настройки.')
+            if command=='apply' and self.migration_report.get('blocking_rules'):raise ValueError(migration.text(self.migration_report))
             config=self.collect() if command in ('plan','apply','container-prepare','web-token','readiness','device-prepare') else None
             values=self.connection_values();expected=self.inventory['identity']['name'];self.busy=True;self.refresh_buttons()
             self.log.insert('end',f'\n--- {command} ---\n');self.log.see('end')

@@ -13,7 +13,7 @@ def inventory():
     inv['ip/address'][1]={'interface':'ether2','address':'100.64.1.2/32','dynamic':'true'}
     inv['ip/route'][1].update(gateway='ether2',dynamic='true',modem='true')
     inv['interface/lte']=[{'.id':'*A','name':'ether2','apn-profiles':'cellular','disabled':'false','running':'true'}]
-    inv['interface/lte/apn']=[{'.id':'*B','name':'cellular','add-default-route':'true','default-route-distance':'2','ip-type':'ipv4'}]
+    inv['interface/lte/apn']=[{'.id':'*B','name':'cellular','add-default-route':'true','default-route-distance':'2','use-peer-dns':'false','ip-type':'ipv4'}]
     inv['candidates']=candidates(inv);return inv
 
 
@@ -45,6 +45,25 @@ class LTEIntegrationTests(unittest.TestCase):
         self.assertTrue(adopted_dynamic_route(route,w))
         self.assertTrue(adopted_dynamic_route(dict(route,gateway='100.64.0.1%lte1'),w))
         for changed in ({'dynamic':'false'},{'modem':'false'},{'gateway':'lte-other'}):self.assertFalse(adopted_dynamic_route(dict(route,**changed),w))
+    def test_rndis_is_lte_with_router_owned_dhcp_and_bound_route(self):
+        lease={'interface':'ether2','dynamic':'true','disabled':'false'}
+        self.assertEqual(inferred_kind('ether2',[lease],[],[{'name':'ether2'}]),'lte')
+        inv=inventory();inv['ip/dhcp-client']=[lease]
+        inv['ip/route'][1].update(gateway='100.64.1.1',modem='false',dhcp='true',**{'vrf-interface':'ether2'})
+        inv['candidates']=candidates(inv);c=build(inv)
+        self.assertEqual(c['wans'][1]['kind'],'lte');self.assertNotIn('gateway',c['wans'][1])
+        route={'dynamic':'true','dhcp':'true','gateway':'192.0.2.1','vrf-interface':'lte1'}
+        self.assertTrue(adopted_dynamic_route(route,self.config()['wans']))
+        self.assertFalse(adopted_dynamic_route(dict(route,**{'vrf-interface':'other'}),self.config()['wans']))
+        for leases in ([dict(lease,dynamic='false')],[lease,lease]):
+            with self.assertRaisesRegex(ValueError,'Ambiguous'):inferred_kind('ether2',leases,[],[{'name':'ether2'}])
+    def test_rndis_discovery_requests_dynamic_flag_and_keeps_real_conflict(self):
+        from sdwan.discovery import FIELDS
+        self.assertIn('dynamic',FIELDS['ip/dhcp-client'].split(','))
+        inv=inventory();inv['ip/dhcp-client']=[{'interface':'ether2','dynamic':'false','disabled':'false'}]
+        inv['candidates']=candidates(inv);candidate=next(row for row in inv['candidates'] if row['interface']=='ether2')
+        self.assertEqual(candidate['kind'],'lte');self.assertEqual(candidate['apn_profile'],'cellular')
+        self.assertIn('Ambiguous',candidate['kind_error']);self.assertNotIn('прав',candidate['kind_error'])
     def test_discovery_detects_lte_and_copies_apn_not_lease(self):
         inv=inventory();c=build(inv);w=c['wans'][1]
         self.assertEqual((w['kind'],w['apn_profile']),('lte','cellular'))

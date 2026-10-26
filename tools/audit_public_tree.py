@@ -18,6 +18,7 @@ DENIED = (
     'all.rsc*', '*credentials*.json', '*secrets*.json', '*.backup', '*.pcap',
     '*.qcow2', '*.img', '*.npk', '*.png', '*.jpg', '*.jpeg', '*.key', '*.pem',
     '.env', '.env.*', 'handoff*.md', 'ospf-lte-review.md',
+    '*.migration.json', '*.migration.txt', 'migration-review.json', 'migration-review.txt',
 )
 SECRETS = {
     'github-token': re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{25,})'),

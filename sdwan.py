@@ -109,7 +109,9 @@ def preflight(router,c,expected):
         kind=w.get('kind','static')
         if kind=='static' and not any(row.get('interface')==w['interface'] and row.get('address','').split('/')[0]==w['address'] and row.get('dynamic') not in ('true',True) and row.get('disabled') not in ('true',True) and row.get('invalid') not in ('true',True) for row in addresses):raise ValueError('Static WAN source must already be assigned statically: '+w['interface'])
         if kind=='lte':
-            binding=apn_binding(w['interface'],router.call('interface/lte/print',{'.proplist':'.id,name,disabled,running,apn-profiles,apn-profile'},'POST'),router.call('interface/lte/apn/print',{'.proplist':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface'},'POST'),expected_profile=w['apn_profile'],managed_interfaces=[x['interface'] for x in c['wans'] if x.get('kind')=='lte'])
+            binding=apn_binding(w['interface'],router.call('interface/lte/print',{'.proplist':'.id,name,disabled,running,apn-profiles,apn-profile'},'POST'),router.call('interface/lte/apn/print',{'.proplist':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface,use-peer-dns'},'POST'),expected_profile=w['apn_profile'],managed_interfaces=[x['interface'] for x in c['wans'] if x.get('kind')=='lte'])
+            from sdwan.wan import inferred_kind
+            inferred_kind(w['interface'],router.call('ip/dhcp-client/print',{'.proplist':'interface,disabled,dynamic'},'POST'),[],[{'name':w['interface']}])
         elif kind=='vpn':
             from sdwan.vpn_egress import binding as vpn_binding
             vpn_binding(router,w)
@@ -118,8 +120,9 @@ def preflight(router,c,expected):
             field='interface' if kind=='dhcp' else 'name'
             clients=router.call(menu+'/print',{'.proplist':'.id,name,interface,disabled,add-default-route,default-route-tables'},'POST')
             if len([row for row in clients if row.get(field)==w['interface']])!=1:raise ValueError('Missing or ambiguous '+kind+' client on '+w['interface'])
-    for row in router.call('ip/firewall/mangle'):
-        if row.get('disabled')!='true' and row.get('action') in ('mark-routing','mark-connection','route') and not row.get('comment','').startswith(PREFIX):raise ValueError('Foreign routing/connection marks conflict with SD-WAN; reconcile them first')
+    from sdwan.migration import review as migration_review,text as migration_text
+    migration=migration_review({'ip/firewall/mangle':router.call('ip/firewall/mangle')})
+    if migration['blocking_rules']:raise ValueError(migration_text(migration))
     if any(row.get('action')=='notrack' and row.get('disabled')!='true' for row in router.call('ip/firewall/raw')):raise ValueError('Active RAW notrack conflicts with SD-WAN connection tracking')
     tracking=router.call('ip/firewall/connection/tracking')
     if isinstance(tracking,list):tracking=tracking[0]
@@ -149,7 +152,7 @@ def preflight(router,c,expected):
     for identifier in selectors:actions.append({'action':'disable baseline route','menu':'ip/route','id':identifier})
     for item in c.get('disable_fasttrack',[]):actions.append({'action':'disable FastTrack','menu':'ip/firewall/filter','id':item['.id']})
     for w in c['wans']:
-        if w.get('kind')=='lte':actions.append({'action':'save APN routing baseline; disable APN automatic default; use interface gateway in pinned tables; preserve APN credentials/DNS/distance','wan':w['name'],'interface':w['interface'],'apn_profile':w['apn_profile']})
+        if w.get('kind')=='lte':actions.append({'action':'save APN routing baseline; disable APN automatic default; pin native LTE interface or actual RNDIS lease gateway; preserve APN credentials/DNS/distance','wan':w['name'],'interface':w['interface'],'apn_profile':w['apn_profile']})
         if w.get('kind') in ('dhcp','pppoe'):actions.append({'action':'save provider client settings for baseline rollback; isolate DHCP routes in probe table' if w['kind']=='dhcp' else 'save and disable PPPoE automatic default route','wan':w['name'],'interface':w['interface']})
     settings=router.call('ip/settings')
     if isinstance(settings,list):settings=settings[0]

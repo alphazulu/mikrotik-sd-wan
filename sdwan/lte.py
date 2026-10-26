@@ -1,4 +1,4 @@
-"""Read-only native LTE/APN contract. Never treats LTE as an IP DHCP client.
+"""Read-only native LTE/APN contract, including RouterOS-owned RNDIS DHCP.
 
 The full LTE installer/controller integration is separate. Only allowlisted
 routing metadata is returned; APN credentials and SIM parameters stay on RouterOS.
@@ -34,6 +34,8 @@ def apn_binding(interface,lte_interfaces,apn_profiles,*,expected_profile=None,ma
     route_mode=apn.get('add-default-route')
     if not (route_mode is True or route_mode is False or (isinstance(route_mode,str) and route_mode in ('true','false','yes','no','1','0'))):
         raise ValueError('LTE APN automatic-route setting is unavailable: '+name)
+    if apn.get('use-peer-dns') not in (False,'false','no','0'):
+        raise ValueError('LTE APN requires use-peer-dns=no before SD-WAN adoption; configure router DNS explicitly first (RouterOS cannot use peer DNS without its automatic route): '+name)
     managed=set(managed_interfaces)|{interface}
     unselected=[row['name'] for row in lte_interfaces if row.get('name') not in managed and name in profile_names(row)]
     if unselected:raise ValueError('LTE APN shared with unselected modems; assign a separate profile: '+name+' ('+', '.join(unselected)+')')

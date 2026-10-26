@@ -1,6 +1,17 @@
 :local dir ""
 :if ([:len [/file/find where name="flash"]] > 0) do={ :set dir "flash/" }
 # Import after uploading sdwan-config.json and sdwan-controller.rsc.
+# Refuse foreign firewall state before loading libraries or changing workers.
+# RouterOS7.24.5 find disabled=no can omit enabled rules; read the flag directly.
+:foreach id in=[/ip/firewall/mangle/find] do={
+    :if (![/ip/firewall/mangle/get $id disabled]) do={
+        :local action [/ip/firewall/mangle/get $id action]
+        :if ((($action = "mark-routing") || ($action = "mark-connection") || ($action = "route")) && (!([/ip/firewall/mangle/get $id comment] ~ "^sdwan:v1:"))) do={ :error ("foreign mangle marks must be reconciled before SDWAN installation: " . [:tostr $id]) }
+    }
+}
+:foreach id in=[/ip/firewall/raw/find] do={
+    :if ((![/ip/firewall/raw/get $id disabled]) && ([/ip/firewall/raw/get $id action] = "notrack")) do={ :error ("RAW notrack conflicts with SDWAN: " . [:tostr $id]) }
+}
 :local cfgJSON [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local cfg [:deserialize from=json options=json.no-string-conversion value=$cfgJSON]
 :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
@@ -88,6 +99,10 @@ $sdwanValidatePolicyLists cfg=$cfg
                 :if (($kind = "pppoe") && ($gateway = $iface)) do={ :set adopted true }
                 :if (($kind = "vpn") && [/ip/route/get $rid vpn] && $bound) do={ :set adopted true }
                 :if (($kind = "lte") && [/ip/route/get $rid modem] && $bound) do={ :set adopted true }
+                :if (($kind = "lte") && [/ip/route/get $rid dhcp] && ($vrfInterface = $iface)) do={
+                    :local clients [/ip/dhcp-client/find where interface=$iface and dynamic=yes]
+                    :if ([:len $clients] = 1) do={ :set adopted true }
+                }
             }
         }
         :if (!$adopted) do={ :error "undeclared default route would bypass SDWAN SLA" }
@@ -120,15 +135,12 @@ $sdwanValidatePolicyLists cfg=$cfg
     }
 }
 :if ([:tostr [/ip/firewall/connection/tracking/get enabled]] = "no") do={ :error "connection tracking must be enabled" }
-:foreach id in=[/ip/firewall/mangle/find where disabled=no] do={
-    :local action [/ip/firewall/mangle/get $id action]
-    :if ((($action = "mark-routing") || ($action = "mark-connection") || ($action = "route")) && (!([/ip/firewall/mangle/get $id comment] ~ "^sdwan:v1:"))) do={ :error "foreign mangle marks must be reconciled before SDWAN installation" }
-}
-:if ([:len [/ip/firewall/raw/find where action=notrack and disabled=no]] > 0) do={ :error "RAW notrack conflicts with SDWAN" }
-:foreach id in=[/ip/firewall/filter/find where action=fasttrack-connection and disabled=no] do={
-    :local declared false
-    :foreach selector in=($cfg->"disable_fasttrack") do={ :if ([:tostr ($selector->".id")] = [:tostr $id]) do={ :set declared true } }
-    :if (!$declared) do={ :error "FastTrack must be declared for disabling" }
+:foreach id in=[/ip/firewall/filter/find] do={
+    :if ((![/ip/firewall/filter/get $id disabled]) && ([/ip/firewall/filter/get $id action] = "fasttrack-connection")) do={
+        :local declared false
+        :foreach selector in=($cfg->"disable_fasttrack") do={ :if ([:tostr ($selector->".id")] = [:tostr $id]) do={ :set declared true } }
+        :if (!$declared) do={ :error "FastTrack must be declared for disabling" }
+    }
 }
 # Validate policy invariants before making any changes, including manual imports.
 :local names [:toarray ""]

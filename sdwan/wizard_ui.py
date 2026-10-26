@@ -134,7 +134,7 @@ class SetupWizard:
     def create(self):
         try:
             choices=self.checked_choices()
-            config=generate(self.inventory,choices,keep_policies=self.keep.get(),probes=None if self.existing.get() else self.probes.rows,icmp_target=None if self.existing.get() else self.icmp.get().strip())
+            config=generate(self.inventory,choices,keep_policies=self.keep.get(),probes=None if self.existing.get() else self.probes.rows,icmp_target=None if self.existing.get() else self.icmp.get().strip(),allow_foreign_mangle=True)
             self.app.accept_generated(config,self.inventory)
         except WANSelectionError as e:self.show_selection_error(e)
         except (ValueError,KeyError,TypeError) as e:messagebox.showerror('Создание конфигурации',str(e),parent=self.app)

@@ -64,6 +64,13 @@
     :if (($passthrough != "") && ($passthrough != "none")) do={ :error "LTE passthrough is not a routed WAN" }
     :local ipType [:tostr [/interface/lte/apn/get $pid ip-type]]
     :if (($ipType != "auto") && ($ipType != "ipv4") && ($ipType != "ipv4-ipv6")) do={ :error "LTE APN does not provide IPv4" }
+    :if ([/interface/lte/apn/get $pid use-peer-dns]) do={ :error "LTE APN requires use-peer-dns=no; configure router DNS explicitly first" }
+    :local clients [/ip/dhcp-client/find where interface=$iface]
+    :if ([:len $clients] > 1) do={ :error "ambiguous LTE DHCP clients" }
+    :if ([:len $clients] = 1) do={
+        :if (![/ip/dhcp-client/get $clients dynamic]) do={ :error "LTE conflicts with a user DHCP client" }
+        :set ($found->"dhcp_id") [:tostr $clients]
+    }
     :set ($found->"apn_id") [:tostr $pid]
     :set ($found->"apn_profile") $profileName
     :set ($found->"add_default_route") [/interface/lte/apn/get $pid add-default-route]
@@ -79,6 +86,7 @@
     :if (($passthrough != "") && ($passthrough != "none")) do={ :error "LTE passthrough is not a routed WAN" }
     :local ipType [:tostr [/interface/lte/apn/get $pid ip-type]]
     :if (($ipType != "auto") && ($ipType != "ipv4") && ($ipType != "ipv4-ipv6")) do={ :error "LTE APN does not provide IPv4" }
+    :if ([/interface/lte/apn/get $pid use-peer-dns]) do={ :error "LTE APN requires use-peer-dns=no; configure router DNS explicitly first" }
     # APN options are shared by every modem referencing the profile. Never
     # change a profile used by an unselected modem, including disabled ones.
     :global sdwanLTEInterfaces
@@ -241,6 +249,23 @@
                             :set address [:pick $full 0 [:find $full "/"]]
                             :set gateway $iface
                             :set nextHop $iface
+                            # HiLink/RNDIS has an Ethernet data plane. Its
+                            # RouterOS-owned DHCP client supplies the real hop;
+                            # an interface-only route would ARP remote targets.
+                            :local cid [:tostr ($binding->"dhcp_id")]
+                            :if ($cid != "") do={
+                                :set gateway ""
+                                :set nextHop ""
+                                :local leaseStatus [:tostr [/ip/dhcp-client/get $cid status]]
+                                :set reason ("LTE DHCP " . $leaseStatus)
+                                :if ((![/ip/dhcp-client/get $cid disabled]) && (($leaseStatus = "bound") || ($leaseStatus = "renewing...") || ($leaseStatus = "rebinding..."))) do={
+                                    :local lease [:tostr [/ip/dhcp-client/get $cid address]]
+                                    :if ([:pick $lease 0 [:find $lease "/"]] = $address) do={
+                                        :set gateway [:tostr [/ip/dhcp-client/get $cid gateway]]
+                                        :set nextHop ($gateway . "%" . $iface . "@main")
+                                    }
+                                }
+                            }
                         }
                     }
                 } do={ :set reason ("LTE " . $lteError) }
@@ -732,7 +757,14 @@
         :if ($mode != "static") do={
             :local signature ([:tostr ($wan->"ready")] . ":" . ($wan->"address") . ":" . ($wan->"route_gateway") . ":" . ($wan->"interface"))
             :local pending ($sdwanLinkPending->$wn)
-            :if ((($sdwanLinkFingerprints->$wn) != $signature) || ([:typeof $pending] = "array")) do={
+            # Installation can observe a brief data-session restart and write
+            # a disabled placeholder while RAM still holds the previous ready
+            # signature. Reconcile that actual mismatch even if the lease has
+            # returned to the same address before the next controller tick.
+            :local installedPin [/ip/route/find where comment=("sdwan:v1:pinroute:" . $wn)]
+            :if ([:len $installedPin] != 1) do={ :error ("missing or duplicate runtime pin route " . $wn) }
+            :local pinMismatch ([/ip/route/get $installedPin disabled] = ($wan->"ready"))
+            :if ((($sdwanLinkFingerprints->$wn) != $signature) || ([:typeof $pending] = "array") || $pinMismatch) do={
                 :if (($mode = "vpn") && (($wan->"ready") = true) && ([:typeof $pending] = "array") && (($pending->"signature") = $signature)) do={
                     # PPP can advertise running/address before its forwarding
                     # bindings settle. Poll in RAM; do not rebuild rules each tick.
