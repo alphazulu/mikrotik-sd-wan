@@ -119,6 +119,14 @@ class VPNTraffic:
   end=time.monotonic()+5
   while spec['stats']['active'] and time.monotonic()<end:time.sleep(.05)
   assert spec['stats']['active']==0,'Retired HTTP generation did not close'
+ def cancel_attempt(self,port):
+  from types import SimpleNamespace
+  return self.stop_stream(SimpleNamespace(port=port,http=self.stream_specs[port]['stats']))
+ def start_attempt(self,port,mark):
+  spec=self.stream_specs[port]
+  assert spec['stats']['active']==0,'Previous HTTP generation must close before reuse'
+  with spec['lock']:self._generation(spec)
+  return self._launch_stream(spec,mark,None)
  def restart_stream(self,flow,mark,timeout=20):
   assert not any(same_path(flow,row) for row in self.connections()),'Prove old marked tuple retirement before restarting'
   spec=self.stream_specs[flow.port];self.stop_stream(flow)

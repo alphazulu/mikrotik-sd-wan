@@ -405,7 +405,7 @@ def main():
         assert not flow_observer.pending, 'Unverified transition remains at measurement end'
         if args.force_smoke_failover:
             assert set(forced_phases) == {'native','container'} and all('recovered_at_seconds' in row for row in forced_phases.values()), 'Both forced smoke phases must recover'
-            assert len(flow_observer.transitions) >= 4, 'Forced smoke did not prove failover/failback in both phases'
+            assert sum(x.get('outcome') == 'verified_recovery' for x in flow_observer.transitions) >= 4, 'Forced smoke did not prove failover/failback in both phases'
         report.update(elapsed_seconds=round(time.monotonic() - started, 3), status='restoring')
     except BaseException as error:
         report['status'] = 'failed'

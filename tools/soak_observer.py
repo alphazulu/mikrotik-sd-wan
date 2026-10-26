@@ -125,30 +125,59 @@ class FlowObserver:
             relevant = [e for e in events if e['policy'] == policy]
             if not relevant:
                 continue
-            assert label not in self.pending or self.pending[label]['stage'] == 'closed', 'Selection changed during unverified reconnection; evidence is inconclusive'
             flow = self.streams[label]
-            self.pending[label] = {'stage':'retiring', 'old':flow, 'target':state['selected'][policy], 'started':now,
-                                   'event_seq':[e['seq'] for e in relevant], 'old_tuple':dict(flow.snapshot), 'policy':policy}
+            previous = self.pending.get(label)
+            if previous and previous['stage'] == 'reconnecting':
+                # This attempt has never been accepted as a recovered transfer.
+                # Cancel only its owned RAM job/server generation, and still
+                # require the controller to retire every old marked path.
+                stats = dict(traffic.stream_stats[flow.port])
+                traffic.cancel_attempt(flow.port)
+                self.transitions.append({k:v for k,v in previous.items() if k != 'old'} |
+                                        {'label':label,'outcome':'superseded_unverified','http_attempt':stats})
+                pending = {'stage':'retiring', 'old':flow, 'stop_needed':False,
+                           'retiring_mark':previous['mark'], 'started':now,
+                           'outage_started':previous['outage_started'], 'old_tuple':dict(flow.snapshot),
+                           'policy':policy, 'event_seq':[e['seq'] for e in relevant]}
+            elif previous and previous['stage'] == 'retiring':
+                previous['event_seq'].extend(e['seq'] for e in relevant)
+                previous['target'] = state['selected'][policy]
+                continue
+            else:
+                pending = {'stage':'retiring', 'old':flow, 'stop_needed':previous is None,
+                           'started':now, 'outage_started':now, 'old_tuple':dict(flow.snapshot),
+                           'event_seq':[e['seq'] for e in relevant], 'policy':policy}
+            pending['target'] = state['selected'][policy]
+            self.pending[label] = pending
         for label, flow in list(self.streams.items()):
             pending = self.pending.get(label)
             if pending:
                 if pending['stage'] == 'retiring':
-                    if any(self.old_path(pending['old'], row) for row in rows):
-                        assert now - pending['started'] <= 6, label + ': old marked connection was not retired'
+                    if 'retiring_mark' in pending:
+                        old = pending['old_tuple']
+                        present = any(row.get('src-address') == old['src-address'] and row.get('dst-address') == old['dst-address'] and row.get('dst-port') == old['dst-port'] and row.get('connection-mark','no-mark') == pending['retiring_mark'] for row in rows)
+                    else:
+                        present = any(self.old_path(pending['old'], row) for row in rows)
+                    if present:
+                        assert now-pending['started'] <= 6, label + ': old marked connection was not retired'
                         continue
-                    pending['retired_seconds'] = now - pending['started']
-                    if pending['target'] == 'none':
+                    pending['retired_seconds'] = now-pending['started']
+                    if pending['stop_needed']:
                         traffic.stop_stream(pending['old'])
+                        pending['stop_needed'] = False
+                    if pending['target'] == 'none':
                         pending['stage'] = 'closed'
+                        self.transitions.append({k:v for k,v in pending.items() if k != 'old'} |
+                                                {'label':label,'outcome':'closed_no_eligible_wan'})
                         continue
                     mark = 'sdwan-out-' + pending['policy'] + ':' + pending['target']
-                    traffic.restart_stream(pending['old'], mark, timeout=None)
+                    traffic.start_attempt(flow.port, mark)
                     pending.update(stage='reconnecting', mark=mark, launched=now)
                     continue
                 if pending['stage'] == 'closed':
                     assert state['selected'][pending['policy']] == 'none', 'Closed stream needs an observed admission event'
                     continue
-                assert now - pending['launched'] <= 25, label + ': replacement transfer did not recover'
+                assert now-pending['launched'] <= 25 and now-pending['outage_started'] <= 45, label + ': replacement transfer did not recover'
                 replacement = traffic.find_stream(flow.port, pending['mark'], rows)
                 if replacement is None:
                     continue
@@ -156,9 +185,9 @@ class FlowObserver:
                 self.streams[label] = replacement
                 self.last_bytes[label] = int(replacement.snapshot['repl-bytes'])
                 self.last_progress[label] = now
-                self.transitions.append({key:value for key,value in pending.items() if key != 'old'} |
-                                        {'label':label, 'recovery_seconds':now-pending['started'], 'new_tuple':dict(replacement.snapshot),
-                                         'http_generation':replacement.http['generation']})
+                self.transitions.append({k:v for k,v in pending.items() if k != 'old'} |
+                                        {'label':label, 'outcome':'verified_recovery', 'recovery_seconds':now-pending['outage_started'],
+                                         'new_tuple':dict(replacement.snapshot), 'http_generation':replacement.http['generation']})
                 del self.pending[label]
                 continue
             row = self.retained(flow.last, rows)
