@@ -140,8 +140,11 @@ class Codec:
         return packets
 
 
-def bulk_header(endpoint: int, status: int, data: bytes, caps: int) -> bytes:
-    length = len(data)
+def bulk_header(endpoint: int, status: int, data: bytes, caps: int, *, transferred: int | None = None) -> bytes:
+    # OUT completions carry the actual transferred length without repeating data.
+    length = len(data) if transferred is None else transferred
+    if not 0 <= length <= 0xFFFFFFFF:
+        raise ProtocolError("bulk transfer length is out of range")
     low = length & 0xFFFF
     high = (length >> 16) & 0xFFFF
     if caps & CAP_32BIT_BULK:
@@ -348,7 +351,7 @@ class Session:
             self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, status, blob, self.codec.negotiated)))
             return
         self.device.push_out(endpoint, data)
-        self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, ST_SUCCESS, b"", self.codec.negotiated)))
+        self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, ST_SUCCESS, b"", self.codec.negotiated, transferred=len(data))))
         self._flush_pending()
         self._flush_notify()
 

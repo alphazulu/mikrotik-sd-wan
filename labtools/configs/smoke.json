@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "warmup_seconds": 1,
+  "seconds": 2,
+  "repeats": 1,
+  "subnet": "198.18.250.0/30",
+  "criteria": {"cpu_p95_max":85,"loss_percent_max":0.1,"variation_percent_max":5},
+  "workloads": [
+    {"kind":"tcp","direction":"bidir","offered_bps":20000000,"minimum_bps":10000000},
+    {"kind":"udp","direction":"reverse","payload_bytes":64,"offered_pps":3000,"minimum_pps":2000},
+    {"kind":"cps","rate":1000,"minimum_cps":700,"delay_ms":5,"concurrency":32},
+    {"kind":"imix","offered_pps":6000,"minimum_pps":4000,"batch":6}
+  ]
+}

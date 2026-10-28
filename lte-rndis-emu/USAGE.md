@@ -104,6 +104,26 @@ sh scripts/prepare-uplink.sh lte0
 
 MAC, который RNDIS отдаёт хосту как permanent address: `02:12:d1:14:db:02` (`--host-mac`). Это адрес интерфейса на стороне RouterOS, не адрес uplink.
 
+## TAP и виртуальный ISP: отключить offload на выделенном порту
+
+AF_PACKET передаёт Ethernet-кадры, а не метаданные virtio-net checksum/GSO.
+При подключении отдельной ISP VM к TAP задайте **только её LTE-side NIC**:
+
+```text
+-netdev tap,id=lte,ifname=lte0,script=no,downscript=no,vnet_hdr=off
+-device virtio-net-pci,netdev=lte,csum=off,gso=off,guest_csum=off,guest_tso4=off,guest_tso6=off,guest_ecn=off,guest_ufo=off,host_tso4=off,host_tso6=off,host_ecn=off,host_ufo=off
+```
+
+Не менять management NIC или существующий LAN. Порт TAP не подключать обратно
+к тому же DUT. Если используете другой backend, отдельно проверьте размер и
+контрольные суммы кадров на его выходе.
+
+На Ubuntu/QEMU 8.2.2 с обычным virtio offload в захват попал Ethernet-кадр 2598
+байт с незавершённой TCP checksum; TLS не завершился. С указанными параметрами
+проверено 7648 TCP-пакетов без неверных checksum и без кадров больше 1514 байт,
+а также HTTPS, двусторонний TCP и управляемый обрыв/восстановление.
+Это ограничение L2-транспорта, не оценка скорости LTE-радио. См. VALIDATION.md.
+
 ## Управление LTE
 
 Это не радио и не APN-сессия. По умолчанию профиль `hilink`: на USB только RNDIS, без AT. Состояние читает и меняет агент.
@@ -219,3 +239,9 @@ if name == "edge" and os.environ.get("LTE_RNDIS_EMU") == "1":
 `--gate` меняет передачу пакетов при POST регистрации; это имитация потери
 доступности для SLA, а не аппаратного отключения SIM или смены оператора.
 Тесты TAP выполняются только с явным `LTE_EMU_TAP_TEST=1`.
+
+RX принимает Ethernet frames до 1514 bytes (IP MTU 1500); большие кадры
+отбрасываются до USB completion. TAP/veth offload следует выключить на выделенной
+стороне источника: GSO/checksum-offload кадры не соответствуют обычным Ethernet
+кадрам для RNDIS. Ограничение размера не исправляет неверную TCP checksum и не
+заменяет эту настройку offload. Jumbo/VLAN data path отдельно не реализован.

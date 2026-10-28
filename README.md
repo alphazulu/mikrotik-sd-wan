@@ -166,3 +166,8 @@ CHR-прогон ещё продолжаются. [План и границы п
 | `tests/` | Unit-тесты и явным образом запускаемые CHR/GUI-сценарии |
 
 Образы CHR, диски, пароли, экспорты устройств, backups, screenshots и содержимое `runtime/` не поставляются с исходниками.
+
+
+External Linux lab generators, continuity measurement and synthetic configurator replay:
+[labtools](labtools/README.md), [validation scope](labtools/VALIDATION.md).
+These tools run outside the router; SD-WAN decisions remain on MikroTik.
