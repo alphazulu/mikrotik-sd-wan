@@ -72,3 +72,13 @@ private diagnostic disks. Backing CHR image hashes remain unchanged.
 MikroTik, RF/SIM, WindowsGUI и SD-WAN failover новым измерителем не подтверждены.
 Измеренные echo gaps включают шаг проб, RTT и планирование, а не только простой
 сети. Каталог рекомендаций оборудования остаётся без неподтверждённых профилей.
+
+## Namespace TAP transport follow-up
+
+Five additional unit checks cover explicit child descriptor transfer, peer
+identity, rejection/closure of excess descriptors and namespace ownership.
+The consolidated lab unit suite now contains41 tests. A dedicated Linux
+privileged integration passes3/3 ICMP replies with frames in both directions
+and verified cleanup. The first attempt timed out because an abstract UNIX
+socket is network-namespace scoped; switching to a private filesystem socket
+resolved that specific cause. No DUT capacity or SD-WAN switching claim follows.

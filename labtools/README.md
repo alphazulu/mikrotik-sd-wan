@@ -168,3 +168,23 @@ Privileged integration commands belong on the dedicated Linux lab. CI runs the
 pure unit/replay checks; QEMU/TAP acceptance is reported separately with its scope.
 Controller code is unchanged by this package, including its mandatory exact-source
 unit coverage requirements.
+
+## Namespace TAP descriptors / TAP внутри netns
+
+`sdwan_lab.namespace_tap.open_tap(run, namespace, name)` opens a nonpersistent
+TAP in a namespace already owned by the run. It exports one descriptor through
+a private filesystem UNIX socket with peer PID/UID verification. Abstract UNIX
+sockets cannot cross network namespaces. The returned descriptor is not
+inheritable until explicitly passed with `Run.spawn(..., pass_fds=(fd,))`.
+Close it after the child stops; the final descriptor closure removes the TAP.
+The QEMU process can retain loopback management while its data TAPs remain
+inside disposable peer namespaces, without a host bridge or host IP changes.
+
+```sh
+sudo env PYTHONPATH=. python3 namespace_tap_integration.py \
+  --workspace /var/tmp/sdwan-lab --run-id namespace-tap-001
+```
+
+This privileged check relays frames between two namespace TAPs and verifies
+three ICMP replies and cleanup. It is a transport fixture check, not a DUT
+capacity or SD-WAN failover measurement.

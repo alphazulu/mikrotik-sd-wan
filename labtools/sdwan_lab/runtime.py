@@ -119,8 +119,12 @@ class Run:
         self._record(intent, {'kind':'tap', 'name':name, 'ifindex':index, 'alias':alias, 'deleted':False})
         return name
 
-    def spawn(self, args, label):
+    def spawn(self, args, label, *, pass_fds=()):
         if not re.fullmatch(r'[A-Za-z0-9_-]+', label): raise ValueError('Invalid log label')
+        pass_fds=tuple(pass_fds)
+        for descriptor in pass_fds:
+            if type(descriptor) is not int or descriptor<3:raise ValueError('Export only explicit nonstandard descriptors')
+            os.fstat(descriptor)
         out_path = self.folder / (label + '.stdout'); err_path = self.folder / (label + '.stderr')
         if out_path.exists() or err_path.exists(): raise FileExistsError('Log label already used: ' + label)
         intent = self._intent('process', label)
@@ -128,7 +132,7 @@ class Run:
         try:
             with out_path.open('xb') as out, err_path.open('xb') as err:
                 child = subprocess.Popen(list(map(str, args)), stdout=out, stderr=err,
-                                         start_new_session=True, env=env)
+                                         start_new_session=True, env=env, pass_fds=tuple(pass_fds))
         except OSError:
             self.data['pending'].remove(intent); self.save()
             raise
