@@ -34,12 +34,25 @@ WAN/политик/проб/туннелей. Сейчас полных срав
 4. Если Fetch запрещён, сначала запрашивается разрешение функции, до передачи
    пакета. Device-mode требует физического подтверждения кнопкой reset/mode либо
    отключением питания; обычный reboot его не заменяет. Подробности выводятся в
-   журнал до ожидания API. После подтверждения нажать проверку повторно.
+   журнал до запуска фонового запроса. После подтверждения нажать проверку повторно.
 
 Запрос device-mode фиксируется локально **до** отправки. При обрыве API программа
 не объявляет функцию включённой и не повторяет запрос вслепую: повторный update
 может отменить уже ожидающее подтверждение изменение. Готовность устанавливается
 по фактически прочитанным флагам. Роутеры с flagged=yes не «исправляются» автоматически.
+
+Запрос запускается через временный скрипт и `:execute` на самом RouterOS: нативный
+API не удерживается на всё пятиминутное окно подтверждения. После запуска запись
+скрипта запуска удаляется по уникальным имени и комментарию. Именованный рабочий
+скрипт сохраняется до следующей проверки завершения, чтобы можно было проверить
+наличие настоящего задания, даже если после отмены остался старый RAM-маркер.
+Завершённый рабочий скрипт удаляется при повторной проверке. Маркер находится
+только в RAM, без периодической
+записи на flash. Повторная проверка читает маркер и реальные флаги. Если запрос
+завершился с ошибкой/отменой либо окно истекло, программа сообщает об этом и ждёт
+следующего явного нажатия; автоматически новый update не отправляется. При потере
+связи или неизвестном старом запросе готовность не объявляется. Физическое
+подтверждение конфигуратор не заменяет.
 
 ## Накопитель и образ
 
@@ -77,6 +90,11 @@ SDK создаёт отдельную локальную сеть, API-поль�
 - x86 7.24.5 L6: 128 KiB binary roundtrip с SHA256 и повторная передача без записи;
   установка официального container NPK, штатный reboot, физическое подтверждение
   через cold boot отдельной VM; L6 сохранена.
+- Отдельный x86 7.24.5 L6: фоновый запрос SDK при реальном `fetch=no`
+  вернулся за 65 ms, повторная проверка после разрыва API — за 24 ms без нового
+  update. Холодное включение включило Fetch; итоговые флаги и L6 проверены,
+  временный скрипт и локальный pending-файл удалены. Это проверка отдельной VM,
+  а не физической кнопки на устройстве владельца.
 - Автоматическая передача/импорт точного scratch CI-образа; локальная сеть, пользователь,
   mounts и остановленное состояние проверены SDK check_ready.
 - Покрытие Rust base/web и браузерного JS повторно измерено: 100% исполняемых строк
@@ -89,3 +107,17 @@ SDK создаёт отдельную локальную сеть, API-поль�
 [план MBIM/AT полей LTE](../lte-rndis-emu/MODEM-CONTROL-PLAN.md),
 [RouterOS device-mode](https://manual.mikrotik.com/docs/system-information-and-utilities/device-mode/),
 [RouterOS Containers](https://manual.mikrotik.com/docs/containers/).
+
+## Background device-mode request (English)
+
+The configurator starts a temporary RouterOS script whose `:execute` job runs
+the per-feature update in the background. It returns during the physical
+confirmation window instead of retaining a streaming API call for five minutes.
+The launcher is removed by its unique name and comment. The named worker remains
+until completion is checked, then is removed too. Readback checks the actual named
+job: cancellation can terminate it while leaving a stale RAM marker.
+No polling statistics or worker-status files are written to the router flash.
+A persisted local intent prevents a blind duplicate update after transport loss.
+Readback of the actual feature flags establishes readiness. Expired or ended
+requests require another explicit preparation action. Physical confirmation is
+still required; ordinary reboot cancels the request.
