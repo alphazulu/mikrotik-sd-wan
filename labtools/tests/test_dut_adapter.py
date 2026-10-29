@@ -7,6 +7,7 @@ from sdwan_lab.dut_metrics import GeneratorSampler,receiver_metrics,summarize
 from sdwan_lab.iperf_runner import result as iperf_result
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT))
 
 class ConfigurationTests(unittest.TestCase):
     def test_private_paths_are_relative_to_config_and_no_remote_router_URL_is_accepted(self):
