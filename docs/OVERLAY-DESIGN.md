@@ -204,3 +204,40 @@ another branch's UDP and the same ordinary/private TCP streams. A separate
 forced geometry test exercises standby cached-source handling; it is not a
 substitute for an actual DHCP change. See [DNS bootstrap](DNS-BOOTSTRAP.md) for
 hostname endpoints when the ordinary default policy is closed.
+
+### Incomplete address snapshots
+
+An isolated 7.24.5 regression found an existing incoming standby UDP tuple whose
+local WAN address was absent from the cached address snapshot. The cached WAN
+source was correct; a fresh inventory contained the missing address. The old
+retirement helper returned zero. This identifies the failed membership check;
+it does not establish when the earlier snapshot became incomplete.
+
+Retirement now combines the previous socket-address snapshot, the previous
+resolved WAN source and currently valid local addresses. Previous addresses are
+retained when a lease/address has disappeared. Current address flags are read
+directly from returned rows; disabled/invalid rows are excluded. Both inventories
+are bounded at1024 rows. Unknown geometry, wrong endpoint/ports, invalid cache
+types or oversized inventories refuse deletion. The existing exact UDP endpoint
+and listener-port filters, including both conntrack directions, remain in place.
+The additional inventory read occurs only during retirement; stable transport
+geometry performs no extra polling or flash writes. Overlay library revision2
+also refreshes the runtime loader after an update.
+
+Run the actual old/new function regression on the owned five-CHR fixture:
+
+```sh
+python3 tests/overlay_retirement_cache_acceptance.py \
+  --lab-root /srv/sdwan/private/project \
+  --previous-source /srv/sdwan/private/previous/native/sdwan-overlay.rsc
+```
+
+Fifteen checks pass: the old function reproduces zero removal, the new function
+retires the real standby tuple, cache/WAN-hint/current-inventory combinations and
+flag/bound checks hold, and primary/SiteB UDP plus ordinary/private TCP survive.
+Inventory fault cases replace the function's read expression only; they do not
+remove router addresses. The live controller cache/configuration is retained.
+The initial test-driver attempt read an unfinished result marker and failed;
+the driver now waits for a complete JSON result. Its failed report is retained.
+These checks are separate from the native DHCP/PPPoE/rollback/cold-boot suite and
+the still-required source-matching long soak.

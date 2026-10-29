@@ -379,22 +379,42 @@
 }
 # Retire one owned WireGuard listener's previous remote UDP tuple, in either
 # conntrack direction. Cached socket source may differ from its WAN source.
-# The local-address snapshot is RAM only. Never purge inner TCP or port-only UDP.
+# Keep the prior socket sources, but do not trust an early/partial address cache
+# as the complete local inventory. Re-read current addresses ONLY on retirement.
+# This is RAM only. Never purge inner TCP or port-only UDP.
 :global sdwanOverlayRetireTransport do={
     :local remoteIP [:toip ($previous->"endpoint")]
     :local localPort ($previous->"listen_port")
     :local remotePort ($previous->"endpoint_port")
     :local localAddresses ($previous->"local_addresses")
-    :if (([:typeof $remoteIP] != "ip") || ($remoteIP = 0.0.0.0) || ([:typeof $localPort] != "num") || ([:typeof $remotePort] != "num") || ($localPort < 1) || ($localPort > 65535) || ($remotePort < 1) || ($remotePort > 65535) || ([:typeof $localAddresses] != "array") || ([:len $localAddresses] = 0) || ([:len $localAddresses] > 1024)) do={ :return 0 }
+    :if (([:typeof $remoteIP] != "ip") || ($remoteIP = 0.0.0.0) || ([:typeof $localPort] != "num") || ([:typeof $remotePort] != "num") || ($localPort < 1) || ($localPort > 65535) || ($remotePort < 1) || ($remotePort > 65535) || ([:typeof $localAddresses] != "array") || ([:len $localAddresses] > 1024)) do={ :return 0 }
+    :local currentAddresses [/ip/address/print as-value]
+    :if ([:len $currentAddresses] > 1024) do={ :return 0 }
+    :local allowedSources [:toarray ""]
+    :foreach address,present in=$localAddresses do={ :if ($present = true) do={ :set ($allowedSources->$address) true } }
+    # The resolved WAN source is part of the prior trusted transport geometry;
+    # it must remain usable after its address/lease has already disappeared.
+    :local oldSource [:toip ($previous->"source")]
+    :if (([:typeof $oldSource] = "ip") && ($oldSource != 0.0.0.0)) do={ :set ($allowedSources->[:tostr $oldSource]) true }
+    :foreach addressRow in=$currentAddresses do={
+        :if ((($addressRow->"disabled") != true) && (($addressRow->"invalid") != true)) do={
+            :local address [:tostr ($addressRow->"address")]
+            :local slash [:find $address "/"]
+            :if ([:typeof $slash] = "num") do={
+                :local ip [:toip [:pick $address 0 $slash]]
+                :if (([:typeof $ip] = "ip") && ($ip != 0.0.0.0)) do={ :set ($allowedSources->[:tostr $ip]) true }
+            }
+        }
+    }
     :local count 0
     :global sdwanConntrackFind
     :local outbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-port=$localPort and dst-address=$remoteIP and dst-port=$remotePort] }
     :foreach cid in=[$sdwanConntrackFind query=$outbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
-        :onerror expired in={ :local source [:tostr [/ip/firewall/connection/get $cid src-address]]; :if (($localAddresses->$source) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+        :onerror expired in={ :local source [:tostr [/ip/firewall/connection/get $cid src-address]]; :if (($allowedSources->$source) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
     }
     :local inbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] }
     :foreach cid in=[$sdwanConntrackFind query=$inbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
-        :onerror expired in={ :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]; :if (($localAddresses->$destination) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+        :onerror expired in={ :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]; :if (($allowedSources->$destination) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
     }
     :return $count
 }
@@ -410,11 +430,21 @@
     :local signature ([:serialize to=json value=$row options=json.no-string-conversion] . ":" . ($tunnel->"wan") . ":" . ($wan->"route_gateway") . ":" . ($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"endpoint") . ":" . ($tunnel->"endpoint_port"))
     :local previous ($sdwanOverlayTransport->($tunnel->"name"))
     :if (([:typeof $previous] = "array") && (($previous->"signature") = $signature)) do={ :return 0 }
-    :local ids [/ip/address/find where disabled=no and invalid=no]
+    :local currentAddresses [/ip/address/print as-value]
     # Fail closed on oversized inventories, keeping the prior snapshot for retry.
-    :if ([:len $ids] > 1024) do={ :return 0 }
+    :if ([:len $currentAddresses] > 1024) do={ :return 0 }
     :local localAddresses [:toarray ""]
-    :foreach id in=$ids do={ :local address [:tostr [/ip/address/get $id address]]; :local ip [:pick $address 0 [:find $address "/"]]; :set ($localAddresses->$ip) true }
+    # Read flags directly instead of filtering on default-valued booleans.
+    :foreach addressRow in=$currentAddresses do={
+        :if ((($addressRow->"disabled") != true) && (($addressRow->"invalid") != true)) do={
+            :local address [:tostr ($addressRow->"address")]
+            :local slash [:find $address "/"]
+            :if ([:typeof $slash] = "num") do={
+                :local ip [:toip [:pick $address 0 $slash]]
+                :if (([:typeof $ip] = "ip") && ($ip != 0.0.0.0)) do={ :set ($localAddresses->[:tostr $ip]) true }
+            }
+        }
+    }
     :local retired 0
     :if ([:typeof $previous] = "array") do={ :set retired [$sdwanOverlayRetireTransport previous=$previous] }
     :set ($row->"local_addresses") $localAddresses
@@ -643,4 +673,4 @@
     :set sdwanOverlayState $next
     :return $report
 }
-:global sdwanOverlayLoaded 1
+:global sdwanOverlayLoaded 2
