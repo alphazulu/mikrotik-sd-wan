@@ -1,5 +1,7 @@
 # LTE RNDIS emulator — инструкция для агента
 
+[English](USAGE.en.md)
+
 Программный USB-модем для CHR. Данные — мост L2 на интерфейс, который передаёт вызывающий. DHCP-сервера здесь нет. Радио нет: поля LTE — имитация управления.
 
 Не утверждать, что VID/PID сам создаёт `/interface lte`. Дескрипторы повторяют Linux `f_rndis` (control `02/02/ff`, data `0a/00/00`). `12d1:14db` — это id, который MikroTik документирует как config-less E3372h, поверх этого класса, а не вместо него.
@@ -54,7 +56,7 @@ ready usbredir=127.0.0.1:24320 control=127.0.0.1:24321 uplink=lte0 profile=hilin
 `--uplink` — существующий интерфейс (tap, veth, dummy, порт моста). Эмулятор открывает на нём `AF_PACKET` и копирует кадры Ethernet как есть.
 
 ```text
-CHR lte  --usbredir/RNDIS-->  этот процесс  --L2-->  --uplink
+CHR lte  --usbredir/RNDIS-->  emulator  --L2-->  --uplink
 ```
 
 - Кадр с хоста уходит на интерфейс только после того, как USB-хост сделал RNDIS `INITIALIZE` и `SET OID_GEN_CURRENT_PACKET_FILTER` с ненулевым фильтром. Драйвер RouterOS делает это сам.
@@ -103,6 +105,26 @@ sh scripts/prepare-uplink.sh lte0
 Не передавать боевой NIC, если не нужно вливать L2 CHR в этот сегмент. Петлю «uplink снова в тот же CHR» не делать: свои кадры отфильтровываются через `PACKET_IGNORE_OUTGOING`, чужой мост туда-обратно — уже петля.
 
 MAC, который RNDIS отдаёт хосту как permanent address: `02:12:d1:14:db:02` (`--host-mac`). Это адрес интерфейса на стороне RouterOS, не адрес uplink.
+
+## TAP и виртуальный ISP: отключить offload на выделенном порту
+
+AF_PACKET передаёт Ethernet-кадры, а не метаданные virtio-net checksum/GSO.
+При подключении отдельной ISP VM к TAP задайте **только её LTE-side NIC**:
+
+```text
+-netdev tap,id=lte,ifname=lte0,script=no,downscript=no,vnet_hdr=off
+-device virtio-net-pci,netdev=lte,csum=off,gso=off,guest_csum=off,guest_tso4=off,guest_tso6=off,guest_ecn=off,guest_ufo=off,host_tso4=off,host_tso6=off,host_ecn=off,host_ufo=off
+```
+
+Не менять management NIC или существующий LAN. Порт TAP не подключать обратно
+к тому же DUT. Если используете другой backend, отдельно проверьте размер и
+контрольные суммы кадров на его выходе.
+
+На Ubuntu/QEMU 8.2.2 с обычным virtio offload в захват попал Ethernet-кадр 2598
+байт с незавершённой TCP checksum; TLS не завершился. С указанными параметрами
+проверено 7648 TCP-пакетов без неверных checksum и без кадров больше 1514 байт,
+а также HTTPS, двусторонний TCP и управляемый обрыв/восстановление.
+Это ограничение L2-транспорта, не оценка скорости LTE-радио. См. VALIDATION.md.
 
 ## Управление LTE
 
@@ -161,7 +183,7 @@ AT, которые отвечают сразу (неизвестный AT — `E
 
 ## Как подключить к существующему лабу CHR
 
-Репозиторий `alphazulu/mikrotik-sd-wan`, функция `node_command` в `lab.py`. Сейчас у VM нет USB-контроллера. Добавлять аргументы только узлу `edge`, не меняя lifecycle `up`/`down` и не трогая остальные узлы.
+Репозиторий `alphazulu/mikrotik-sd-wan`, функция `node_command` в `lab.py`. Обычный запуск не добавляет USB-контроллер; опциональная интеграция уже реализована, как указано в конце страницы. Аргументы добавлять только узлу `edge`, не меняя lifecycle `up`/`down` и не трогая остальные узлы.
 
 Порядок: сначала `serve`, потом QEMU. QEMU — TCP-клиент. Если CHR уже запущен, новый chardev сам не появится.
 
@@ -219,3 +241,9 @@ if name == "edge" and os.environ.get("LTE_RNDIS_EMU") == "1":
 `--gate` меняет передачу пакетов при POST регистрации; это имитация потери
 доступности для SLA, а не аппаратного отключения SIM или смены оператора.
 Тесты TAP выполняются только с явным `LTE_EMU_TAP_TEST=1`.
+
+RX принимает Ethernet frames до 1514 bytes (IP MTU 1500); большие кадры
+отбрасываются до USB completion. TAP/veth offload следует выключить на выделенной
+стороне источника: GSO/checksum-offload кадры не соответствуют обычным Ethernet
+кадрам для RNDIS. Ограничение размера не исправляет неверную TCP checksum и не
+заменяет эту настройку offload. Jumbo/VLAN data path отдельно не реализован.

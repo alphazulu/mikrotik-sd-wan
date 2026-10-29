@@ -51,7 +51,7 @@ class PlatformTests(unittest.TestCase):
 
     def test_external_storage_preferred_without_formatting_and_flash_is_persistent_root(self):
         r,c,cfg=fixture();c['file']=[{'name':'flash','type':'directory'}]
-        c['disk']=[{'slot':'usb1','fs':'ext4','free':str(128*1024**2),'mount-filesystem':'true'}]
+        c['disk']=[{'slot':'usb1','fs':'ext4','free':str(128*1024**2),'mount-filesystem':'true','mounted':'true'}]
         options=storage_options(r,c);self.assertEqual(options[0]['path'],'usb1/sdwan-container');self.assertTrue(options[0]['recommended']);self.assertEqual(options[-1]['path'],'flash/sdwan-container')
         cfg['container']['storage']='usb1/custom';self.assertTrue(assess(r,c,cfg)['ready'])
         cfg['container']['storage']='volatile-root';self.assertFalse(assess(r,c,cfg)['ready'])

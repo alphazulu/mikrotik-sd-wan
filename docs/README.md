@@ -1,48 +1,93 @@
-# Руководства MikroTik SD-WAN
+# Индекс документации
 
-## Установка и настройка
+Русский | [English](README.en.md)
 
-- [Быстрый старт](../README.md) — возможности, требования, GUI и CLI.
-- [Конфигуратор](CONFIGURATOR-WIZARD.md) — API, выбор интерфейсов, генерация и план.
-- [Конфигурация JSON](CONFIGURATION.md) — структура, SLA, WAN, политики и примеры.
-- [Нативный контроллер](NATIVE-CONTROLLER.md) — файлы, команды и работа RouterOS.
-- [Защищённая установка](DEPLOYMENT.md) — scheduler, backup, ACK и восстановление.
-- [API и архивы установки](MAINTENANCE.md) — точечный поиск, минимум записей, место и retention.
-- [Диагностика](DIAGNOSTICS.md) — состояние, история и объяснение выбора канала.
+Готовность выпуска описана в текущем статусе. Проектные документы и отчёты
+этапов имеют собственные границы; их числа не складываются как уникальные тесты.
+В каждом руководстве есть переключение языка; ссылки ниже ведут на русские версии.
+
+## Начать здесь
+
+- [Возможности и быстрый старт](../README.md)
+- [Текущее состояние кандидата и проверок](CURRENT-STATUS.md)
+- [План развития](../ROADMAP.md)
+- [Правила документации RU/EN](LANGUAGES.md)
+- [Конфигурации и учётные данные](../SECURITY.md)
+
+## Установка и эксплуатация
+
+- [Конфигуратор: от API до установки](CONFIGURATOR-WIZARD.md)
+- [Платформа, пакеты, device-mode и носитель](CONFIGURATOR-PROVISIONING.md)
+- [Существующие проверки готовности](CONFIGURATOR-CHECKS.md)
+- [Структура JSON и примеры](CONFIGURATION.md)
+- [Защищённая установка и восстановление](DEPLOYMENT.md)
+- [Порядок эксплуатации и восстановления](OPERATIONS.md)
+- [API, место и архивы](MAINTENANCE.md)
+- [Диагностика и объяснение выбора](DIAGNOSTICS.md)
+- [Переход со сторонних mangle](MIGRATION.md)
+- [Нативный контроллер RouterOS](NATIVE-CONTROLLER.md)
 
 ## Маршрутизация и WAN
 
-- [Маркировка и conntrack](DATAPLANE.md) — симметричные WAN/DNAT-ответы и переключение.
-- [Static, DHCP-client и PPPoE](DYNAMIC-WAN.md) — адреса, события и прогрев SLA.
-- [LTE/APN](LTE.md) — существующий профиль, автоматические маршруты и ограничения.
-- [Реализация LTE](LTE-IMPLEMENTATION.md) — resolver, installer и rollback.
-- [Группы и правила клиентов](POLICIES.md) — адреса, VLAN/L3, протоколы, порты и приоритет.
-- [OSPF/VPN](OSPF.md) — локальные и филиальные сети, маркировки и маршруты.
-- [Архитектура и SLA](SD-WAN.md) — ранний проектный обзор; текущие границы см. в README.
+- [Маркировка, симметрия и conntrack](DATAPLANE.md)
+- [Static, DHCP-client и PPPoE](DYNAMIC-WAN.md)
+- [LTE и APN](LTE.md)
+- [Клиенты, адресные списки и L3/L4](POLICIES.md)
+- [Совместимость существующих OSPF/VPN](OSPF.md)
+- [Существующие VPN как WAN](VPN-EGRESS.md)
+- [Филиальный overlay и ключи](OVERLAY-GUI.md)
+- [DNS bootstrap для endpoints](DNS-BOOTSTRAP.md)
+- [Исчезающие записи conntrack](CONNTRACK-EXPIRY.md)
 
-## Локальный Rust-контейнер
+## Контейнер и статистика
 
-- [Подготовка и запуск](CONTAINER.md) — пакет, veth, API, GUI/CLI и heartbeat.
-- [Сборка](BUILD.md) — закреплённый Rust SDK, musl, три архитектуры и scratch.
-- [Завершённый план backend](CONTAINER-PLAN.md).
-- [Проект RAM-статистики и web](STATISTICS-DESIGN.md) — опциональный режим, бюджет и ограничения; сервер ещё не реализован.
-- [Приёмка и расход ресурсов](CONTAINER-VALIDATION.md).
+- [Обзор Rust/scratch](../container-controller/README.md)
+- [Установка и ограничения контейнера](CONTAINER.md)
+- [Сборка и проверка точных CI-артефактов](BUILD.md)
+- [Обязательное unit-покрытие](CONTAINER-TESTING.md)
+- [Настройка работающего web и RAM-истории](STATISTICS.md)
 
-## Проверки
+## Лаборатория и методика
 
-- [API/архивы/CI](RESOURCE-VALIDATION.md) — текущие183unit,17targetedCHR и28baseline.
-- [Лаборатория CHR](LAB.md) и [порядок тестирования](TESTING.md).
-- [Итоговая контейнерная приёмка](CONTAINER-VALIDATION.md) — текущие 155 Python / 9 Rust / 120 CHR.
-- [Нативные SLA-сценарии](NATIVE-VALIDATION.md).
-- [Соединения и симметрия](CONNECTIONS-VALIDATION.md).
-- [Динамические WAN](DYNAMIC-WAN-VALIDATION.md).
-- [LTE/APN](LTE-VALIDATION.md).
-- [Политики и диагностика](POLICIES-VALIDATION.md).
-- [GUI и мастер](WIZARD-VALIDATION.md).
-- [Исходная маршрутизация стенда](VALIDATION.md).
+- [Лаборатория QEMU/CHR](LAB.md)
+- [Порядок запуска проверок](TESTING.md)
+- [Длительная приёмка](NETWORK-SOAK.md)
+- [Методика сравнения производительности](PERFORMANCE-PLAN.md)
+- [Внешние генераторы и наблюдатели](../labtools/README.md)
+- [Изолированный x86 DUT](../labtools/DUT-ADAPTER.md)
+- [Обзор USB LTE-эмулятора](../lte-rndis-emu/README.md)
+- [Запуск LTE-эмулятора](../lte-rndis-emu/USAGE.md)
+- [Лаборатория x86 с LTE](../lte-rndis-emu/X86-LAB.md)
 
-Исторические числа описывают отдельные этапы и не складываются в число уникальных тестов. Файлы `runtime/`, упоминаемые в отчётах, создаются локально и не публикуются вместе с исходниками.
+## Проектные документы
 
-[План развития](../ROADMAP.md) · [Хранение секретов](../SECURITY.md)
+- [Сетевая итерация и её проверки](NEXT-NETWORK-PLAN.md)
+- [Архитектура филиального overlay](OVERLAY-DESIGN.md)
+- [Усиление нативного overlay](OVERLAY-NATIVE-HARDENING.md)
+- [План VPN WAN](VPN-EGRESS-PLAN.md)
+- [Первоначальная архитектура статистики](STATISTICS-DESIGN.md)
+- [Следующая итерация статистики: проект](STATISTICS-NEXT.md)
+- [Первоначальный план контейнера](CONTAINER-PLAN.md)
+- [Первоначальный обзор SD-WAN](SD-WAN.md)
+- [Реализация LTE resolver и отката](LTE-IMPLEMENTATION.md)
+- [План полей управления модемом](../lte-rndis-emu/MODEM-CONTROL-PLAN.md)
 
-- [Unit-покрытие контейнера](CONTAINER-TESTING.md) — обязательные проверки обоих профилей и браузерного кода перед сборкой.
+## Отчёты отдельных этапов
+
+- [Результаты сравнения и ограничения](PERFORMANCE-RESULTS.md)
+- [Сетевые проверки контейнера](NETWORK-CONTAINER-VALIDATION.md)
+- [Первоначальная приёмка контейнера](CONTAINER-VALIDATION.md)
+- [Приёмка статистики](STATISTICS-VALIDATION.md)
+- [Нативные SLA-сценарии](NATIVE-VALIDATION.md)
+- [Соединения и симметрия](CONNECTIONS-VALIDATION.md)
+- [Динамические WAN](DYNAMIC-WAN-VALIDATION.md)
+- [LTE/APN](LTE-VALIDATION.md)
+- [Политики и диагностика](POLICIES-VALIDATION.md)
+- [VPN WAN](VPN-EGRESS-VALIDATION.md)
+- [GUI и мастер](WIZARD-VALIDATION.md)
+- [API, архивы и ресурсы](RESOURCE-VALIDATION.md)
+- [Исходная маршрутизация стенда](VALIDATION.md)
+- [Внешние инструменты](../labtools/VALIDATION.md)
+- [LTE-эмулятор](../lte-rndis-emu/VALIDATION.md)
+
+Сырые runtime-отчёты, учётные данные и снимки устройств остаются локальными.

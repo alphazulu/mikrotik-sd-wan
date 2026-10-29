@@ -1,5 +1,9 @@
 # Проверка мастера GUI и RouterOS API
 
+[English](WIZARD-VALIDATION.en.md)
+
+Исторический отчёт: количества и состояние стенда относятся к этому этапу. Текущие условия приёмки — [CURRENT-STATUS.md](CURRENT-STATUS.md).
+
 Дата: 23.10.2026. Windows Python/Tk 8.6, WSL Ubuntu-24.04, CHR RouterOS 7.24.5. Внешний процесс не принимает решения SD-WAN.
 
 | Проверка | Результат |
@@ -47,7 +51,7 @@ python .\tests\gui_wizard_smoke.py
 - `runtime/screenshots/wizard-interfaces.png` (локальный отчёт).
 - `runtime/screenshots/wizard-generated.png` (локальный отчёт).
 
-TLS-код проверяет цепочку/имя сертификата, но соединение с реальным API-SSL сервером в этой итерации не испытывалось. Динамические WAN, VRF и сторонние routing marks не входят в подтверждённую поддержку. Полный перечень ограничений — [CONFIGURATOR-WIZARD.md](CONFIGURATOR-WIZARD.md).
+TLS-код проверяет цепочку/имя сертификата, но соединение с реальным API-SSL сервером в этой итерации не испытывалось. Динамические WAN, VRF и сторонние routing marks не входили в подтверждённую поддержку этого этапа. Более поздние поддерживаемые методы и текущие ограничения — [CONFIGURATOR-WIZARD.md](CONFIGURATOR-WIZARD.md).
 
 ## Исправление ошибки «Создать конфигурацию», 23.10.2026
 
@@ -59,7 +63,7 @@ TLS-код проверяет цепочку/имя сертификата, но
 python .\tests\gui_wizard_regression.py
 ```
 
-Для проверки конкретной сохранённой инвентаризации этого обращения можно передать `--inventory <путь-к-discovery.json>`. Отчёт — `runtime/gui-create-regression.json`; снимок успешного создания — `runtime/screenshots/wizard-create-regression.png`.
+Для проверки конкретной сохранённой инвентаризации этого обращения можно передать `--inventory <path-to-discovery.json>`. Отчёт — `runtime/gui-create-regression.json`; снимок успешного создания — `runtime/screenshots/wizard-create-regression.png`.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

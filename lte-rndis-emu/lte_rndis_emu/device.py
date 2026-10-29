@@ -8,7 +8,7 @@ from collections import deque
 
 from lte_rndis_emu.atport import AtPort
 from lte_rndis_emu.descriptors import Descriptors, UsbIdentity
-from lte_rndis_emu.rndis import RndisEngine, ethernet_frames, wrap_ethernet
+from lte_rndis_emu.rndis import MTU, RndisEngine, ethernet_frames, wrap_ethernet
 from lte_rndis_emu.state import LteState
 
 log = logging.getLogger("lte_rndis_emu")
@@ -159,7 +159,9 @@ class UsbDevice:
         if len(frame) < 14:
             return
         with self.lock:
-            if not self._forward_allowed_unlocked():
+            # Enforce the advertised IP MTU + Ethernet header before USB wrapping.
+            # GSO/TAP giants are invalid ingress frames, not USB receive errors.
+            if len(frame) > MTU + 14 or not self._forward_allowed_unlocked():
                 self.counters["dropped"] += 1
                 return
             packet = wrap_ethernet(bytes(frame))

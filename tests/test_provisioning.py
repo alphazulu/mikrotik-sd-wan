@@ -88,17 +88,12 @@ class ProvisionTests(unittest.TestCase):
     def test_feature_request_is_delta_only_and_is_not_reissued_while_pending(self):
         from test_platform_support import fixture
         resource,caps,config=fixture();config['controller_backend']='routeros';caps['system/device-mode'][0]['scheduler']='false'
-        class Router:
-            base_url='api://test'
-            def __init__(self):self.calls=[]
-            def call(self,path,data=None,method=None):
-                self.calls.append((path,data,method))
-                return {'name':'lab'} if path=='system/identity' else resource if path=='system/resource' else []
-        router=Router()
+        from test_device_mode import WorkerRouter
+        router=WorkerRouter(resource)
         with tempfile.TemporaryDirectory() as folder,patch.object(provision,'collect',return_value=caps):
             one=provision.prepare_device(router,config,'lab',root=Path(folder));two=provision.prepare_device(router,config,'lab',root=Path(folder))
         changes=[call for call in router.calls if call[0]=='system/device-mode/update']
-        self.assertEqual(changes,[('system/device-mode/update',{'scheduler':'yes'},'POST')]);self.assertTrue(one['needs_physical_confirmation']);self.assertFalse(two['request_repeated'])
+        self.assertEqual(changes,[]);self.assertEqual(sum(method=='PUT' for _,_,method in router.calls),2);self.assertTrue(one['needs_physical_confirmation']);self.assertFalse(two['request_repeated'])
 
     def test_identity_mismatch_never_provisions(self):
         class Router:
@@ -110,28 +105,23 @@ class DevicePreparationOrderTests(unittest.TestCase):
     def test_fetch_restriction_requests_physical_confirmation_before_download(self):
         from test_platform_support import fixture
         resource,caps,config=fixture();caps['system/device-mode'][0]['fetch']='false';caps['system/package']=caps['system/package'][:1]
-        class Router:
-            base_url='api://test'
-            def __init__(self):self.calls=[]
-            def call(self,path,data=None,method=None):
-                self.calls.append((path,data,method))
-                return {'name':'lab'} if path=='system/identity' else resource if path=='system/resource' else []
-        router=Router()
+        from test_device_mode import WorkerRouter
+        router=WorkerRouter(resource)
         with tempfile.TemporaryDirectory() as folder,patch.object(provision,'collect',return_value=caps),patch.object(provision,'download') as download:
             result=provision.prepare_device(router,config,'lab',root=Path(folder))
         download.assert_not_called();self.assertTrue(result['needs_physical_confirmation'])
-        self.assertEqual([c for c in router.calls if c[0]=='system/device-mode/update'],[('system/device-mode/update',{'fetch':'yes'},'POST')])
+        self.assertEqual([c for c in router.calls if c[0]=='system/device-mode/update'],[]);self.assertTrue(any('fetch=yes' in data.get('source','') for _,data,method in router.calls if isinstance(data,dict)))
 
     def test_transport_loss_keeps_pending_request_and_never_claims_enabled(self):
         from test_platform_support import fixture
         resource,caps,config=fixture();config['controller_backend']='routeros';caps['system/device-mode'][0]['scheduler']='false'
-        class Router:
-            base_url='api://unit'
+        from test_device_mode import WorkerRouter
+        class Router(WorkerRouter):
             def call(self,path,data=None,method=None):
-                if path=='system/device-mode/update':raise OSError('connection closed')
-                return {'name':'lab'} if path=='system/identity' else resource
+                if path=='system/script/run':raise OSError('connection closed')
+                return super().call(path,data,method)
         with tempfile.TemporaryDirectory() as folder,patch.object(provision,'collect',return_value=caps):
-            one=provision.prepare_device(Router(),config,'lab',root=Path(folder));two=provision.prepare_device(Router(),config,'lab',root=Path(folder))
+            one=provision.prepare_device(Router(resource),config,'lab',root=Path(folder));two=provision.prepare_device(Router(resource),config,'lab',root=Path(folder))
             self.assertTrue(list((Path(folder)/'runtime').glob('device-mode-*.json')))
         self.assertFalse(one['ready']);self.assertFalse(two['request_repeated'])
 

@@ -1,5 +1,9 @@
 # Сравнительная нагрузочная проверка SD-WAN
 
+Текущие условия приёмки и следующая сравнительная серия — [CURRENT-STATUS.md](CURRENT-STATUS.md).
+
+[English](PERFORMANCE-PLAN.en.md)
+
 Выполненная серия и её практические ограничения:
 [PERFORMANCE-RESULTS.md](PERFORMANCE-RESULTS.md). Она не добавляет автоматический
 профиль аппаратной производительности.

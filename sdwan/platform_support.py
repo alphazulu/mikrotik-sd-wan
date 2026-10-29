@@ -7,7 +7,7 @@ RESOURCE_FIELDS = 'version,board-name,architecture-name,platform,cpu,cpu-count,c
 CAPABILITY_FIELDS = {
     'system/package':'.id,name,version,disabled,scheduled',
     'system/device-mode':'mode,flagged,scheduler,fetch,container,l2tp,ipsec,attempt-count',
-    'disk':'.id,slot,type,fs,size,free,disabled,mount-filesystem,mount-read-only,swap',
+    'disk':'.id,slot,type,fs,size,free,disabled,mount-point,mounted,mount-filesystem,mount-read-only,swap',
     'file':'.id,name,type,size',
 }
 
@@ -85,17 +85,48 @@ def recommend(resource,config,catalog):
                          'traffic':profile.get('traffic',{}),'cpu_mean_percent':cpu,'memory_peak_bytes':peak}]}
 
 
+def storage_path(value):
+    if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./-]{0,190}',value):return ''
+    return value if all(part not in ('','.','..') for part in value.split('/')) else ''
+
+
+def mount_point(disk):
+    # An explicitly empty mount point must not become a directory on internal storage.
+    return storage_path(disk.get('mount-point',disk.get('slot','')))
+
+
+def disk_readiness(disk,capabilities):
+    name=mount_point(disk)
+    if not name:return 'unknown','Не определена точка монтирования выбранного накопителя',None
+    if boolean(disk.get('disabled','false')) is not False:
+        return 'blocked','Накопитель '+name+' выключен или его доступность неизвестна',None
+    if boolean(disk.get('mount-read-only','false')) is not False:
+        return 'blocked','Накопитель '+name+' доступен только для чтения или режим записи неизвестен',None
+    if boolean(disk.get('mount-filesystem')) is False or boolean(disk.get('mounted')) is False:
+        return 'blocked','Накопитель '+name+' не смонтирован',None
+    mounted=boolean(disk.get('mounted'))
+    if mounted is None:
+        # Older API projections can omit the M flag; /file still proves the mount.
+        mounted=any(row.get('name')==name and row.get('type')=='disk' for row in capabilities.get('file',[]))
+    if not mounted:return 'unknown','Монтирование накопителя '+name+' не подтверждено',None
+    if disk.get('fs') not in ('ext4','btrfs'):
+        return 'blocked','Для контейнера нужен ext4/btrfs; файловая система '+name+' не подходит или неизвестна',None
+    try:free=int(disk['free'])
+    except (KeyError,TypeError,ValueError):return 'unknown','Свободное место на '+name+' неизвестно',None
+    if free<0:return 'unknown','Неверное значение свободного места на '+name,None
+    return 'ready','Накопитель '+name+' смонтирован и доступен для записи',free
+
+
 def storage_options(resource,capabilities,required_bytes=16*1024*1024):
     result=[]
-    for disk in capabilities.get('disk',[]):
-        name=disk.get('slot','')
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,70}',name): continue
-        if boolean(disk.get('disabled','false')) is not False or boolean(disk.get('mount-read-only','false')) is not False: continue
-        if boolean(disk.get('mount-filesystem')) is not True or disk.get('fs') not in ('ext4','btrfs'): continue
-        try: free=int(disk['free'])
-        except (KeyError,TypeError,ValueError): continue
-        result.append({'path':name+'/sdwan-container','free_bytes':free,'medium':'external',
-                       'writable':True,'sufficient':free>=required_bytes,'recommended':free>=required_bytes})
+    if not any(path in capabilities.get('errors',{}) for path in ('disk','file')):
+        for disk in capabilities.get('disk',[]):
+            state,_,free=disk_readiness(disk,capabilities)
+            if state!='ready':continue
+            name=mount_point(disk)
+            if not storage_path(name+'/sdwan-container'):continue
+            result.append({'path':name+'/sdwan-container','free_bytes':free,'medium':'external',
+                           'writable':True,'sufficient':free>=required_bytes,'recommended':free>=required_bytes})
     flash=any(row.get('name')=='flash' and row.get('type')=='directory' for row in capabilities.get('file',[]))
     try: free=int(resource['free-hdd-space'])
     except (KeyError,ValueError,TypeError): free=None
@@ -103,6 +134,34 @@ def storage_options(resource,capabilities,required_bytes=16*1024*1024):
                    'medium':'internal','writable':'file' not in capabilities.get('errors',{}),
                    'sufficient':free is not None and free>=required_bytes,'recommended':False})
     return result
+
+
+def storage_check(capabilities,selected,options):
+    if not storage_path(selected):return 'blocked','Каталог контейнера должен быть относительным путём без пустых компонентов, . или ..'
+    if any(path in capabilities.get('errors',{}) for path in ('disk','file')):
+        return 'unknown','Не удалось прочитать накопители или файлы; расположение контейнера не подтверждено'
+    def contains(root):return bool(root) and (selected==root or selected.startswith(root+'/'))
+    matches=[disk for disk in capabilities.get('disk',[]) if contains(mount_point(disk))]
+    if matches:
+        longest=max(len(mount_point(disk)) for disk in matches)
+        matches=[disk for disk in matches if len(mount_point(disk))==longest]
+        if len(matches)!=1:return 'unknown','Точка монтирования выбранного накопителя неоднозначна'
+        state,detail,free=disk_readiness(matches[0],capabilities)
+        if state!='ready':return state,detail
+        if free<16*1024*1024:return 'blocked','Недостаточно места на '+mount_point(matches[0])+'; резерв установки 16 MiB'
+        return 'ready',detail+'; резерв установки 16 MiB'
+    # A failed/renamed disk must never fall through to the internal free-space value.
+    for disk in capabilities.get('disk',[]):
+        if contains(storage_path(disk.get('slot',''))):
+            return 'blocked','Имя слота не подтверждает путь контейнера; точка монтирования: '+(mount_point(disk) or 'неизвестна')
+    if any(row.get('type')=='disk' and contains(storage_path(row.get('name',''))) for row in capabilities.get('file',[])):
+        return 'unknown','Параметры выбранного диска недоступны; его место и режим записи не подтверждены'
+    internal=options[-1]
+    if internal['path'].startswith('flash/') and not selected.startswith('flash/'):
+        return 'blocked','Выберите постоянное хранилище flash/ или подтверждённый внешний диск'
+    if internal['free_bytes'] is None:return 'unknown','Свободное место внутреннего хранилища неизвестно'
+    return ('ready' if internal['writable'] and internal['sufficient'] else 'blocked',
+            'Внутреннее хранилище; резерв установки 16 MiB. Для контейнера предпочтителен внешний диск')
 
 
 def assess(resource,capabilities,config,catalog=None):
@@ -139,13 +198,8 @@ def assess(resource,capabilities,config,catalog=None):
         try: memory_ready=int(resource['free-memory'])>=settings_data['memory_max_bytes']
         except (KeyError,TypeError,ValueError): memory_ready=None
         add('container-memory','ready' if memory_ready is True else 'blocked' if memory_ready is False else 'unknown','Свободная RAM должна покрывать выбранный лимит контейнера; производительность этим не подтверждается')
-        selected=settings_data['storage'];root=next((row for row in options if selected==row['path'] or selected.startswith(row['path'].rsplit('/',1)[0]+'/') and row['medium']=='external'),None)
-        if root is None:
-            internal=options[-1]
-            if internal['path'].startswith('flash/') and selected.startswith('flash/') or not internal['path'].startswith('flash/') and not any(selected.startswith(row['path'].split('/')[0]+'/') for row in options[:-1]):
-                root=internal
-        if root is None: add('container-storage','unknown','Выбранный каталог не сопоставлен с доступным накопителем')
-        else: add('container-storage','ready' if root['writable'] and root['sufficient'] else 'blocked','Свободное место и доступность выбранного накопителя; резерв установки 16 MiB')
+        state,detail=storage_check(capabilities,settings_data['storage'],options)
+        add('container-storage',state,detail)
     return {'ready':all(row['state']=='ready' for row in checks),'checks':checks,'missing_packages':missing,
             'disabled_features':features,'storage_options':options,
             'recommendation':recommend(resource,config,catalog or {'schema_version':1,'profiles':[]})}

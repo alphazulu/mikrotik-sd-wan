@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests'), str(ROOT / 'tools')]
@@ -43,6 +44,35 @@ def write_json(path, data):
     temporary = path.with_suffix(path.suffix + '.tmp')
     temporary.write_text(json.dumps(data, indent=2) + '\n')
     temporary.replace(path)
+
+
+def failure_details(error, web_observation=None):
+    """Keep the assertion location and safe web fields, never headers or tokens."""
+    detail={'type':type(error).__name__,'message':str(error),
+            'traceback':[{'file':Path(frame.filename).name,'line':frame.lineno,'function':frame.name}
+                         for frame in traceback.extract_tb(error.__traceback__)]}
+    if not web_observation:return detail
+    detail['web']={key:web_observation.get(key) for key in
+                   ('request_started_utc','read_utc','http_status','request_seconds')}
+    data=web_observation.get('data')
+    if not isinstance(data,dict):return detail
+    detail['web'].update({key:data.get(key) for key in
+                          ('epoch','stale','age_seconds','history_points','history_capacity','observer_available')})
+    current=data.get('current')
+    if isinstance(current,dict):
+        detail['web'].update(actor=current.get('actor'),uptime_seconds=current.get('uptime_seconds'))
+        for key in ('transports','overlay'):
+            rows=current.get(key)
+            detail['web'][key+'_count']=len(rows) if isinstance(rows,list) else None
+        rows=current.get('overlay',[])
+        if isinstance(rows,list):
+            detail['web']['overlay']=[{key:row.get(key) for key in
+                                       ('name','wan','healthy','sample_age_seconds')}
+                                      for row in rows[:16] if isinstance(row,dict)]
+    resources=data.get('resources')
+    if isinstance(resources,dict):
+        detail['web']['resources']={key:resources.get(key) for key in ('rss_bytes','cpu_ticks','write_bytes')}
+    return detail
 
 
 def exclusive_lock(path):
@@ -138,6 +168,7 @@ def main():
     forwarded = False
     nat = None
     token = None
+    web_observation = {}
     forced_rule = None
     forced_phases = {}
     manifest = source_manifest()
@@ -153,14 +184,20 @@ def main():
             a.call('container/stop', {'numbers': row['.id']}, 'POST')
         wait(lambda: read_container(a).get('stopped') == 'true' and not a.status().get('container', {}).get('active'))
     def web():
+        started=time.monotonic();web_observation['request_started_utc']=time.time()
+        web_observation['http_status']=None
         connection = http.client.HTTPConnection('127.0.0.1', 45880, timeout=4)
         try:
             connection.request('GET', '/api/status', headers={'Authorization': 'Bearer ' + token})
             response = connection.getresponse()
+            web_observation['http_status']=response.status
             body = response.read(300000)
             assert response.status == 200 and len(body) < 300000, 'Bounded authenticated web status failed'
-            return json.loads(body)
+            data=json.loads(body)
+            web_observation.update(data=data,read_utc=time.time())
+            return data
         finally:
+            web_observation['request_seconds']=round(time.monotonic()-started,6)
             connection.close()
     def ready(active):
         state = a.status()
@@ -375,10 +412,10 @@ def main():
                 observation['http_generations'] = {port:[dict(stats) for stats in generations] for port,generations in traffic.stream_generations.items()}
                 if active:
                     data = web()
-                    assert not data['stale'] and data['current']['actor'] == 'container'
-                    assert len(data['current']['transports']) == 4 and len(data['current']['overlay']) == 2
-                    assert all(x['healthy'] for x in data['current']['overlay'])
-                    assert data['history_points'] <= 12 and data['resources']['rss_bytes'] > 0
+                    assert not data['stale'] and data['current']['actor'] == 'container', 'Web snapshot is stale or its actor is not the container'
+                    assert len(data['current']['transports']) == 4 and len(data['current']['overlay']) == 2, 'Web snapshot is missing expected transport/overlay rows'
+                    assert all(x['healthy'] for x in data['current']['overlay']), 'Web snapshot contains a closed inner SLA path'
+                    assert data['history_points'] <= 12 and data['resources']['rss_bytes'] > 0, 'Web history/RSS metadata is invalid'
                     if type(writes) is int:
                         assert data['resources']['write_bytes'] == writes, 'Container process wrote to persistent storage'
                     rss = data['resources']['rss_bytes']
@@ -388,7 +425,7 @@ def main():
                     resources['history_points_max'] = max(resources['history_points_max'], data['history_points'])
                     resources['process_io_available'] = type(writes) is int
                     container = read_container(a)
-                    assert container.get('image-id', '').removeprefix('sha256:') == report['image_id']
+                    assert container.get('image-id', '').removeprefix('sha256:') == report['image_id'], 'Prepared container image changed during soak'
                     measured = a.call('container/print', {'.proplist': 'memory-current,cpu-usage', '.query': ['name=sdwan-container-controller']}, 'POST')[0]
                     resources['container_memory_max_bytes'] = max(resources['container_memory_max_bytes'], int(measured.get('memory-current', 0)))
                     observation['web_resources'] = data['resources']
@@ -401,7 +438,7 @@ def main():
                 report.update(elapsed_seconds=round(time.monotonic() - started, 3), checkpoint_utc=time.time(), resources=resources)
                 write_json(report_path, report)
                 time.sleep(min(args.control_seconds, max(0, total - (time.monotonic() - started))))
-        assert active and all(x > 0 for x in report['phase_samples'].values())
+        assert active and all(x > 0 for x in report['phase_samples'].values()), 'Both native and container phases must have samples'
         assert not flow_observer.pending, 'Unverified transition remains at measurement end'
         if args.force_smoke_failover:
             assert set(forced_phases) == {'native','container'} and all('recovered_at_seconds' in row for row in forced_phases.values()), 'Both forced smoke phases must recover'
@@ -410,6 +447,7 @@ def main():
     except BaseException as error:
         report['status'] = 'failed'
         report['failures'].append(type(error).__name__ + ': ' + str(error))
+        report['failure_context'] = failure_details(error, web_observation)
         if traffic:
             try:
                 ports = set(map(str, traffic.stream_stats))
@@ -453,6 +491,7 @@ def main():
         except BaseException as error:
             report['status'] = 'cleanup_failed'
             report['failures'].append(type(error).__name__ + ': ' + str(error))
+            report['cleanup_failure_context'] = failure_details(error, web_observation)
         report['finished_utc'] = time.time()
         write_json(report_path, report)
         v.close()

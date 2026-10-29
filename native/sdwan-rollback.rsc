@@ -14,6 +14,7 @@
 }
 :global sdwanStrictCancel
 /import file-name=($dir . "sdwan-links.rsc")
+:global sdwanConntrackFind
 /system/scheduler/remove [/system/scheduler/find where name="sdwan-strict-dispatch" and comment="sdwan:v1:strict"]
 $sdwanStrictCancel
 /system/script/remove [/system/script/find where comment="sdwan:v1:strict"]
@@ -56,8 +57,9 @@ $sdwanStrictCancel
 /ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:((vpn|egress):|dns-bootstrap\$)"]
 /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment~"^sdwan:v1:"]
 /ip/firewall/address-list/remove [/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"]
-:foreach id in=[/ip/firewall/connection/find where connection-mark~"^sdwan-"] do={
-    :onerror expired in={ /ip/firewall/connection/remove $id } do={ :if ([:len [/ip/firewall/connection/find where .id=$id]] > 0) do={ :error $expired } }
+:local managedQuery do={ :return [/ip/firewall/connection/find where connection-mark~"^sdwan-"] }
+:foreach id in=[$sdwanConntrackFind query=$managedQuery] do={
+    :onerror expired in={ /ip/firewall/connection/remove $id } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
 }
 /routing/rule/remove [/routing/rule/find where comment~"^sdwan:v1:"]
 /ip/route/remove [/ip/route/find where comment~"^sdwan:v1:"]

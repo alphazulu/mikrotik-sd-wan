@@ -1,136 +1,139 @@
-# Optional external VPN egress in the existing SD-WAN engine
+# Требования к выходу через существующий VPN в общем движке SD-WAN
 
-> Current owner steering supersedes the original separate-feature proposal below:
-> an existing VPN Internet exit is an ordinary `kind=vpn` WAN. Source and
-> destination independently accept IPv4/CIDR or a live MikroTik Address List;
-> all selection, priority, failover/failback and drain use common policies.
-> New GUI/SDK output has no `vpn_egress` switch or implicit VPN policy. See
-> [current setup](VPN-EGRESS.md) and [verification](VPN-EGRESS-VALIDATION.md).
+[English](VPN-EGRESS-PLAN.en.md)
 
+> Уточнение владельца заменяет исходное предложение об отдельной функции:
+> существующий VPN для выхода в интернет — обычный WAN `kind=vpn`. Источник и
+> назначение независимо принимают IPv4/CIDR либо живой Address List MikroTik.
+> Выбор, приоритеты, переключение, возврат и drain используют общие политики.
+> Новый вывод GUI/SDK не содержит переключателя `vpn_egress` или неявной политики.
+> См. [настройку](VPN-EGRESS.md) и [проверки](VPN-EGRESS-VALIDATION.md).
 
-Status: newly requested by the owner; implementation pending. This extends the
-active probes/drain/branch-overlay iteration; it does not cancel that work.
-Confirmed protocols: WireGuard and PPP VPN clients (L2TP, SSTP, OpenVPN).
-The feature must be disabled by default. Existing configurations keep their
-current behavior. No controller or VPN client is added outside MikroTik.
+Ниже сохранены исходные требования и этапы реализации. Отдельная сущность VPN
+заменена обычным VPN WAN. Функциональность реализована и прошла целевые проверки;
+окончательная длительная приёмка ожидается. Актуальные условия указаны в
+[текущем статусе](CURRENT-STATUS.md). Работа дополняет пробы, drain и филиальный
+overlay. Подтверждённые протоколы: WireGuard и PPP-клиенты L2TP, SSTP, OpenVPN.
+Функция опциональна; существующие конфигурации сохраняют поведение. Внешний
+контроллер или VPN-клиент вне MikroTik не создаются.
 
-## Required behavior
+## Требуемое поведение
 
-A policy references an existing MikroTik destination Address List by name.
-When a new connection's destination belongs to that list, the policy selects
-its first healthy eligible channel: typically VPN1, then another VPN or physical
-WAN in the explicitly configured order. Use the existing SLA windows, priorities,
-hold-down, per-policy connection marks, per-channel tables and exact conntrack
-cleanup. A running interface or a completed handshake alone is insufficient:
-probes must verify Internet/representative target-resource access THROUGH that VPN.
-After confirmed failure, remove only affected policy/channel conntrack so clients
-reconnect through the selected backup. After recovery/hold-down, return to the
-preferred VPN. Other policies and private branch-overlay flows must survive.
+Политика ссылается по имени на существующий Address List назначения. Для нового
+соединения с подходящим назначением выбирается первый здоровый допущенный канал:
+обычно VPN1, затем другой VPN или физический WAN в явно заданной очереди.
+Используются общие окна SLA, приоритеты, hold-down, метки политики/канала, таблицы
+маршрутизации и точная очистка conntrack. Работающий интерфейс или handshake
+недостаточны: пробы проверяют интернет либо представительные ресурсы ЧЕРЕЗ VPN.
+После подтверждённого отказа удаляются только соединения затронутой политики и
+канала, чтобы клиенты переподключились через резерв. После восстановления и
+hold-down возвращается предпочтительный VPN. Другие политики и частный
+филиальный overlay сохраняются.
 
-Address List membership belongs to RouterOS, including dynamic DNS/TTL entries.
-Do not copy it into an owned static group, clear its entries or enumerate it on
-every control tick. Classify with native dst-address-list matching. An empty list
-matches no new sessions; it must not broaden to all traffic. Membership updates
-apply to new sessions; established marked sessions retain their binding until
-normal expiry or an actual SD-WAN selection change. A policy reference change
-participates in the existing selector signature/reclassification mechanism.
+Состав Address List, включая динамические DNS/TTL-записи, принадлежит RouterOS.
+Не копировать его в собственную статическую группу, не очищать и не перечитывать
+каждый такт. Классификация использует нативное `dst-address-list`. Пустой список
+не совпадает ни с одной новой сессией и не расширяется до всего трафика.
+Обновления состава действуют на новые сессии; существующие сохраняют привязку до
+завершения или реального переключения SD-WAN. Изменение ссылки на список участвует
+в общей сигнатуре селекторов и механизме переклассификации.
 
-Proposed policy selector: `destination_list`, distinct from the current static
-`destination_group`. Those two cannot occupy the same mangle dst-address-list
-field simultaneously. Existing source/destination CIDR/port/interface conditions
-remain conjunctions. Dynamic-list overlap cannot be inferred offline; require
-explicit rule priorities where selectors may overlap. The flow explainer must
-use a current bounded membership snapshot or report unknown membership, never
-pretend an opaque list matches everything. GUI offers existing list names and
-allows a future/temporarily empty list reference without creating fake entries.
+Исходно предложенный и теперь реализованный селектор — `destination_list`,
+отдельный от статической `destination_group`. Оба нельзя поместить в одно поле
+mangle `dst-address-list`. Условия CIDR, портов и интерфейса объединяются И.
+Пересечения динамических списков невозможно вывести офлайн; при возможном
+пересечении нужен явный приоритет. Объяснение потока использует ограниченный
+актуальный снимок либо сообщает неизвестный состав, а не совпадение со всем.
+GUI предлагает существующие имена и разрешает будущий или временно пустой список
+без создания фиктивных записей.
 
-## Integration constraints
+## Ограничения интеграции
 
-- Use already configured VPN interfaces and existing remote servers. Read only
-  the public link/endpoint/routing metadata needed for selection. Never read or
-  rewrite VPN passwords, private keys, certificates, server authentication or
-  unrelated VPN settings. Provision emulated servers only on CHR for tests.
-- Add an opt-in VPN egress model and resolver support without pretending a VPN
-  is a static Ethernet gateway. PPP local/peer addresses are live session data;
-  do not save lease/session snapshots in user JSON. WireGuard uses its assigned
-  IPv4 address and an unambiguous exit peer/allowed-address configuration.
-- External full-tunnel exits differ from branch WireGuard links: the latter
-  accept only explicit site/link prefixes. Do not silently repurpose an owned
-  branch interface as an Internet exit or create recursive parent dependencies.
-- Suppress/adopt automatic PPP default routes only with the same captured,
-  protected baseline/identity checks used for existing provider clients. They
-  must not install an uncontrolled default route around SLA selection.
-- Outer transport must stay on physical WANs and cannot recurse into the VPN
-  selected for destination traffic. Generic WAN source-pinning can otherwise
-  trap a cached WireGuard socket on a failed provider. Reuse the native transport
-  pinning/masquerade approach, not a second independent controller. WireGuard
-  can match its unique local UDP listen port; PPP transport needs its actual
-  remote endpoint/protocol, including L2TP/IPsec IKE/NAT-T when applicable.
-- RouterOS-owned DNS Address Lists can maintain transport endpoint FQDNs in RAM;
-  do not introduce blocking DNS/HTTP requests into the one-second controller.
-  Validate the actual 7.24.5 API/properties and packet flow before choosing the
-  final endpoint/route implementation. Avoid claiming dynamic DNS pinning until
-  it is tested, including initial lookup when main has no usable default.
-- Account for source NAT and existing forward firewall policy on an exit VPN;
-  being routable alone does not make client traffic pass. Any owned integration
-  must be explicit, narrowly scoped to SD-WAN-selected VPN traffic and previewed;
-  preserve unrelated firewall rules. Do not silently override LAN restrictions.
-- Existing source-bound probe isolation rejects duplicate local WAN addresses.
-  VPN providers may assign identical private addresses to multiple tunnels.
-  Investigate/test a scoped VRF option before claiming support; ambiguous probes
-  must fail closed rather than escape into another VPN. Avoid silently moving
-  active user interfaces to a VRF. RouterOS WG socket VRF and inner routing are
-  separate concerns. State actual limitations if such support is not feasible.
-- Rust selection remains based on the same native health/admission records;
-  native fallback and stale-intent validation must enforce the same decisions.
-- No periodic storage writes for health/statistics. Apply configuration once,
-  keep live metrics in bounded RAM and change route/rule state only on transitions.
+- Использовать заранее настроенные VPN-интерфейсы и внешние серверы. Читать только
+  публичные сведения о соединении, endpoint и маршрутах. Не читать и не менять
+  пароли, приватные ключи, сертификаты, серверную аутентификацию и посторонние
+  настройки. Эмулированные серверы для тестов создавать только на CHR.
+- Добавить опциональный обычный VPN WAN и разрешение его параметров, не изображая
+  VPN статическим Ethernet-шлюзом. Адреса PPP — данные живой сессии; не сохранять
+  их в пользовательском JSON. Для WireGuard нужны назначенный IPv4 и однозначный
+  выходной peer с подходящим allowed-address.
+- Внешний полный туннель отличается от филиального WireGuard, разрешающего только
+  явные префиксы сайтов/линков. Не превращать филиальный интерфейс в Internet exit
+  неявно и не создавать рекурсивную зависимость родителей.
+- Подавлять/принимать автоматические PPP-маршруты только с сохранением защищённой
+  исходной конфигурации и проверкой идентичности клиента, как для провайдерских
+  клиентов. Не допускать неконтролируемого default в обход SLA.
+- Внешний транспорт должен оставаться на физических WAN без рекурсии в выбранный
+  VPN. Обычная привязка по source может удержать закэшированный WireGuard-сокет
+  на отказавшем провайдере. Использовать нативную привязку транспорта и masquerade,
+  а не второй контроллер. WireGuard допускает уникальный локальный UDP-порт;
+  PPP требует реальный endpoint/протокол, включая L2TP/IPsec IKE/NAT-T.
+- DNS Address List RouterOS может поддерживать FQDN транспорта в RAM. Не добавлять
+  блокирующий DNS/HTTP в секундный контроллер. Проверять реальные свойства API и
+  путь пакета 7.24.5 до выбора реализации. Не заявлять динамическую DNS-привязку
+  без проверки, включая первичный lookup при отсутствии пригодного default в main.
+- Учитывать source NAT и существующий forward firewall. Наличие маршрута не
+  гарантирует прохождение трафика. Интеграция должна быть явной, узко ограниченной
+  выбранными SD-WAN соединениями и показанной в плане; сохранять посторонние
+  правила и не обходить ограничения LAN неявно.
+- Изоляция проб по source отвергает одинаковые локальные адреса WAN. VPN могут
+  выдавать совпадающие частные адреса. Перед заявлением поддержки исследовать
+  отдельную схему VRF; неоднозначные пробы должны отказать закрыто. Не переносить
+  активные интерфейсы в VRF автоматически. VRF сокета WireGuard и внутренняя
+  маршрутизация — разные вопросы. Явно указывать неподдерживаемые случаи.
+- Rust выбирает по тем же нативным данным здоровья и допуска; нативный резерв и
+  проверка устаревшего intent обеспечивают те же решения.
+- Не писать здоровье/статистику на носитель каждый такт. Конфигурация применяется
+  один раз; живые метрики ограничены RAM, маршруты/правила меняются при переходах.
 
-## Acceptance before release
+## Приёмка перед выпуском
 
-1. Validator/GUI/JSON defaults off, existing configs and static groups unchanged.
-2. Use a real existing Address List with static CIDRs plus changing dynamic/TTL
-   entries. Matched new flows prefer VPN; unmatched flows use original policy.
-3. Per-protocol live CHR tests: WireGuard, L2TP, SSTP and OpenVPN; availability,
-   PPP reconnect/address change, provider failover, endpoint changes and recovery.
-4. Keep interface/handshake up while blackholing target-resource traffic beyond
-   the exit; SLA must switch to the next declared channel and later fail back.
-5. Real NAT TCP flows prove only affected policy/channel conntrack is retired;
-   unrelated Internet and branch-overlay connections remain established.
-6. Outer-packet capture/counters prove physical WAN pinning and no recursive or
-   cross-channel health probe escape. All declared backups down must fail closed.
-7. Protected scheduler deployment/rollback, ownership collisions, native/Rust
-   parity, bounded GUI/optional web diagnostics and resource/flash-write checks.
-8. Fold this feature into the final single48–72h soak; do not start an earlier
-   version's soak and then treat it as validation of the new VPN code.
+1. Валидатор/GUI/JSON: по умолчанию функция отсутствует, существующие конфигурации
+   и статические группы не меняются.
+2. Реальный Address List со статическими CIDR и меняющимися динамическими/TTL
+   записями. Подходящие новые потоки предпочитают VPN, остальные — прежнюю политику.
+3. Живые проверки всех четырёх протоколов: доступность, переподключение/смена адреса
+   PPP, отказ провайдера, смена endpoint и восстановление.
+4. При работающем интерфейсе/handshake блокировать ресурсы за выходом: SLA выбирает
+   следующий объявленный канал и затем возвращается.
+5. Реальные NAT TCP-потоки подтверждают очистку только затронутых меток;
+   посторонние интернет-соединения и филиальный overlay сохраняются.
+6. Захват внешних пакетов/счётчики подтверждают физическую привязку, отсутствие
+   рекурсии и ухода проб в другой канал. При отказе всех резервов маршрут закрыт.
+7. Защищённая установка через scheduler/откат, коллизии владения, соответствие
+   native/Rust, ограниченная диагностика GUI/web, ресурсы и запись на flash.
+8. Включить функцию в окончательный единый тест 48–72 часа. Не запускать тест
+   старой версии и затем считать его проверкой нового VPN-кода.
 
-Use the existing isolated five-node CGNAT overlay fabric where possible: emulate
-an additional external VPN server/Internet exit on the hub using distinct owned
-test interfaces/ports/addresses and private runtime credentials. Do not modify
-production or existing branch peers. The standalone container lab remains an
-independent parity target; never create a duplicate fabric or long-running test.
+По возможности использовать существующую изолированную пятиузловую схему CGNAT:
+дополнительный внешний сервер/выход на hub с отдельными принадлежащими тесту
+интерфейсами, портами, адресами и приватными учётными данными. Рабочее оборудование
+и филиальные peer не менять. Отдельный контейнерный стенд остаётся независимой
+целью соответствия; не дублировать схему или длительный тест.
 
+## Исторический этап реализации в ветке разработки
 
-## Implementation checkpoint (development branch)
+Селектор существующего Address List включён в Python/native-валидацию,
+классификацию/сигнатуры, GUI и ограниченные диагностические снимки. На этом этапе
+пройдены четыре CHR-проверки состава и 239 Python-тестов. Нативный VPN-модуль
+включён в защищённое восстановление; текущий пакет содержит 11 RSC и JSON.
+Он загружается при использовании функции либо очистке. WireGuard, L2TP/IPsec,
+SSTP и OpenVPN прошли по пять общих SLA/транспортных проверок и три проверки
+реального TCP/conntrack с сохранением посторонних интернет- и филиальных потоков.
+Защищённое повторное применение L2TP/OpenVPN сохранило идентификаторы трёх потоков
+и восстановило данные в пределах 20 секунд. Windows GUI прошёл четыре офлайн-
+и три живые API-проверки включения, публичных привязок и будущих списков.
+Стенд OpenVPN и основные сценарии проверены; подробности — в приватных отчётах.
+Эти исторические количества не являются текущими итогами. Последующие результаты
+защиты, GUI/API, DNS, повторной привязки, native и контейнера приведены в отчёте
+проверок. VRF не заявлен; окончательная длительная приёмка ожидается.
 
-Existing Address List selector is integrated in Python/native validation,
-classification/signatures, GUI and bounded diagnostic snapshots. Four CHR
-membership checks and239 Python units pass. A tenth native VPN module is bundled
-with protected recovery (eleven payload/config files total), loaded only on opt-in
-or cleanup. WireGuard, L2TP/IPsec, SSTP and OpenVPN pass the five common SLA/physical
-transport checks plus three real TCP/conntrack checks, preserving unrelated
-Internet and branch streams. L2TP and OpenVPN protected reapply also preserve
-all three stream identities and resume data within the bounded20s check. Windows GUI opt-in,
-public binding retention and future-list editing pass four offline checks and three live API checks.
-OpenVPN fixture and core acceptance are verified; see private runtime reports
-for the latest result. These results do not replace remaining protection/GUI/live API,
-DNS/rebinding/VRF, native validation, new Rust/container parity and final soak.
+Руководство: [VPN-EGRESS.md](VPN-EGRESS.md).
 
-User guide: [VPN-EGRESS.md](VPN-EGRESS.md).
-
-Additional native contract checks:17VPN and44Address List cases, including
-explicit null/type/control-byte/UTF-8 length errors. Full binary rollback3,
-server-pushed default adoption/rejection3, duplicate VPN source rejection1,
-and two-VPN/physical/all-down priority matrix7pass. See
-[VPN-EGRESS-VALIDATION.md](VPN-EGRESS-VALIDATION.md). Remaining acceptance is
-explicitly incomplete; do not infer container/long-soak parity from native tests.
+Дополнительные исторические контрактные проверки: 17 VPN и 44 Address List,
+включая null, типы, управляющие байты и длину UTF-8. Полный бинарный откат — 3,
+принятие/отклонение серверного default — 3, повторяющийся source VPN — 1,
+матрица двух VPN/физического резерва/полного отказа — 7. См.
+[VPN-EGRESS-VALIDATION.md](VPN-EGRESS-VALIDATION.md). Одни нативные результаты не
+подтверждают соответствие контейнера или длительный тест. Поздние целевые
+контейнерные проверки описаны отдельно; окончательная приёмка ещё не завершена.

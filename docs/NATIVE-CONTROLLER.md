@@ -1,8 +1,10 @@
 # Локальный SD-WAN на RouterOS
 
-Все решения выполняет `native/sdwan-controller.rsc`, установленный как `/system script sdwan-controller` на MikroTik. Scheduler запускает его каждую секунду. Внешняя программа не собирает метрики в цикле, не выбирает канал и не нужна после установки.
+Русский | [English](NATIVE-CONTROLLER.en.md)
 
-## Что реализовано в первом срезе
+В нативном режиме решения выполняет `native/sdwan-controller.rsc`, установленный как `/system script sdwan-controller` на MikroTik. Scheduler запускает его каждую секунду. В контейнерном режиме локальный Rust предлагает выбор, а RouterOS проверяет и применяет его с нативным fallback: [CONTAINER.md](CONTAINER.md). Внешняя программа не собирает метрики для управления в цикле, не выбирает канал и не нужна после установки.
+
+## Функциональность нативного ядра
 
 - Независимые таблицы проб и исходные адреса WAN: `lookup-only-in-table` исключает проверку аварийного канала через резервный.
 - Netwatch: ICMP для RTT/jitter/loss; контроль доступности через несколько `http-get`, `https-get`, `tcp-conn` или `dns` целей. HTTPS проверяет сертификат, DNS требует явный сервер.
@@ -25,7 +27,7 @@
 |---|---|
 | revision | Имя версии для оператора |
 | health | Интервал, timeout, число пакетов, quorum, fail/recover окна, hold-down, stale timeout |
-| wans | kind=static/dhcp/pppoe/lte, L3 интерфейс; apn_profile для LTE; address/gateway только для static; таблица проб, ICMP-цель и прикладные цели |
+| wans | kind=static/dhcp/pppoe/lte/vpn, L3 интерфейс; apn_profile для LTE и транспорт VPN; address/gateway только для static; таблица проб, ICMP-цель и прикладные цели |
 | sla_profiles | Пороги среднего RTT, jitter=max-min и потерь |
 | policies | Клиент/подсеть, таблица, SLA, режим и порядок WAN |
 | local_networks | Направления, которые всегда ищутся в main |
@@ -48,7 +50,7 @@ RTT и jitter задаются в миллисекундах с точность
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Configurator.ps1
 ```
 
-Используется Python с Tkinter. На этой машине проверен `E:\ProgramData\anaconda3\python.exe`, Tk 8.6. Мастер сначала подключается к API и читает устройство, затем пользователь выбирает внешние интерфейсы и цели. После генерации открываются формы WAN, SLA, клиентов и таймеров. Подробная инструкция — [CONFIGURATOR-WIZARD.md](CONFIGURATOR-WIZARD.md). Кнопки:
+Используется Python с Tkinter; Windows GUI проверен с Tk 8.6. Мастер сначала подключается к API и читает устройство, затем пользователь выбирает внешние интерфейсы и цели. После генерации открываются формы WAN, SLA, клиентов и таймеров. Подробная инструкция — [CONFIGURATOR-WIZARD.md](CONFIGURATOR-WIZARD.md). Кнопки:
 
 1. «Открыть» / «Сохранить» — обычный JSON-файл.
 2. «Проверить» — локальная проверка конфликтов, адресов, кворума, таймеров и ссылок.
@@ -82,7 +84,7 @@ python3 sdwan.py rollback
 
 `sdwan-backup.json` отдельно хранит baseline-флаги принятых под управление routes/FastTrack и rp-filter. Кнопка «Откат к исходному» восстанавливает именно этот baseline. Аварийное восстановление неудачной установки возвращает полный снимок непосредственно перед ней.
 
-Имена файлов `sdwan-*`, prefix `sdwan:v1:`, имена таблиц и script/scheduler проекта зарезервированы. Не запускайте два установщика параллельно. Экспорт содержит JSON и восемь RSC; ручной import обходит защиту, используйте штатный GUI/CLI.
+Имена файлов `sdwan-*`, prefix `sdwan:v1:`, имена таблиц и script/scheduler проекта зарезервированы. Не запускайте два установщика параллельно. Стандартный экспорт содержит JSON и 11 RSC; ручной import обходит защиту, используйте штатный GUI/CLI.
 
 ## Лабораторные контрольные цели
 
@@ -107,11 +109,11 @@ python3 tests/native_numeric.py
 
 Unit-тесты проверяют опасные ошибки конфигурации. Интеграционные тесты вводят отказы, а решения принимает только RouterOS: пути клиентов, quorum, дубликаты окон, отказ за доступным шлюзом, hold-down, разные SLA, strict, все WAN down, stale measurements, reboot, rollback и повторная установка. Набор изменяет только стенд и восстанавливает внесённые аварии в finally. Результат — `runtime/native-acceptance.json`.
 
-Это первый функциональный срез. Ещё не реализованы PCC/весовая балансировка, бесшовный перенос TCP при смене NAT IP, overlay между площадками, QoS, IPv6, динамические WAN, расширенное управление секретами/ролями, журнал на диске/remote syslog, полноценное восстановление после аварии установщика и гарантия заданного SLA в production. Принятая политика качества опирается на Netwatch окна и не является статистическим SLA за месяц. План остальных этапов — [PLAN.md](../ROADMAP.md).
+Эти сценарии описывают исходный нативный этап. Динамические WAN, опциональный overlay и защищённое восстановление установщика теперь реализованы; их актуальная приёмка описана в [CURRENT-STATUS.md](CURRENT-STATUS.md). PCC/весовая балансировка, бесшовный перенос TCP при смене NAT IP, QoS, IPv6, расширенное управление секретами/ролями и постоянный журнал не заявляются реализованными. Политика качества опирается на окна проб и не является статистическим SLA за месяц или гарантией production. Следующие этапы — [ROADMAP.md](../ROADMAP.md).
 
 ## Группы, приложения и диагностика
 
-Дополнительные policy selectors и top-level groups описаны в [POLICIES.md](POLICIES.md). Native links version6 содержит ordering/match helpers и bounded RAM history; пакет по-прежнему8RSC+JSON. Статус включает interface/APN, возраст проб, recovery/hold timers и причины выбора политик. [Диагностика GUI](DIAGNOSTICS.md) читает только свой status snapshot и active JSON; все решения остаются локальными.
+Дополнительные policy selectors и top-level groups описаны в [POLICIES.md](POLICIES.md). Библиотека native links содержит ordering/match helpers и bounded RAM history; стандартный пакет — 11 RSC и JSON. Статус включает interface/APN, возраст проб, recovery/hold timers и причины выбора политик. [Диагностика GUI](DIAGNOSTICS.md) читает только свой status snapshot и active JSON; все решения остаются локальными.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

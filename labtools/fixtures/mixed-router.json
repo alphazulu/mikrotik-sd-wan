@@ -1,0 +1,125 @@
+{
+  "system/identity": [
+    {
+      "name": "synthetic-lab"
+    }
+  ],
+  "system/resource": [
+    {
+      "version": "7.24.5",
+      "architecture-name": "x86_64",
+      "board-name": "CHR",
+      "cpu": "synthetic",
+      "cpu-count": "1",
+      "cpu-frequency": "2000",
+      "total-memory": "268435456",
+      "free-memory": "134217728",
+      "free-hdd-space": "67108864"
+    }
+  ],
+  "system/package": [
+    {
+      "name": "routeros",
+      "version": "7.24.5",
+      "disabled": "false"
+    }
+  ],
+  "system/device-mode": [
+    {
+      "scheduler": "true",
+      "fetch": "true",
+      "container": "false"
+    }
+  ],
+  "interface": [
+    {
+      "name": "wan-static",
+      "type": "ether",
+      "running": "true"
+    },
+    {
+      "name": "wan-dhcp",
+      "type": "ether",
+      "running": "true"
+    },
+    {
+      "name": "wan-pppoe",
+      "type": "pppoe-out",
+      "running": "false"
+    },
+    {
+      "name": "lte-test",
+      "type": "lte",
+      "running": "false"
+    },
+    {
+      "name": "vpn-test",
+      "type": "sstp-out",
+      "running": "false"
+    },
+    {
+      "name": "bridge-lab",
+      "type": "bridge",
+      "running": "false"
+    }
+  ],
+  "ip/address": [
+    {
+      "interface": "wan-static",
+      "address": "192.0.2.2/30"
+    },
+    {
+      "interface": "bridge-lab",
+      "address": "10.77.0.1/24"
+    }
+  ],
+  "ip/route": [
+    {
+      ".id": "*1",
+      "dst-address": "0.0.0.0/0",
+      "gateway": "192.0.2.1",
+      "distance": "1"
+    }
+  ],
+  "ip/dhcp-client": [
+    {
+      "interface": "wan-dhcp",
+      "status": "searching"
+    }
+  ],
+  "interface/pppoe-client": [
+    {
+      "name": "wan-pppoe",
+      "interface": "pppoe-carrier",
+      "disabled": "false",
+      "running": "false"
+    }
+  ],
+  "interface/lte": [
+    {
+      "name": "lte-test",
+      "apn-profiles": "lab-apn"
+    }
+  ],
+  "interface/lte/apn": [
+    {
+      "name": "lab-apn",
+      "add-default-route": "true",
+      "use-peer-dns": "false",
+      "ip-type": "ipv4"
+    }
+  ],
+  "interface/sstp-client": [
+    {
+      "name": "vpn-test",
+      "connect-to": "exit.example.test",
+      "running": "false"
+    }
+  ],
+  "ip/firewall/address-list": [
+    {
+      "list": "lab-targets",
+      "address": "203.0.113.0/24"
+    }
+  ]
+}

@@ -1,20 +1,24 @@
 # Лаборатория CHR
 
+[English](LAB.en.md)
+
+Ниже базовый локальный стенд из пяти CHR, а не адреса текущих удалённых тестов или демо. Текущий статус — [CURRENT-STATUS.md](CURRENT-STATUS.md); не запускайте второй стенд поверх действующего теста.
+
 
 Проект: `C:\src\mikrotik-sd-wan`. Исполнение: Ubuntu-24.04 в WSL2, Python 3.12 и QEMU 8.2. Интернет и управление — QEMU user networking, виртуальные линии — TCP только на loopback. Физические адаптеры, маршруты Windows, firewall Windows и существующие VM не меняются.
 
 ## Локальный SD-WAN и конфигуратор
 
-Первый рабочий срез уже реализован **на скриптовом языке RouterOS**. Netwatch, SLA, кворум, состояния и переключение исполняются на самом MikroTik. Внешнего процесса-контроллера нет.
+Базовый контроллер реализован **на скриптовом языке RouterOS**; альтернативный режим — локальный Rust scratch-контейнер с нативным резервом. Netwatch, SLA, кворум, состояния и переключение исполняются на самом MikroTik. Внешнего процесса-контроллера нет.
 
 Для графической настройки в Windows откройте **`Configure-SD-WAN.cmd`**. Мастер подключается к API MikroTik, получает реальные интерфейсы, IP и маршруты, предлагает выбрать внешние WAN и их приоритеты, затем создаёт конфигурацию. Дальше доступны формы SLA, клиентов и таймеров, сохранение JSON, экспорт `.rsc`, план, установка и откат. Контроллер работает на самом MikroTik.
 
 - [Static, DHCP-client, PPPoE и LTE: параметры и жизненный цикл](DYNAMIC-WAN.md).
 - [Native LTE через APN: настройка и ограничения](LTE.md).
-- [Приёмка LTE: 109 unit, 105 проверок CHR и Windows GUI](LTE-VALIDATION.md).
+- [Историческая приёмка LTE и последующие USB RNDIS-проверки](LTE-VALIDATION.md).
 - [Проверки dynamic WAN и регрессия](DYNAMIC-WAN-VALIDATION.md).
 - [Политики групп, VLAN и приложений](POLICIES.md).
-- [Приёмка диагностики/политик: 147 unit, 121 CHR и Windows GUI](POLICIES-VALIDATION.md).
+- [Историческая приёмка диагностики и политик](POLICIES-VALIDATION.md).
 - [GUI: состояние WAN, причины выбора и история](DIAGNOSTICS.md).
 - [GUI: подключение → выбор WAN → конфигурация](CONFIGURATOR-WIZARD.md).
 - [Проверки GUI и установки через API](WIZARD-VALIDATION.md).
@@ -68,11 +72,11 @@ WebFig основного роутера: <http://localhost:18080>. WinBox: `127
 
 ```mermaid
 flowchart LR
-    C[client: .101 и .102] -->|192.168.50.0/24| E[edge CHR]
-    E --> W1[потери / задержка WAN1] --> I1[isp1: 172.20.1.1]
-    E --> W2[потери / задержка WAN2] --> I2[isp2: 172.20.2.1]
-    E --> W3[потери / задержка WAN3] --> I3[isp3: 172.20.3.1]
-    I1 --> NET[Интернет компьютера через отдельные NAT QEMU]
+    C[client: .101 and .102] -->|192.168.50.0/24| E[edge CHR]
+    E --> W1[loss / delay WAN1] --> I1[isp1: 172.20.1.1]
+    E --> W2[loss / delay WAN2] --> I2[isp2: 172.20.2.1]
+    E --> W3[loss / delay WAN3] --> I3[isp3: 172.20.3.1]
+    I1 --> NET[Host Internet through separate QEMU NATs]
     I2 --> NET
     I3 --> NET
 ```
@@ -95,24 +99,24 @@ flowchart LR
 Команды выполняются в WSL из каталога проекта, либо через `Start-Lab.ps1` с такими же аргументами:
 
 ```bash
-# Физический обрыв WAN1: link-down виден RouterOS
+# WAN1 physical failure: RouterOS sees link-down
 python3 lab.py link wan1 down
 python3 lab.py link wan1 up
 
-# Тихая потеря всех кадров, link остаётся up
+# Silent frame loss; link remains up
 python3 lab.py fault wan1 --blackhole on
 python3 lab.py fault wan1 --blackhole off
 
-# Потеря кадров 3%, задержка 80 мс ± 15 мс В КАЖДОМ направлении
+# 3% frame loss, delay 80 ms +/- 15 ms IN EACH direction
 python3 lab.py fault wan2 --loss 3 --delay 80 --jitter 15
 
-# Ограничение скорости в кбит/с отдельно в каждом направлении
+# Per-direction rate limit in kbit/s
 python3 lab.py fault wan3 --rate 512
 
-# Восстановить все ссылки и убрать все ухудшения
+# Restore all links and clear emulator impairments
 python3 lab.py heal
 
-# Состояние и счётчики эмуляторов
+# Emulator state and counters
 python3 lab.py status
 ```
 
@@ -123,7 +127,7 @@ python3 lab.py status
 ```bash
 python3 lab.py api isp2 ip/firewall/filter --method PUT --data '{"chain":"forward","action":"drop","place-before":"0","comment":"test-upstream-outage"}'
 python3 lab.py api isp2 ip/firewall/filter
-# Удалить добавленное правило по возвращённому .id (например *A):
+# Delete the added rule using its returned .id (example *A):
 python3 lab.py api isp2 'ip/firewall/filter/*A' --method DELETE
 ```
 
@@ -134,9 +138,9 @@ python3 lab.py api isp2 'ip/firewall/filter/*A' --method DELETE
 ```bash
 python3 lab.py verify
 python3 tests/native_acceptance.py
-# Старые baseline-тесты: только после python3 sdwan.py rollback
+# Old baseline tests: only after python3 sdwan.py rollback
 # python3 tests/acceptance.py
-# Необязательная проверка настоящего интернета с обоих клиентов:
+# Optional actual Internet check from both clients:
 python3 tests/internet.py
 python3 lab.py api edge system/resource
 python3 lab.py api edge ip/route
@@ -148,21 +152,21 @@ python3 lab.py export edge
 
 `tests/acceptance.py` относится к исходной маршрутизации, запускается только после rollback и временно отключает WAN, проверяет фактический выход `.101` и `.102` счётчиками на ISP, восстановление новых потоков после link-down и blackhole, добавленную задержку и доступность управления при отказе всех WAN. В `finally` восстанавливает каналы. Запускайте только на стенде; результат — `runtime/acceptance.json`. Сценарий сбрасывает текущие воздействия эмулятора. При аварийном завершении процесса выполните `python3 lab.py heal`.
 
-Внешний интернет проверяется TCP/HTTP/HTTPS отдельно: ICMP через QEMU user networking зависит от разрешения ping sockets в Linux и не эквивалентен реальному каналу. В этой WSL `ping_group_range` по умолчанию не разрешает ICMP sockets пользователю Andrey; системный sysctl не менялся. Поэтому лабораторные ICMP-цели находятся на самих ISP, а контроль реального интернета проектируется с дополнительными TCP/DNS/HTTPS пробами.
+Внешний интернет проверяется TCP/HTTP/HTTPS отдельно: ICMP через QEMU user networking зависит от разрешения ping sockets в Linux и не эквивалентен реальному каналу. В этой WSL `ping_group_range` по умолчанию не разрешает ICMP sockets пользователю WSL; системный sysctl не менялся. Поэтому лабораторные ICMP-цели находятся на самих ISP, а текущий контроллер дополнительно использует настроенные TCP/DNS/HTTPS-пробы для проверки ресурсов.
 
-`tests/internet.py` использует DNS и HTTPS `https://mikrotik.com/` с проверкой сертификата и source IP каждого клиента, сохраняет `runtime/internet.json`. Это ручной тест, не периодический мониторинг сайта производителя. Для будущего SLA выберите собственные согласованные контрольные цели. При первоначальной проверке HTTPS `example.com` не прошёл встроенное хранилище CA RouterOS (`no trusted CA certificate found`), а HTTPS `mikrotik.com` прошёл. Для каждой HTTPS-цели нужно проверять поддержку её цепочки CA, не отключать проверку сертификатов.
+`tests/internet.py` использует DNS и HTTPS `https://mikrotik.com/` с проверкой сертификата и source IP каждого клиента, сохраняет `runtime/internet.json`. Это ручной тест, не периодический мониторинг сайта производителя. Для своего SLA выберите собственные согласованные контрольные цели. При первоначальной проверке HTTPS `example.com` не прошёл встроенное хранилище CA RouterOS (`no trusted CA certificate found`), а HTTPS `mikrotik.com` прошёл. Для каждой HTTPS-цели нужно проверять поддержку её цепочки CA, не отключать проверку сертификатов.
 
-`routeros/*.rsc` — читаемые базовые конфигурации всех пяти узлов, генерируются при `prepare/up` и предназначены для чистого лабораторного CHR. Паролей в них нет. Итог первоначальных проверок — [docs/VALIDATION.md](VALIDATION.md).
+`routeros/*.rsc` — читаемые базовые конфигурации всех пяти узлов, генерируются при `prepare/up` и предназначены для чистого лабораторного CHR. Паролей в них нет. Итог первоначальных проверок — [VALIDATION.md](VALIDATION.md).
 
 `images/manifest.json` фиксирует URL и SHA256 исходного ZIP и RAW. Проверка источника: HTTPS официального сервера, ZIP CRC; SHA256 вычислен локально и не является подписью производителя. Оригинальный RAW не используется для записи; у каждого CHR свой qcow2 overlay, увеличенный до 512 MiB. Перемещайте каталог целиком: overlays ссылаются на абсолютный путь базового RAW.
 
-Зависимостей pip нет. Все VM — по одному vCPU, суммарная RAM 3 GiB. KVM выбирается при наличии доступа к `/dev/kvm` либо членства в группе `kvm`, иначе TCG (медленнее). Пользователь Andrey добавлен в стандартную группу `kvm` в Ubuntu-24.04. До обновления групп текущей оболочки скрипт использует `sg kvm` для запуска QEMU. При подготовке также проверялся временный ACL устройства; он оказался нестабильным в этой WSL, поэтому постоянный доступ настроен через группу. Для повторения настройки на другой машине из PowerShell:
+Зависимостей pip нет. Все VM — по одному vCPU, суммарная RAM 3 GiB. KVM выбирается при наличии доступа к `/dev/kvm` либо членства в группе `kvm`, иначе TCG (медленнее). Для этого примера пользователь `linuxuser` добавляется в стандартную группу `kvm` в Ubuntu-24.04. До обновления групп текущей оболочки скрипт использует `sg kvm` для запуска QEMU. При подготовке также проверялся временный ACL устройства; он оказался нестабильным в этой WSL, поэтому постоянный доступ настроен через группу. Для повторения настройки на другой машине из PowerShell замените `linuxuser` именем своего пользователя WSL:
 
 ```powershell
-wsl.exe -d Ubuntu-24.04 -u root -- usermod -aG kvm andrey
+wsl.exe -d Ubuntu-24.04 -u root -- usermod -aG kvm linuxuser
 ```
 
-При необходимости отменить изменение группы: `wsl.exe -d Ubuntu-24.04 -u root -- gpasswd -d andrey kvm` (после остановки лаборатории и перезапуска оболочки). Остальные системные настройки не менялись.
+При необходимости отменить изменение группы: `wsl.exe -d Ubuntu-24.04 -u root -- gpasswd -d linuxuser kvm` (после остановки лаборатории и перезапуска оболочки). Остальные системные настройки не менялись.
 
 Если API или консоли не отвечают, смотрите `runtime/*.qemu.log`, `runtime/proxy.log` и `python3 lab.py status`. Не удаляйте диски работающей лаборатории. Bootstrap сохраняет номер последней выполненной команды в `runtime/*.bootstrap.json` и может продолжить прерванную первичную настройку. Не редактируйте порядок команд во время незавершённого bootstrap. Операции управления VM не следует запускать одновременно из нескольких оболочек.
 

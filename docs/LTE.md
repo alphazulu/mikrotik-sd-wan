@@ -1,5 +1,7 @@
 # LTE WAN через существующий APN
 
+Русский | [English](LTE.en.md)
+
 Поддержка native LTE добавлена в RouterOS-контроллер, установщик и GUI. Прежняя приёмка: 109 unit и 105 проверок CHR, Windows GUI и аудит стенда. [Результаты и пределы проверки](LTE-VALIDATION.md). Для каждого WAN используется один routed IPv4 APN. У RNDIS/HiLink RouterOS дополнительно создаёт внутренний динамический DHCP-клиент; SD-WAN читает его шлюз, а настройками automatic default продолжает управлять через APN.
 
 ## Настройка в GUI
@@ -8,7 +10,7 @@
 2. Отметьте основной интерфейс и LTE-интерфейс. Например, `wan-primary` с приоритетом 1 и `lte-backup` с приоритетом 2.
 3. Мастер показывает тип LTE, назначенный APN-профиль и текущий IP. APN и runtime адреса в мастере доступны для просмотра; изменение профиля оператора выполняется штатными средствами RouterOS. В редакторе WAN указывается имя уже назначенного профиля, чтобы обнаруживать его последующую замену.
 4. Задайте контрольные цели, SLA и политики клиентов. Посмотрите план: установка сохранит исходный APN routing flag и отключит его automatic default для управления маршрутами по SLA.
-5. Примените через защищённую установку. Пакет по-прежнему содержит JSON и восемь RSC. После установки внешний GUI не нужен.
+5. Примените через защищённую установку. Стандартный пакет содержит JSON и 11 RSC. После установки внешний GUI не нужен.
 
 Настроенные LTE interface/APN и необходимый NAT должны существовать заранее. Конфигуратор не создаёт профиль с учётными данными, не меняет PIN, SIM, оператора, режим радиосети или credentials. Временно отсутствующая data session допускается: WAN остаётся unavailable, пока не появятся IPv4 и свежие измерения.
 
@@ -54,15 +56,15 @@ Baseline rollback восстанавливает только изменённы
 - Native LTE routed IPv4 и один APN на логический LTE interface. Multi-APN на одном старом интерфейсе и passthrough отвергаются, чтобы не выбирать произвольный source из нескольких сессий.
 - Внешний LTE-модем, подключённый обычным Ethernet-интерфейсом, настраивается как DHCP WAN. USB RNDIS, отображаемый RouterOS в `/interface/lte`, остаётся LTE WAN; его внутренний динамический DHCP-клиент не редактируется. Пользовательский статический DHCP-клиент на том же LTE-интерфейсе считается конфликтом.
 - Входящие соединения возможны только при фактической достижимости адреса провайдером. SD-WAN не устраняет CGNAT и не открывает firewall порты.
-- Переключение Internet WAN не переносит GRE/IPIP/EoIP с фиксированным PTK адресом на LTE. Резерв межфилиальных туннелей требует согласованной overlay схемы.
+- Переключение Internet WAN не переносит GRE/IPIP/EoIP с фиксированным IP основного провайдера на LTE. Резерв межфилиальных туннелей требует согласованной overlay схемы.
 
-На CHR проверяется реальное APN menu и настоящий data plane, при этом сведения о физическом LTE-устройстве в тестовом пакете заменены адаптером над PPP point-to-point. Это не проверка SIM, радиорегистрации, прошивки или конкретного модема. В production пакете нет test-mode.
+В первоначальной CHR-матрице проверялись реальное APN menu и настоящий data plane, при этом сведения о физическом LTE-устройстве в тестовом пакете заменялись адаптером над PPP point-to-point. Позже отдельно проверен USB RNDIS на x86. Это не проверка SIM, радиорегистрации, прошивки или конкретного физического модема. В production пакете нет test-mode. Актуальное состояние кандидата — [CURRENT-STATUS.md](CURRENT-STATUS.md).
 
 ## Документация MikroTik
 
 - [LTE/5G](https://manual.mikrotik.com/docs/mobile-networking/lte-5g/): APN routing options, routed/passthrough, профили.
-- [Default configurations](https://manual.mikrotik.com/docs/getting-started/configuration-management/default-configurations/): LTE gateway lte1.
-- [IP route](https://manual.mikrotik.com/docs/cli-reference/ip/route/): dynamic modem route flag.
+- [Default configurations](https://manual.mikrotik.com/docs/getting-started/configuration-management/default-configurations/): шлюз LTE через lte1.
+- [IP route](https://manual.mikrotik.com/docs/cli-reference/ip/route/): флаг динамического маршрута модема.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

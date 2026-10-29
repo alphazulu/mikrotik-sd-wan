@@ -1,5 +1,7 @@
 # Сборка минимального контейнера
 
+Русский | [English](BUILD.en.md)
+
 Готовые архивы находятся в [GitHub Releases](https://github.com/alphazulu/mikrotik-sd-wan/releases). Это Docker-save tar/gzip, пригодные для импорта в RouterOS; не образ диска CHR. Исходный CHR и пакет `container` загружаются у MikroTik отдельно.
 
 ## Закреплённый SDK
@@ -11,10 +13,12 @@ mkdir -p runtime/toolchains
 curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o runtime/toolchains/rustup-init.sh
 RUSTUP_HOME="$PWD/runtime/toolchains/rustup" CARGO_HOME="$PWD/runtime/toolchains/cargo" sh runtime/toolchains/rustup-init.sh -y --no-modify-path --default-toolchain 1.99.1
 RUSTUP_HOME="$PWD/runtime/toolchains/rustup" CARGO_HOME="$PWD/runtime/toolchains/cargo" runtime/toolchains/cargo/bin/rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl armv5te-unknown-linux-musleabi
+python3 tools/install_container_test_tools.py
+python3 tools/container_checks.py
 python3 container-controller/build.py
 ```
 
-Доступ в Интернет требуется для SDK/crates; готовому контроллеру он не нужен. Зависимости закреплены в `Cargo.lock`, Cargo вызывается с `--locked`. Версии иных SDK и хосты иных архитектур отдельной приёмки не проходили.
+Доступ в Интернет требуется для SDK/crates; готовому контроллеру он не нужен. Зависимости закреплены в `Cargo.lock`, Cargo вызывается с `--locked`. Версии иных SDK и хосты иных архитектур отдельной приёмки не проходили. Для проверки браузерного JavaScript на машине сборки нужен Node.js. Обязательные пороги и привязка к исходникам описаны в [CONTAINER-TESTING.md](CONTAINER-TESTING.md).
 
 Для одной архитектуры:
 
@@ -24,7 +28,7 @@ python3 container-controller/build.py --architectures amd64
 
 По умолчанию собираются два профиля (`base` и `web`) × три архитектуры.
 `--profiles base` оставляет только минимальный контроллер; `--profiles web` —
-только вариант со встроенным HTTP. Полный набор из шести сборок формирует `dist/container/build-report.json`, tar, gzip и готовые Docker contexts. Скрипт проверяет ELF machine и отсутствие `PT_INTERP`/`PT_DYNAMIC`. Образ содержит один статический бинарник с mode0555 и UID65532:65532; настроек, пароля, shell, toolchain и shared libraries в нём нет.
+только вариант со встроенным HTTP. Полный набор из шести сборок формирует `dist/container/build-report.json`, tar, gzip и готовые Docker contexts. Скрипт проверяет ELF machine и отсутствие `PT_INTERP`/`PT_DYNAMIC`. Образ содержит один статический бинарник с mode0555 и UID 65532:65532; настроек, пароля, shell, toolchain и shared libraries в нём нет.
 
 ## Docker и проверка артефактов
 
@@ -45,6 +49,20 @@ python3 tests/container_artifact_acceptance.py
 Абсолютные пути toolchain/crates могут попасть в диагностические строки ELF,
 поэтому локальная сборка не обязана совпадать с CI побайтово. Размеры релиза
 берутся из его build report; на CHR отдельно проверен CI web amd64 образ.
+
+Перед публикацией CI также выполняет:
+
+```sh
+python3 tools/release_checksums.py --check-catalog
+```
+
+Проверка требует ровно шесть однозначных сочетаний архитектуры/профиля и
+сравнивает каталог конфигуратора с фактическими gzip SHA256/размерами, image ID,
+SHA256 покрытых исходников и версией/URL выпуска. Устаревшие pins останавливают
+CI до формирования release-артефакта. Для локальной сборки с другими абсолютными
+путями `--check-catalog` может закономерно не пройти: каталог описывает точные
+архивы CI. Обычный вызов без флага по-прежнему формирует checksums локальных
+архивов. Совпадение каталога не заменяет приёмку точного образа на CHR.
 
 ## Rust unit
 

@@ -1,60 +1,63 @@
-# New network features on the local scratch controller: checkpoint
+# Сетевая интеграция локального scratch-контроллера: исторический этап
 
-Target: existing overlay site-A CHR7.24.5; the original released container fabric
-and production router were untouched. No extra VMs or external runtime controller.
-The pinned container package/device mode were enabled on that same CHR, retaining
-its existing WireGuard keys, active JSON and both private OSPF paths.
+Русский | [English](NETWORK-CONTAINER-VALIDATION.en.md)
 
-The exact newly built amd64 web scratch image was imported:
+Ниже описана интеграция раннего образа разработки, не итог текущего выпуска.
+[Актуальная приёмка кандидата](CURRENT-STATUS.md) учитывается отдельно.
+
+Целью служил существующий site-A CHR 7.24.5 overlay-стенда. Исходный стенд
+опубликованного контейнера и рабочий роутер не менялись; дополнительных VM и
+внешнего контроллера не было. На том же CHR включены закреплённый пакет и
+container device-mode, сохранены WireGuard-ключи, активный JSON и оба OSPF-пути.
+
+Импортирован точный новый web amd64 scratch-образ:
 `138afec27af41a9c08e7a7effa02ed29770de4cdc8494700407caba7c7945add`.
-Its sole filesystem entry is the803024-byte static binary, running as65532:65532.
-These development archives retain the unreleased build's package version0.2.0;
-they do not replace published release assets.
+Единственная запись файловой системы — статический бинарник 803024 байта,
+UID 65532:65532. Эти архивы разработки ещё имели package version 0.2.0;
+опубликованные assets ими не заменялись.
 
-The new integration wrapper passed **6 checks**, including the separate **7-case
-two-VPN matrix**: actual local API control, preserved container isolation after
-protected overlay/VPN installation, authenticated bounded web rows, VPN priority/
-physical backup/all-down/private TCP survival, stable intent-file bytes, and warm
-RouterOS fallback after stopping the container. Temporary localhost DNAT/forward
-access was removed, native configuration restored and the container left stopped.
+Интеграционная обёртка прошла **6 проверок**, включая отдельную **матрицу 7 случаев
+двух VPN**: настоящий локальный API-контроль, сохранение изоляции контейнера после
+защищённой установки overlay/VPN, аутентифицированные ограниченные web-строки,
+приоритет VPN/физический резерв/all-down/сохранение private TCP, неизменность
+intent и тёплый RSC fallback после остановки контейнера. Временные loopback
+DNAT/forward удалены, native config восстановлен, контейнер оставлен остановленным.
 
-Corrections verified during integration:
+Исправления, подтверждённые при интеграции:
 
-- Native overlay/VPN forward accepts now use an anchor below the prepared
-  container isolation block. The existing API security gate remains strict.
-- Web WAN ACLs are prepared for the complete physical/logical interface set while
-  the container is stopped; adding WANs can require that preparation step.
-- The traffic fixture permits its two public response source addresses on both
-  legitimate OSPF return legs and restores every original peer ACL afterward.
-- A logical VPN whose running/address event precedes usable FIB bindings fails
-  closed locally. Pending checks poll RAM/readiness without repeatedly rebuilding
-  rules, and other WAN processing continues. A changed/reverted geometry must
-  clear the pending state and go through fresh probe barriers.
+- Overlay/VPN forward accept ставится ниже блока изоляции контейнера; существующая
+  строгая API-проверка сохранена.
+- WAN ACL web готовится для полного набора физических/логических интерфейсов
+  при остановленном контейнере; добавление WAN может требовать такой подготовки.
+- Тест допускает два своих публичных source ответа на обоих допустимых OSPF-путях
+  возврата, затем восстанавливает исходные peer ACL.
+- VPN с running/address до готовности FIB остаётся закрытым. Pending проверяет
+  RAM/готовность без постоянной пересборки правил; другие WAN обрабатываются.
+  Изменённая/вернувшаяся структура сбрасывает pending и требует свежих проб.
 
-The measured12-second steady interval kept RouterOS intent-file bytes identical.
-Container process `write_bytes` is unavailable on this CHR kernel and is explicitly
-reported as unknown; it is not presented as a measured zero. Optional statistics
-remain in bounded RAM structures. Source and tests cover the absence of periodic
-intent writes, rather than claiming a hardware NAND lifetime measurement.
+За 12 секунд стабильного измерения intent RouterOS сохранился побайтово.
+Process write_bytes это ядро CHR не предоставляет: значение неизвестно, не ноль.
+Статистика остаётся в ограниченной RAM. Код/тесты проверяют отсутствие
+периодических intent-записей, не аппаратный срок жизни NAND.
 
-The preferred path and all standby channels have separate recovery observations.
-Existing PPP negotiation/retry timers are preserved; complete standby recovery has
-an explicit180-second test bound. One observed standby SSTP negotiation took about
-113seconds before retry; a later matrix recovered preferred VPN in10.6seconds and
-all channels in14.6seconds. These lab observations are not universal SLA guarantees.
+Восстановление приоритетного и резервных каналов наблюдается отдельно.
+Существующие PPP retry/negotiation таймеры не меняются; граница полного
+восстановления резервов — 180 с. Одна SSTP negotiation заняла около 113 с до
+повтора; поздняя матрица восстановила приоритетный VPN за 10,6 с и все каналы
+за 14,6 с. Это стендовые наблюдения, не универсальные гарантии SLA.
 
-Reports and logs are private runtime files. Repeatable tools:
+Сырые отчёты/журналы остаются приватными. Утилиты повторения:
 
 ```text
-python tools/overlay_container.py package --project-root PRIVATE_ROOT
-python tools/overlay_container.py prepare --project-root PRIVATE_ROOT
-python tests/network_container_acceptance.py --lab-root PRIVATE_ROOT
-python tests/vpn_binding_pending_acceptance.py --lab-root PRIVATE_ROOT
+python3 tools/overlay_container.py package --project-root PRIVATE_ROOT
+python3 tools/overlay_container.py prepare --project-root PRIVATE_ROOT
+python3 tests/network_container_acceptance.py --lab-root PRIVATE_ROOT
+python3 tests/vpn_binding_pending_acceptance.py --lab-root PRIVATE_ROOT
 ```
 
-The latter is a focused deferred-binding/geometry-reversion regression. Read its
-current private report before repeating it; all tools share the fabric lock.
-Full acceptance remains open: the native overlay validator has35mismatches in
-the44-case comparison, plus ownership/VRF/OSPF-list/cold-bootstrap, additional
-protocol parity, MTU/resources and the single final48–72hsoak. See
-[the native hardening gate](OVERLAY-NATIVE-HARDENING.md). No release claim yet.
+Последняя проверяет deferred binding/возврат структуры. Перед повтором прочитайте
+её текущий отчёт; все утилиты используют общую блокировку fabric. На этом раннем
+этапе было 35 расхождений в 44 контрактных случаях. Позже они закрыты расширенной
+проверкой схемы/владения и lifecycle: [hardening](OVERLAY-NATIVE-HARDENING.md),
+[текущий статус](CURRENT-STATUS.md). Совпадающая длительная приёмка ещё не завершена;
+этот исторический отчёт не объявляет выпуск готовым.

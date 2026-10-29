@@ -1,5 +1,7 @@
 # Черновик при существующих mangle-правилах
 
+Русский | [English](MIGRATION.en.md)
+
 Мастер позволяет нажать «Создать конфигурацию», даже если в прочитанном снимке
 есть активные сторонние `mark-connection`, `mark-routing` или `route`. Это
 подготовка черновика: MikroTik при генерации не меняется. По умолчанию программный
@@ -36,7 +38,8 @@ installer повторяет проверку при ручном импорте
 переоткрытие JSON или создание файлов `.rsc` не разрешают обойти эти проверки.
 Успешная синтаксическая проверка JSON не означает готовность устройства.
 
-RouterOS даёт mangle routing marks приоритет над обычными routing rules, если
-маркированный трафик разрешается в выбранной таблице. Поэтому простого добавления
+При стандартном порядке `policy-rules` RouterOS проверяет таблицу mangle routing
+mark раньше обычных routing rules. Если таблица разрешает назначение, новые
+правила сами по себе не заменяют прежнюю классификацию. Поэтому простого добавления
 новых правил поверх старых недостаточно для согласованной миграции.
-[MikroTik Policy Routing](https://help.mikrotik.com/docs/spaces/ROS/pages/59965508/Policy+Routing).
+[RouterOS Routing Decision](https://manual.mikrotik.com/docs/user-guides/routing-and-networking-protocols/routing-decision/).

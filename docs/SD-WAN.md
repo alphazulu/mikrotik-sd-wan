@@ -1,8 +1,10 @@
 # MikroTik SD-WAN
 
+Русский | [English](SD-WAN.en.md)
+
 Контроллер работает на самом MikroTik: RouterOS RSC либо опциональный локальный Rust-контейнер scratch с нативным fallback. Внешняя программа используется для настройки, установки, диагностики и наблюдения за тестами; решения о маршрутизации остаются на устройстве.
 
-- Полный план: [PLAN.md](../ROADMAP.md).
+- План развития: [ROADMAP.md](../ROADMAP.md).
 - Реализация и конфигурация: [NATIVE-CONTROLLER.md](NATIVE-CONTROLLER.md).
 - Рабочий JSON: `config/sdwan.json`.
 - Нативные исходники: `native/`.

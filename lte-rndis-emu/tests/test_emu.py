@@ -155,7 +155,8 @@ class UsbRedirTests(unittest.TestCase):
         link.device.set_configuration(1)
         link.device.rndis.initialized = True
         link.device.rndis.filter = 1
-        frame = b"x" * 65535
+        link.device.MAX_RX_BYTES = 64 * 1024
+        frame = b"x" * 1514
         for _ in range(100):
             link.device.enqueue_rx(frame)
         self.assertLessEqual(link.device.rx_bytes, link.device.MAX_RX_BYTES)
@@ -171,6 +172,21 @@ class UsbRedirTests(unittest.TestCase):
         link.device.usb_reset()
         self.assertEqual(link.device.rx_bytes, 0)
         self.assertFalse(link.device.rx_pkts)
+
+    def test_gso_giant_is_dropped_without_completing_or_breaking_pending_usb(self):
+        link = Link()
+        self.session_configure(link)
+        self._bring_up(link)
+        self.assertEqual(link.bulk_in(400, 0x82, 1664), [])
+        link.session.deliver_rx(b"x" * 2598)
+        self.assertEqual(link.pump(), [])
+        self.assertEqual(link.device.counters["dropped"], 1)
+        self.assertEqual(link.device.rx_bytes, 0)
+        link.session.deliver_rx(b"x" * 1514)
+        reply = link.pump()
+        self.assertEqual(reply[0][1], 400)
+        self.assertEqual(reply[0][2][1], ST_SUCCESS)
+        self.assertTrue(reply[0][2].endswith(b"x" * 1514))
 
     def test_qemu_control_reply_preserves_in_endpoint(self):
         link = Link()
@@ -362,11 +378,17 @@ class StateAndProbeTests(unittest.TestCase):
                 self.skipTest("creating a tap is not permitted here")
                 return
             ifname = created[:16].split(b"\x00", 1)[0].decode()
+            # Keep kernel IPv6 autoconfiguration out of this raw Ethernet fixture.
+            ipv6_setting = Path("/proc/sys/net/ipv6/conf") / ifname / "disable_ipv6"
+            if ipv6_setting.exists():
+                ipv6_setting.write_text("1")
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.addCleanup(sock.close)
             current = fcntl.ioctl(sock, 0x8913, struct.pack("16sH", ifname.encode(), 0) + b"\x00" * 14)
             flags = struct.unpack_from("H", current, 16)[0] | 0x1
             fcntl.ioctl(sock, 0x8914, struct.pack("16sH", ifname.encode(), flags) + b"\x00" * 14)
             uplink = PacketUplink(ifname)
+            self.addCleanup(uplink.close)
             frame = bytes.fromhex("ffffffffffff0200000000010800") + b"out"
             uplink.send(frame)
             self.assertEqual(os.read(tun, 65535), frame)

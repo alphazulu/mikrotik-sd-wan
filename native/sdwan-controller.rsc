@@ -43,7 +43,7 @@
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
     :local vpnEnabled false
     :foreach wan in=($cfg->"wans") do={ :if (($wan->"kind") = "vpn") do={ :set vpnEnabled true } }
-    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 7) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 8) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
     :if ($vpnEnabled) do={
         :global sdwanVPNLoaded
         :global sdwanVPNTick
@@ -141,15 +141,17 @@
         :local fraction [:pick ($text . "000") ($dot + 1) ($dot + 1 + $digits)]
         :return (([:tonum $whole] * $scale) + [:tonum $fraction])
     }
-    # Short-lived DNS/ICMP/TCP entries can expire between find and remove.
-    # Ignore only an already vanished entry; preserve permission/other errors.
+    # Enumeration and removal can both race expiry. Bound scan retries and
+    # ignore only vanished IDs, without another racy full-table existence scan.
     :local purge do={
+        :global sdwanConntrackFind
         :local removed 0
-        :foreach id in=[/ip/firewall/connection/find where connection-mark=$mark] do={
+        :local query do={ :return [/ip/firewall/connection/find where connection-mark=$mark] }
+        :foreach id in=[$sdwanConntrackFind query=$query mark=$mark] do={
             :onerror expired in={
                 /ip/firewall/connection/remove $id
                 :set removed ($removed + 1)
-            } do={ :if ([:len [/ip/firewall/connection/find where .id=$id]] > 0) do={ :error $expired } }
+            } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
         }
         :return $removed
     }
@@ -440,7 +442,7 @@
     :set sdwanDrainingMarks $retainedMarks
     :local overlayReport [:toarray ""]
     :if ((($cfg->"overlay")->"enabled") = true) do={
-        :if ($sdwanOverlayLoaded != 1) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
+        :if ($sdwanOverlayLoaded != 2) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
         :set overlayReport [$sdwanOverlayTick cfg=$cfg now=$now]
     }
     :local output [:toarray ""]

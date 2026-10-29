@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "controller_source_sha256": "0d023c5f0a8d1cecbe47ddb429359dc9f58f676d3036118a99c286acb26775ca",
+  "controller_source_sha256": "0772c14a13574b95c77faef9347bdaeb09e34afb835c73ec19aa0e11ca60db9d",
   "profiles": [],
   "note": "A WSL/QEMU comparison series is documented in docs/PERFORMANCE-RESULTS.md. TCP variance and small-packet endpoint limits prevent a validated capacity profile. Recommendations remain unmeasured until a matching audited platform/workload profile is available."
 }

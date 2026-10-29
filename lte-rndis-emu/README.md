@@ -1,8 +1,12 @@
 # lte-rndis-emu
 
-Userspace RNDIS device for a MikroTik CHR lab. QEMU attaches it with `usb-redir`. Ethernet frames are bridged to the interface given as `--uplink`. There is no DHCP server in this process.
+[English](README.en.md)
 
-The agent-facing contract is [USAGE.md](USAGE.md).
+Пользовательское RNDIS-устройство для лаборатории MikroTik CHR. QEMU подключает
+его через `usb-redir`. Ethernet-кадры передаются в интерфейс, указанный в
+`--uplink`. В этом процессе DHCP-сервера нет.
+
+Обязательный порядок действий для запуска: [USAGE.md](USAGE.md).
 
 ```bash
 python3 -m lte_rndis_emu probe

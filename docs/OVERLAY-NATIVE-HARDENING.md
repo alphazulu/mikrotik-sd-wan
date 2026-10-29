@@ -1,56 +1,57 @@
-# Native overlay preflight parity: open development gate
+# Паритет нативной проверки overlay
 
-The original44-case comparison found35 native mismatches. The native validator
-now agrees on an expanded117-case contract: strict keys/types/explicit null,
-health budgets, canonical unicast/prefixes, overlaps, tunnel host addresses,
-public keys, endpoint/keepalive/role constraints and underlay recursion. An additional24-case ownership suite passes nested list precedence, disabled/
-nonoverlapping OSPF, owned list contents, foreign addresses/peers, reserved probe
-tables/rules and WG/underlay VRF boundaries. Full lifecycle acceptance remains
-in progress.
-Malformed configurations are validated without installation. The private report
-is `overlay-lab/runtime/overlay-contract-validation.json`.
+Русский | [English](OVERLAY-NATIVE-HARDENING.en.md)
 
-RouterOS7.24.5 drops `null` elements when deserializing JSON arrays. Installation
-therefore passes **both** parsed configuration and the original JSON to
-`sdwanOverlayValidate cfg=$cfg rawJSON=$cfgJSON`. A quote/escape-aware lexical check
-rejects actual null tokens without rejecting quoted text such as
-`null.example.test`. A parsed object alone cannot recover dropped elements.
-The read-only contract tests import only validation functions, leaving the active
-controller and actuator functions unchanged.
+Первоначальное сравнение 44 случаев выявило 35 расхождений native. Расширенный
+контракт из 117 случаев согласован с Python: строгие ключи/типы/явный null,
+бюджеты проб, канонические unicast/префиксы, пересечения, адреса туннелей, публичные
+ключи, endpoint/keepalive/роль и рекурсия underlay. Ещё 24 проверки владения прошли
+приоритет вложенных списков, выключенный/непересекающийся OSPF, состав собственных
+списков, чужие адреса/peer, зарезервированные таблицы/правила проб и границы WG/VRF.
+Это отчёт этапа проверки схемы. Последующие lifecycle/cold-start проверки прошли;
+длительная приёмка кандидата продолжается. [Текущий статус](CURRENT-STATUS.md).
+Неверные конфигурации проверяются без установки; приватный отчёт —
+`overlay-lab/runtime/overlay-contract-validation.json`.
 
-Implemented schema checks (covered by the expanded contract):
+RouterOS 7.24.5 удаляет элементы null при десериализации JSON-массивов. Поэтому
+установка передаёт и разобранный объект, и исходный текст в
+`sdwanOverlayValidate cfg=$cfg rawJSON=$cfgJSON`. Лексическая проверка с учётом
+кавычек/экранирования отклоняет настоящие null, но допускает строки вроде
+`null.example.test`. Из одного разобранного объекта исчезнувшие элементы не вернуть.
+Read-only контрактные тесты импортируют только функции проверки, не меняя
+активный контроллер и actuator.
 
-- Enumerate top-level and per-tunnel fields. Require the exact `enabled` boolean,
-  required fields, and `enabled=false` without hidden extra settings. Reject
-  explicit JSON null for optional values; absence and null are different.
-- Match integer/bool ranges, nonempty prefix lists, inner probe train duration
-  and stale/recovery budgets. Preserve the existing optional defaults.
-- Validate canonical unicast IPv4/router IDs and prefixes, including every
-  subprefix of169.254/16; checking one representative host alone is insufficient.
-  Reject overlaps within/between sites and links, unusable /30 host addresses,
-  and peer prefixes outside the declared remote networks.
-- Validate nonzero canonical32-byte public keys, distinct local/peer identities,
-  endpoint syntax/port/keepalive and endpoint recursion through all effective
-  overlay networks. Hub mode forbids even an empty endpoint option.
-- Preserve existing ownership/foreign OSPF checks. Extend later collision tests
-  to interface-list include/exclude membership, VRF scope and rollback/reapply.
+Реализованные проверки расширенного контракта:
 
-Keep validation before network mutations and outside the periodic controller
-tick. Use bounded prefix comparisons; parse only text already checked to contain
-canonical digits, dots and a slash. IPv4 overlap can compare each canonical
-network address against the other prefix; containment also compares prefix
-lengths. Public-key validation can use RouterOS conversion or a strict44-character
-base64 check, including canonical final padding bits and rejection of the zero key.
-Do not request actual private keys to test these rules.
+- Перечисление верхних полей и полей туннелей, точный boolean enabled,
+  обязательные значения, enabled=false без скрытых настроек. Явный null для
+  optional поля отклоняется: отсутствие и null различаются.
+- Диапазоны integer/bool, непустые списки префиксов, длительность внутренних
+  проб, бюджеты stale/recovery; исходные optional defaults сохраняются.
+- Канонические unicast IPv4/Router ID и префиксы, все подсети 169.254/16;
+  одного контрольного адреса недостаточно. Пересечения площадок/линков,
+  непригодные хосты /30 и peer-префиксы вне remote networks отклоняются.
+- Ненулевые канонические 32-байтовые публичные ключи, разные local/peer identities,
+  endpoint/порт/keepalive и рекурсия через все overlay-сети. Hub запрещает даже
+  пустое поле endpoint.
+- Прежние guards владения/чужого OSPF сохранены. Дальнейшие collision-сценарии
+  охватывают include/exclude списков, VRF и rollback/reapply.
 
-Repeat after validator changes:
+Проверка выполняется до сетевых изменений и вне периодического цикла. Сравнения
+префиксов ограничены; разбирается только текст, проверенный на канонические цифры,
+точки и slash. IPv4 overlap сравнивает адрес каждой сети с другим префиксом;
+containment также учитывает длину префикса. Публичный ключ проверяется средствами
+RouterOS либо строгим 44-символьным base64 с каноническими padding bits и запретом
+нулевого ключа. Настоящие private keys для этих проверок не нужны.
+
+После изменения валидатора:
 
 ```text
-python tests/overlay_contract_acceptance.py --lab-root PRIVATE_ROOT
+python3 tests/overlay_contract_acceptance.py --lab-root PRIVATE_ROOT
 ```
 
-The test uses small batches below the RouterOS file-content limit and the same
-nonblocking fabric lock as the other CHR checks. Do not run it during an existing
-fabric mutation. Fix the native validator, then require every contract case to agree with
-Python before closing this gate. Add cases if the implementation uncovers further
-schema or ownership boundaries; a passing subset does not close full acceptance.
+Набор использует малые пакеты ниже лимита file contents и общую неблокирующую
+блокировку стенда. Не запускайте его во время чужого изменения fabric. До
+закрытия gate каждый контрактный случай должен совпадать с Python. Новые границы
+схемы/владения требуют соответствующих случаев; успешная подвыборка не завершает
+полную приёмку.

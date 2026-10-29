@@ -1,3 +1,22 @@
+# Conntrack enumeration can race expiry even before find returns its ID list.
+# Retry only that transient error, with a fixed bound; preserve all other errors.
+# Callbacks receive explicit selectors, never an implicit caller scope.
+:global sdwanConntrackFind do={
+    :local ids [:toarray ""]
+    :local ready false
+    :for attempt from=1 to=5 do={
+        :if (!$ready) do={
+            :onerror scanError in={
+                :set ids [$query mark=$mark localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort]
+                :set ready true
+            } do={
+                :if (([:pick $scanError 0 12] != "no such item") || ($attempt = 5)) do={ :error $scanError }
+                :delay 10ms
+            }
+        }
+    }
+    :return $ids
+}
 # New forward accepts must stay below the prepared container isolation block.
 # Only owned overlay/VPN rules use this anchor; foreign rule order is untouched.
 :global sdwanForwardAnchor do={
@@ -745,9 +764,11 @@
         :return true
     }
     :local purge do={
+        :global sdwanConntrackFind
         :local removed 0
-        :foreach cid in=[/ip/firewall/connection/find where connection-mark=$mark] do={
-            :onerror expired in={ /ip/firewall/connection/remove $cid; :set removed ($removed + 1) } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+        :local query do={ :return [/ip/firewall/connection/find where connection-mark=$mark] }
+        :foreach cid in=[$sdwanConntrackFind query=$query mark=$mark] do={
+            :onerror expired in={ /ip/firewall/connection/remove $cid; :set removed ($removed + 1) } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
         }
         :return $removed
     }
@@ -965,4 +986,4 @@
     :if ([:len $sdwanEvents] >= 100) do={ :set sdwanEvents [:pick $sdwanEvents ([:len $sdwanEvents] - 99) [:len $sdwanEvents]] }
     :set ($sdwanEvents->[:len $sdwanEvents]) $row
 }
-:global sdwanLinksLoaded 7
+:global sdwanLinksLoaded 8

@@ -274,11 +274,13 @@
                         /ip/firewall/nat/add chain=srcnat protocol=udp src-port=($binding->"listen_port") out-interface=($parent->"interface") action=masquerade comment=$tag place-before=0
                     } else={ /ip/firewall/mangle/add chain=output protocol=udp src-port=($binding->"listen_port") action=drop comment=$tag place-before=$anchor }
                     # Retire only this local socket's managed physical transports.
-                    :foreach cid in=[/ip/firewall/connection/find where protocol=udp and src-port=($binding->"listen_port")] do={
+                    :global sdwanConntrackFind
+                    :local query do={ :return [/ip/firewall/connection/find where protocol=udp and src-port=$localPort] }
+                    :foreach cid in=[$sdwanConntrackFind query=$query localPort=($binding->"listen_port")] do={
                         :onerror expired in={
                             :local mark [/ip/firewall/connection/get $cid connection-mark]
                             :if ($mark ~ "^sdwan-router-") do={ /ip/firewall/connection/remove $cid }
-                        } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+                        } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
                     }
                 } else={
                     # Source-bound probes are untouched: PPP sockets start on a

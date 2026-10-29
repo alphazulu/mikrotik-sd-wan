@@ -215,22 +215,43 @@ def prepare_device(router,config,expected,*,root=ROOT,timeout=180,progress=None)
 
 
 def _feature_request(router,readiness,expected,root,actions,notify):
+    from .device_mode import request,observe,cleanup
     pending_path=Path(root)/'runtime'/('device-mode-'+hashlib.sha256((router.base_url+'|'+expected).encode()).hexdigest()[:16]+'.json')
-    if readiness['disabled_features']:
-        if pending_path.exists():return {'ready':False,'needs_physical_confirmation':True,'features':readiness['disabled_features'],'actions':actions,'request_repeated':False}
-        features={name:'yes' for name in readiness['disabled_features']}
-        # Save intent before sending: the API can disconnect or wait for the
-        # physical confirmation. Never blindly repeat a request that may exist.
-        pending_path.parent.mkdir(exist_ok=True,parents=True);pending_path.write_text(json.dumps({'identity':expected,'features':list(features),'request_status':'sending'})+'\n')
-        notify('Запрашивается изменение device-mode: '+', '.join(features)+'. Подтвердите кнопкой reset/mode или отключением питания; обычная перезагрузка не подтверждает изменение.')
-        try:response=router.call('system/device-mode/update',features,'POST')
-        except OSError as error:response={'confirmation_status':'unverified; check flags after physical confirmation','transport_error':type(error).__name__}
-        except RuntimeError:
+    if not readiness['disabled_features']:
+        if pending_path.exists():cleanup(router,json.loads(pending_path.read_text()))
+        pending_path.unlink(missing_ok=True)
+        return dict(readiness,actions=actions)
+    features={name:'yes' for name in readiness['disabled_features']}
+    instructions='Подтвердите изменение кнопкой reset/mode или отключением питания согласно инструкции MikroTik. Обычная перезагрузка не подтверждает device-mode. После запуска повторите проверку.'
+    if pending_path.exists():
+        intent=json.loads(pending_path.read_text())
+        try:state=observe(router,intent)
+        except (OSError,RuntimeError):state='unknown'
+        expired=isinstance(intent.get('expires'),(int,float)) and time.time()>intent['expires']
+        if state=='ended' or (expired and state!='running'):
+            cleanup(router,intent)
             pending_path.unlink(missing_ok=True)
-            raise
-        if 'canceled' in json.dumps(response).lower():
-            pending_path.unlink(missing_ok=True)
-            return {'ready':False,'needs_physical_confirmation':False,'request_started':False,'actions':actions,'instructions':'MikroTik отменил предыдущий запрос device-mode. Новый запрос не запущен; проверьте изменения и повторите действие явно.'}
-        return {'ready':False,'needs_physical_confirmation':True,'features':list(features),'actions':actions,'router_reply':response,'instructions':'Подтвердите изменение кнопкой reset/mode или отключением питания согласно инструкции MikroTik. Обычная перезагрузка не подтверждает device-mode. После запуска повторите проверку.'}
-    pending_path.unlink(missing_ok=True)
-    return dict(readiness,actions=actions)
+            return {'ready':False,'needs_physical_confirmation':False,'request_started':False,'request_repeated':False,'actions':actions,'instructions':'Предыдущий запрос device-mode завершился или истёк, но требуемые флаги не включены. Проверьте журнал MikroTik и повторите подготовку явно; запрос автоматически не повторён.'}
+        return {'ready':False,'needs_physical_confirmation':state=='running','request_repeated':False,'request_status':state,'features':list(features),'actions':actions,'instructions':instructions if state=='running' else 'Состояние предыдущего запроса device-mode неизвестно. Проверьте его на MikroTik; повторный update может отменить ожидающее изменение. Готовность ещё не подтверждена.'}
+    pending_path.parent.mkdir(exist_ok=True,parents=True)
+    def save(intent):
+        temporary=pending_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(dict(intent,identity=expected))+'\n')
+        temporary.replace(pending_path)
+    notify('Запрашивается изменение device-mode: '+', '.join(features)+'. Подтвердите кнопкой reset/mode или отключением питания; обычная перезагрузка не подтверждает изменение.')
+    try:
+        intent=request(router,features,save)
+        # The update runs on RouterOS, not in this API session. Allow its RAM
+        # marker to appear, with a bounded host wait independent of the 5m window.
+        deadline=time.monotonic()+2;state='unknown'
+        while time.monotonic()<deadline:
+            state=observe(router,intent)
+            if state=='running':break
+            time.sleep(.1)
+    except OSError:
+        state='unknown'
+    except RuntimeError:
+        # A launcher may have been accepted before an explicit API error.
+        # Preserve intent until expiry/readback rather than repeat blindly.
+        raise
+    return {'ready':False,'needs_physical_confirmation':state=='running','features':list(features),'actions':actions,'request_status':state,'instructions':instructions if state=='running' else 'Фоновый запрос device-mode ещё не подтверждён. Проверьте журнал MikroTik и повторите проверку состояния; изменение не считается применённым.'}

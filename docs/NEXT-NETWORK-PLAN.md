@@ -1,105 +1,102 @@
-# Network iteration: verification and remaining gates
+# Сетевая итерация: проверки и оставшиеся условия
 
-The development branch targets 0.3.0. The published release remains 0.2.0 until
-final acceptance, privacy checks and CI finish. Runtime decisions stay on each
-MikroTik, using RouterOS scripts or its local Rust scratch container. No external
-controller or production router is used for development acceptance.
+Русский | [English](NEXT-NETWORK-PLAN.en.md)
 
-Implemented and exercised on isolated RouterOS 7.24.5 CHRs:
+Ветка разрабатывает 0.3.0; опубликованным остаётся 0.2.0 до финальной приёмки,
+проверки приватности и CI. Решения остаются на каждом MikroTik: RouterOS RSC
+либо локальный Rust scratch. Внешний контроллер и рабочий роутер для приёмки не нужны.
 
-- Strict HTTP path/body/status and DNS-answer checks, bounded RAM Fetch workers,
-  independent deadlines, generation fencing, TLS validation and fail-closed SLA.
-- Per-WAN drain/down, priority admission, scoped conntrack retirement and warm
-  RouterOS fallback. Existing marked sessions can finish during healthy drain.
-- Existing WireGuard, L2TP, SSTP and OpenVPN exits as ordinary WANs, alongside
-  static, DHCP, PPPoE and native LTE/APN discovery. No separate VPN policy engine.
-- Source/destination IPv4/CIDR or MikroTik Address Lists, AND across selectors,
-  ordered common policies and stable per-policy jump chains. Dynamic list entries
-  remain owned by the operator and RouterOS.
-- Optional dual-CGNAT branch overlay through a reachable public hub, independent
-  encrypted WAN paths, inner SLA and isolated OSPF with explicit prefix export.
-  Existing OSPF is protected; private routes fail closed when all paths fail.
-- Public-key preparation/exchange and GUI topology editing; bounded optional
-  RAM-only web telemetry, off by default, with separate mounted authentication.
-- Shared plain-DNS and DoH bootstrap for hostname endpoints while generic
-  Internet SLA is closed. Early multicast/broadcast bypass preserves local OSPF
-  and DHCP; terminal client guards prevent leaks through control-plane routes.
-- Bounded RAM tracking of outer WireGuard geometry. Cleanup matches the exact
-  previous remote tuple and an owned listener/local-address snapshot, preserving
-  unrelated outer UDP and established inner TCP.
+Реализовано и проверено на изолированных RouterOS 7.24.5 CHR:
 
-Selected completed checks in this iteration:
+- Строгие HTTP path/body/status и DNS-ответы; ограниченные RAM Fetch workers,
+  независимые сроки, поколения, TLS и fail-closed SLA.
+- Drain/down, приоритет допуска, выборочная очистка conntrack, тёплый RSC fallback.
+  При здоровом drain существующие маркированные сессии могут завершиться.
+- Существующие WireGuard/L2TP/SSTP/OpenVPN как обычные WAN вместе со static,
+  DHCP, PPPoE, LTE/APN; отдельного VPN policy engine нет.
+- IPv4/CIDR или Address List источника/назначения, И между селекторами,
+  упорядоченные политики и отдельные jump-цепочки. Динамические списки принадлежат
+  оператору и RouterOS.
+- Опциональный overlay для двух CGNAT-филиалов через доступный публичный хаб:
+  независимые шифрованные WAN-пути, внутренний SLA, изолированный OSPF и явные
+  экспортируемые префиксы. Существующий OSPF защищён; all-down закрывает private routes.
+- Подготовка/обмен публичных ключей и GUI-топология; optional RAM web выключен
+  по умолчанию, отдельный secret mount.
+- Общий plain-DNS/DoH bootstrap доменных endpoints при закрытом Internet SLA;
+  ранний multicast/broadcast bypass сохраняет OSPF/DHCP, terminal guards не дают
+  клиентам утечки через служебные маршруты.
+- Ограниченная RAM-история внешних WireGuard-кортежей: очистка точного прежнего
+  endpoint по принадлежащему listener/локальным адресам, без чужого UDP и inner TCP.
 
-| Area | Verification |
-| --- | --- |
-| Python | 348 unit tests on Linux and Windows; Windows skips 14 POSIX-only cases |
-| Container | 41 base Rust, 75 web Rust, 6 browser JS tests; 100% executable lines and functions per runtime file |
-| Scratch artifacts | Six static single-binary profiles: amd64, arm64, ARMv5, base/web |
-| Strict probes | 13 functional and 21 native/Python contract cases |
-| Drain | 6 multi-WAN TCP and 3 final-WAN closure cases |
-| Unified WAN/policy selectors | 6 real routing/TCP cases, 88 IP/list contracts, 18 VPN contracts |
-| Overlay schema/ownership | 123 schema and 24 ownership/VRF/list cases |
-| Overlay lifecycle | 6 install/reapply/off/on/rollback cases and 3 original-JSON guards |
-| Outer UDP roaming | 4 checks including direct standby removal count; latest NAT-port retirement 1.074 s, independent UDP/TCP retained |
-| Dynamic VPN parents | 2 DHCP and 2 PPPoE live lease/reconnect cases on the final native runtime |
-| Cold external DNS | 5 plain-DNS and 6 actual HTTPS DoH checks |
-| MTU/MSS | 2 real DF-boundary and bidirectional forwarding-SYN checks |
-| Windows GUI | Four offline suites pass; earlier unified GUI inventory checks also passed read-only |
+Выборочные результаты раннего этапа ниже исторические. Актуальные суммарные
+проверки и коммиты — [CURRENT-STATUS.md](CURRENT-STATUS.md).
 
-These are scoped results, not a claim that the complete release gate has passed.
+| Область | Проверки этапа |
+|---|---|
+| Python | 348 unit Linux/Windows, 14 POSIX-only пропусков Windows |
+| Контейнер | 41 Rust base, 75 Rust web, 6 browser JS; 100% строк/функций рабочих файлов |
+| Scratch | Шесть статических single-binary: amd64/arm64/ARMv5 × base/web |
+| Строгие пробы | 13 функциональных, 21 native/Python contract |
+| Drain | 6 multi-WAN TCP, 3 закрытия последнего WAN |
+| Общие WAN/селекторы | 6 реальных routing/TCP, 88 IP/list contracts, 18 VPN contracts |
+| Overlay schema/ownership | 123 schema, 24 ownership/VRF/list |
+| Жизненный цикл overlay | 6 проверок установки/повторного применения/выключения/включения/отката, 3 защиты исходного JSON |
+| Outer UDP roaming | 4, включая счётчик удаления standby; NAT-port retirement 1,074 с, чужие UDP/TCP сохранены |
+| Dynamic VPN parents | 2 DHCP, 2 PPPoE lease/reconnect на финальном native runtime |
+| Cold DNS | 5 plain-DNS, 6 настоящих HTTPS DoH |
+| MTU/MSS | 2 настоящих DF-boundary и двунаправленных forwarding SYN |
+| Windows GUI | Четыре offline suite; прежний unified inventory проверен read-only |
 
-The derived RouterOS container adapter additionally checks cached intent against
-the current native priority choice. The previous eligibility-only guard could
-retain a healthy backup after a preferred WAN recovered, or accept stale `none`.
-The real RouterOS component regression reproduces seven old counterexamples and
-passes all 20 corrected cases on each owned CHR/x86 node. The frozen forced
-smoke and 48-hour gate must still pass after that behavior change.
-The plain-DNS cold TCP handshake took 20.388 s within a 60 s cold-start test bound;
-the DoH run took 0.832 s. The first delay's cause has not been established.
-Default SLA limits were not relaxed to obtain these results. The functional QEMU
-fixture declares a 250 ms inner jitter budget; the product default stays 50 ms.
+Эти числа не означают прохождение полного release gate.
 
-Exact 0.3.0 CHR parity (6 checks), two-VPN priority matrix (7), all four VPN
-protocols (8 each), the same-configuration resource sample and the final
-native dynamic/cleanup/lifecycle gates now pass. The standby retirement helper
-removed one actual incoming UDP conntrack when called in the controller's
-scheduler environment; the earlier direct-API fixture had a different RAM scope.
-The first PPPoE final attempt captured an empty transient UDP inventory; the
-subsequent run passed, and the fixture now uses a bounded wait for the actual
-new-source bidirectional tuple with no old-source tuple. Failed attempts remain
-in private evidence. Missing process I/O counters remain unknown; byte-stable
-intent is not a hardware flash counter.
+Производный RSC-адаптер сверяет cached intent с текущим нативным приоритетным
+выбором. Прежняя проверка только eligibility могла удержать здоровый резерв
+после возврата основного или принять старый none. Компонентный RouterOS-тест
+воспроизводит 7 старых контрпримеров и проходит все 20 исправленных случаев на
+каждом собственном CHR/x86. Последующий matching forced smoke прошёл; текущий
+48-часовой прогон ещё идёт. Plain-DNS cold TCP занял 20,388 с при границе 60 с,
+DoH — 0,832 с; причина первой задержки не установлена. Пороги продукта ради
+результата не ослаблялись: функциональный QEMU задаёт внутренний jitter 250 мс,
+а default продукта остаётся 50 мс.
 
-Remaining release gates:
+Паритет 0.3.0 CHR (6), two-VPN priority (7), все четыре VPN-протокола (по 8),
+ресурсный снимок той же конфигурации и финальные native dynamic/cleanup/lifecycle
+пройдены. Standby helper удалил настоящую incoming UDP-запись при выполнении
+в scheduler контроллера; прямой API-тест имел другую RAM-область. Первая финальная
+PPPoE-попытка увидела временно пустую UDP-таблицу, следующая прошла. Fixture ждёт
+реальный двунаправленный new-source tuple без old-source в ограниченное время.
+Неуспешные попытки сохранены. Отсутствующий process I/O неизвестен; стабильный
+intent не является аппаратным счётчиком flash.
 
-1. Obtain green CI and validate the exact CI-built image on CHR before freezing
-   the release candidate. ELF diagnostic paths can make local and CI bytes differ.
-2. Run one 48–72 hour soak against the frozen functional source/image with
-   [the locked driver](NETWORK-SOAK.md). It observes native and local-container
-   phases, three real TCP streams and bounded resources. Do not start a second
-   soak or change runtime code underneath it. A short smoke run is not a soak.
-3. Recheck staged source, Git history and image layers against private
-   fingerprints after final edits; run CI, publish the reviewed release and
-   synchronize reviewed root source. The pre-soak audit passes for 473 Git blobs
-   and 18 image blobs; gitleaks scanned 21 commits without findings.
+Условия текущего выпуска:
 
-Physical ARM/LTE performance and production addressing remain separate from CHR
-emulation. Tests never publish private exports, authentication or private keys.
+1. Для замороженного 37a68a9 пройдены CI и точный CI-образ на CHR. Изменённая
+   редакция перед публикацией требует собственных coverage/catalog проверок;
+   пути ELF могут различать локальные и CI-байты.
+2. Идёт один 48-часовой source/image-bound прогон [драйвера](NETWORK-SOAK.md):
+   native/container, три реальных TCP и ограниченные ресурсы. Второй прогон и
+   изменение его исходников запрещены; smoke его не заменяет.
+3. Подготовленные 150 измерений ждут совпадающего long PASS и свободного стенда.
+   Аппаратные профили рекомендаций остаются пустыми.
+4. Завершить RU/EN-документацию, проверить staged source/history/image layers по
+   приватным fingerprints, выполнить CI и выпуск после gates. Ранний аудит
+   473 Git blobs/18 image blobs/21 gitleaks commit — исторический этап, не проверка
+   последующих правок. Сверенные корневые исходники синхронизируются последними.
 
-The OpenVPN remote fixture allowed two simultaneous PPP sessions with the same
-assigned IPv4 and two active return routes. Under its unchanged 60-second
-keepalive setting, ordinary default WAN admission moved to the physical backup
-in 0.957 s; preferred VPN resource SLA recovered in 91.156 s. A separate
-180-second VPN reconnection test bound covers that remote-session convergence;
-SLA thresholds and server settings were not changed. The preceding 65-second
-attempt remains recorded as a failed test, not a successful fast VPN recovery.
+Физическая ARM/LTE-производительность и рабочая адресация не выводятся из CHR.
+Экспорты, пароли и private keys не публикуются.
 
-A protected upgrade failure was also tested with the previous compatible
-framework genuinely lacking `sdwan-dns.rsc`. Encrypted rollback restored all
-previous sources/configuration and public identities, removed the newly added
-library and recovered OSPF after reboot (2 checks).
+Удалённый OpenVPN fixture допускал две PPP-сессии с одним IPv4 и два return routes.
+При неизменном keepalive 60 с общая политика перешла на физический WAN за 0,957 с;
+SLA приоритетного VPN восстановился за 91,156 с. Отдельная тестовая граница
+reconnect 180 с учитывает удалённую сходимость; SLA/server settings не менялись.
+Прежняя попытка 65 с остаётся неуспешной, а не доказательством быстрого возврата.
 
-The observer matches full original/reply TCP tuples, policy and monotonic bytes,
-and requires one live HTTP request per stream. RouterOS API handle changes are
-recorded without inventing a reconnect. Standby SLA degradation is counted
-separately; selected-route SLA, private paths and real traffic remain strict.
+Проверено и защищённое обновление со старым совместимым framework без
+`sdwan-dns.rsc`: encrypted rollback вернул все прежние sources/config/public
+identities, удалил новую библиотеку и восстановил OSPF после reboot (2 проверки).
+
+Наблюдатель сравнивает полные original/reply TCP tuples, политику, возрастающие
+байты и один живой HTTP-запрос на поток. Изменение API handle регистрируется,
+но не объявляется переподключением. SLA резервов учитывается отдельно;
+выбранные маршруты, private paths и реальный трафик остаются строгими.
