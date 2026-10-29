@@ -140,10 +140,30 @@ try:
      with patch.object(gui.filedialog,'askdirectory',return_value=str(package)):click(app,'Файлы RouterOS')
      review=json.loads((package/'MIGRATION-REVIEW.json').read_text());assert review['blocking_rules'][0]['.id']=='*99';note('foreign mangle allows draft/export with exact conflict report and disabled install button')
    finally:destroy(app)
+  app=gui.App();app.update();data=copy.deepcopy(raw)
+  data['system/package'].append({'name':'container','version':'7.24.5','disabled':'false'})
+  data['system/device-mode'][0]['container']='true'
+  data['disk']=[{'slot':slot,'mount-point':mount,'fs':'ext4','free':str(64*1024**2),
+                 'mount-filesystem':'true','mounted':mounted,'mount-read-only':readonly}
+                for slot,mount,mounted,readonly in [('usb1','data','true','false'),('usb2','readonly','true','true'),('usb3','offline','false','false')]]
+  try:
+   connect(app,Replay(data));select(app,'wan-static',1);select(app,'lte-test',2);targets(app)
+   app.backend.set('Локальный контейнер Rust');app.update()
+   storage=next(w for w in app.container_entries if isinstance(w,ttk.Combobox))
+   choices=storage.cget('values')
+   assert 'data/sdwan-container' in choices and not any(name in choices for name in ['usb1/sdwan-container','readonly/sdwan-container','offline/sdwan-container'])
+   note('storage selector offers actual mount point and excludes read-only or unmounted disks')
+   app.container_vars['storage'].set('readonly/controller');click(app,'Проверить готовность');wait(app,lambda:not app.busy)
+   assert 'container-storage' in app.platform_info.get() and 'только для чтения' in app.log.get('1.0','end')
+   note('readiness button explains read-only disk before any installation')
+   app.container_vars['storage'].set('data/controller');click(app,'Проверить готовность');wait(app,lambda:not app.busy)
+   assert 'Пакеты, функции и ресурсы доступны' in app.platform_info.get()
+   note('readiness button accepts verified mounted writable storage')
+  finally:destroy(app)
   assert raw==original and report['network_calls']==0
   assert not [m for m in report['messages'] if m['kind']=='error' and not ('APN' in m['text'] or 'шлюз' in m['text'])],report['messages']
   report['pass']=True
 except BaseException as error:report['error']=type(error).__name__+': '+str(error);raise
 finally:
- report['source_sha256']={str(p.relative_to(a.source)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [a.source/'configurator.py',a.source/'vpn_gui.py',a.source/'policy_gui.py',a.source/'sdwan/wizard_ui.py']}
+ report['source_sha256']={str(p.relative_to(a.source)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [a.source/name for name in ['configurator.py','vpn_gui.py','policy_gui.py','sdwan/wizard_ui.py','sdwan/platform_support.py','sdwan/provisioning.py','labtools/gui_replay.py']]}
  (a.output/'report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')

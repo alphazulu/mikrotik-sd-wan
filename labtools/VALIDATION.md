@@ -151,3 +151,20 @@ the bypass, all are rejected/reset when only that rule is disabled, and all
 return HTTP200 with valid JSON after it is re-enabled. The final full five-stage
 short smoke passes, including that reader and the fresh baseline. These checks do not approve the
 full 150-case performance comparison or a hardware recommendation.
+
+## Configurator storage regression (Python SDK / offline GUI)
+
+A writable internal disk previously let `container-storage` report ready for a
+selected read-only or unmounted external disk. A renamed mount also used its
+slot instead of the actual `mount-point`. The SDK now checks the selected mount
+and preserves an unknown/blocked result rather than substituting internal space.
+
+Validation: 377 SDK unit tests, including 12 storage scenarios; 11 synthetic API
+snapshot cases; 13 real Tk/Xvfb GUI checks with all live network calls rejected.
+The GUI checks the offered directory, readiness failure for a read-only disk and
+readiness of a writable mounted volume. A failed storage check is also asserted
+to precede image metadata lookup, download, transfer and container preparation.
+Legacy projections can prove the mount with a `/file` disk entry.
+
+These are SDK and synthetic GUI checks, not a physical USB-disk acceptance. No
+RouterOS script, Rust/JavaScript runtime or running container image was changed.

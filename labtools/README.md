@@ -92,9 +92,11 @@ The11 headless cases exercise discovery/generation, LTE/APN permissions, dynamic
 WANs, legacy mangle drafts, missing packages/features and all four VPN protocols.
 
 GUI replay uses real Tk widgets, callbacks, modal editors and files; only the API
-transport, file chooser and message acknowledgement are replaced. It covers10
+transport, file chooser and message acknowledgement are replaced. It covers13
 checks including source IP AND destination Address List, VPN-first priorities,
 export/reopen and a disabled installation button for foreign mangle conflicts.
+Storage checks cover renamed mount points, exclusion of read-only/unmounted
+disks, blocked preparation and readiness of a verified writable volume.
 It proves Linux/Tk behaviour, not Windows rendering or live router installation.
 Tk8.6 and Xvfb are required. Python network connections are rejected in this replay.
 
