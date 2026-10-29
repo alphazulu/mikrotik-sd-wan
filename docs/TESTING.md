@@ -1,5 +1,7 @@
 # Повторение проверок
 
+Русский | [English](TESTING.en.md)
+
 ## Без подключения к роутеру
 
 Из корня проекта с Python 3.12:
@@ -14,7 +16,7 @@ python3 sdwan.py --config config/examples/container-web.json validate
 python3 tools/audit_public_tree.py
 ```
 
-Текущий unit-набор содержит193 проверку и использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
+На базе текущего кандидата проверен 391 unit-тест SDK; [состояние и коммит](CURRENT-STATUS.md) указаны отдельно. Набор использует временные файлы/mocks. Сетевые CHR acceptance имеют другие имена и не запускаются `unittest discover`. Rust unit и проверка scratch archives описаны в [BUILD.md](BUILD.md). Для Tk GUI нужен дисплей; offline-сценарий `python3 tests/gui_wizard_regression.py` не подключается к устройству и использует только вымышленные данные.
 
 ## Исходная пятиузловая лаборатория
 
@@ -51,7 +53,7 @@ Shadow/image bootstrap scripts отражают ранние прототипы 
 
 ## Что было выполнено
 
-Текущая матрица:155 Python unit,9 Rust unit,50 контейнерных CHR checks,70 нативных regression checks и4 набора Windows GUI. Подробности и ограничения: [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md). Предыдущие этапы имеют отдельные отчёты; число проверок нельзя суммировать как уникальные сценарии.
+Историческая матрица первого контейнерного этапа:155 Python unit,9 Rust unit,50 контейнерных CHR checks,70 нативных regression checks и 4 набора Windows GUI. Подробности и ограничения: [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md). Текущая приёмка — [CURRENT-STATUS.md](CURRENT-STATUS.md); числа разных этапов нельзя суммировать как уникальные сценарии.
 
 Сырые журналы, пароли, screenshots, архивы восстановления и экспорты устройств намеренно не опубликованы. После клонирования они отсутствуют и создаются только вашим локальным запуском.
 
@@ -68,8 +70,10 @@ CHR fault suites в облаке не запускаются, доступ к р
 ## RAM/web модуль
 
 `tests/gui_telemetry_smoke.py` проверяет конфигурацию и clipboard с mock API в
-Windows/Tk. Rust: 12 base-тестов и 27 тестов с `--features web`, в том числе
-лимиты, авторизация, реальные loopback HTTP-запросы и медленные заголовки.
+Windows/Tk. Актуальный набор обоих Rust-профилей, `main` и JavaScript описан в
+[CONTAINER-TESTING.md](CONTAINER-TESTING.md): обязательны 100% исполняемых строк
+и функций, ветви учитываются отдельно. Проверяются лимиты, авторизация,
+реальные loopback HTTP-запросы и медленные заголовки.
 
 На уже подготовленной отдельной контейнерной CHR лаборатории с включённым web:
 

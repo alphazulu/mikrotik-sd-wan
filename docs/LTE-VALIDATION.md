@@ -1,6 +1,8 @@
 # Приёмка LTE/APN
 
-После этой LTE-итерации добавлены группы/приложения и диагностика. Последняя общая регрессия — [POLICIES-VALIDATION.md](POLICIES-VALIDATION.md); ниже сохранён исторический результат LTE.
+[English](LTE-VALIDATION.en.md)
+
+Ниже исторические результаты LTE. Количества файлов и состояние очистки относятся к своим запускам. Актуальные условия приёмки — [CURRENT-STATUS.md](CURRENT-STATUS.md). После LTE добавлены группы/приложения и диагностика; их регрессия — [POLICIES-VALIDATION.md](POLICIES-VALIDATION.md); ниже сохранён исторический результат LTE.
 
 Итерация завершена: **109 unit, 105 проверок CHR и четыре Windows GUI-набора PASS**. Итоговый отчёт — `runtime/lte-final-validation.json`; аудит — `runtime/lte-final-clean-state.json`. Все 13 последовательных suite завершились exit0. Дата UTC: 2026-10-23T18:44:57.324800+00:00.
 
@@ -31,7 +33,7 @@ Windows GUI проверяется отдельно: LTE с APN и экспор�
 
 ## Что остаётся открытым
 
-Миграция существующих OSPF/VPN-политик и защита филиальных префиксов требуют [отдельного согласования](OSPF.md). Guard сторонних mark rules сохраняется. LTE Internet failover не подтверждает резервирование GRE/IPIP/EoIP с фиксированным WAN source, WireGuard endpoints или достижимость через CGNAT. Аппаратные, нагрузочные и длительные испытания остаются следующими этапами проекта.
+Миграция существующих OSPF/VPN-политик и защита филиальных префиксов требуют [отдельного согласования](OSPF.md). Guard сторонних mark rules сохраняется; текущая работа с черновиком и установкой описана в [MIGRATION.md](MIGRATION.md). LTE Internet failover не подтверждает резервирование GRE/IPIP/EoIP с фиксированным WAN source, WireGuard endpoints или достижимость через CGNAT. Аппаратные, нагрузочные и длительные испытания остаются следующими этапами проекта.
 
 ## Дополнительная приёмка USB RNDIS, 26 октября 2026
 
@@ -67,9 +69,9 @@ FastTrack отклоняются, отключённые/управляемые 
 прямое чтение флага `disabled`, поскольку `find where disabled=no` на проверенном
 7.24.5 пропускал включённые правила. [Подготовка черновика при миграции](MIGRATION.md).
 
-## Финальный аудит
+## Финальный аудит исходной LTE-итерации
 
-Все восемь установленных RSC совпадают с исходниками native; production LTE reader не содержит адаптер. На пяти CHR нет временных APN/PPP/VLAN, тестовых правил и фоновых TCP fetch jobs. Тестовые host forwards удалены. Baseline не содержит provider_clients/lte_apns fixtures. Proxy без impairments; lab-v1 healthy, default/client101 WAN1, client102 WAN2, strict103 WAN3. Автопродолжение этой завершённой итерации отключено.
+Все восемь установленных RSC совпадают с исходниками native; production LTE reader не содержит адаптер. На пяти CHR нет временных APN/PPP/VLAN, тестовых правил и фоновых TCP fetch jobs. Тестовые host forwards удалены. Baseline не содержит provider_clients/lte_apns fixtures. Proxy без impairments; lab-v1 healthy, default/client101 WAN1, client102 WAN2, strict103 WAN3. Автопродолжение той завершённой исторической итерации было отключено; это не описание текущего состояния продолжения проекта.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

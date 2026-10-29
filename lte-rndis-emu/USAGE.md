@@ -1,5 +1,7 @@
 # LTE RNDIS emulator — инструкция для агента
 
+[English](USAGE.en.md)
+
 Программный USB-модем для CHR. Данные — мост L2 на интерфейс, который передаёт вызывающий. DHCP-сервера здесь нет. Радио нет: поля LTE — имитация управления.
 
 Не утверждать, что VID/PID сам создаёт `/interface lte`. Дескрипторы повторяют Linux `f_rndis` (control `02/02/ff`, data `0a/00/00`). `12d1:14db` — это id, который MikroTik документирует как config-less E3372h, поверх этого класса, а не вместо него.
@@ -54,7 +56,7 @@ ready usbredir=127.0.0.1:24320 control=127.0.0.1:24321 uplink=lte0 profile=hilin
 `--uplink` — существующий интерфейс (tap, veth, dummy, порт моста). Эмулятор открывает на нём `AF_PACKET` и копирует кадры Ethernet как есть.
 
 ```text
-CHR lte  --usbredir/RNDIS-->  этот процесс  --L2-->  --uplink
+CHR lte  --usbredir/RNDIS-->  emulator  --L2-->  --uplink
 ```
 
 - Кадр с хоста уходит на интерфейс только после того, как USB-хост сделал RNDIS `INITIALIZE` и `SET OID_GEN_CURRENT_PACKET_FILTER` с ненулевым фильтром. Драйвер RouterOS делает это сам.
@@ -181,7 +183,7 @@ AT, которые отвечают сразу (неизвестный AT — `E
 
 ## Как подключить к существующему лабу CHR
 
-Репозиторий `alphazulu/mikrotik-sd-wan`, функция `node_command` в `lab.py`. Сейчас у VM нет USB-контроллера. Добавлять аргументы только узлу `edge`, не меняя lifecycle `up`/`down` и не трогая остальные узлы.
+Репозиторий `alphazulu/mikrotik-sd-wan`, функция `node_command` в `lab.py`. Обычный запуск не добавляет USB-контроллер; опциональная интеграция уже реализована, как указано в конце страницы. Аргументы добавлять только узлу `edge`, не меняя lifecycle `up`/`down` и не трогая остальные узлы.
 
 Порядок: сначала `serve`, потом QEMU. QEMU — TCP-клиент. Если CHR уже запущен, новый chardev сам не появится.
 

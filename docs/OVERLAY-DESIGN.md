@@ -1,230 +1,203 @@
-# Branch overlay implementation notes
+# Реализация филиального overlay
 
-Status: the first native overlay slice is installed on three CHRs. All four
-tunnels and eight OSPF neighbor entries are healthy. A real inner TCP stream
-survives WAN failure and failback; all-down activates a remote-LAN blackhole.
-The per-router GUI/key workflow is implemented and verified with5offline and4live
-Windows/Tk checks; see OVERLAY-GUI.md. Further ownership/rollback hardening and
-full acceptance remain in progress. This is an unreleased implementation checkpoint.
+Русский | [English](OVERLAY-DESIGN.en.md)
 
-## CGNAT and the test fabric
+Первый native overlay установлен на трёх CHR: четыре туннеля и восемь OSPF
+соседств здоровы. Настоящий inner TCP сохраняется при отказе/возврате WAN;
+all-down включает remote-LAN blackhole. GUI/ключи проверены 5 offline и
+4 live Windows/Tk случаями: [мастер](OVERLAY-GUI.md). Последующие native/rollback/
+container проверки пройдены; длительная приёмка ещё идёт. [Текущий статус](CURRENT-STATUS.md).
+Версия не объявляется выпущенной.
 
-Both branches can be behind CGNAT. Each branch initiates two independent
-WireGuard paths to one reachable public MikroTik/CHR hub, with keepalives.
-The hub is responder-only. No direct CGNAT-to-CGNAT reachability, relay service
-or purchased infrastructure is assumed. Production addressing is still unknown.
+## CGNAT и тестовая сеть
 
-`tools/overlay_lab.py --project-root <private project>` manages only its separate
-`runtime/overlay-lab` disks, ports, credentials and bootstrap markers. Commands:
-`up`, `status`, `baseline`, `keys`, `down`. Do not rerun a pending mutation.
-Management/API ports are loopback-only; all five CHR instances use isolated
-qcow2 overlays of the pinned official 7.24.5 raw image.
+Оба филиала могут находиться за CGNAT. Каждый открывает два независимых
+WireGuard-пути с keepalive к доступному публичному MikroTik/CHR-хабу; hub только
+отвечает. Прямая CGNAT→CGNAT-доступность, relay-сервис и платная инфраструктура
+не предполагаются. Рабочая адресация пока не задана.
 
-- hub: API55728, management10.78.0.15, public198.18.100.1/30, WAN ether2.
-- sitea: API55729, management10.78.1.15, WANs100.64.10.2/30 and100.65.10.2/30,
-  LAN10.201.1.1/24 on ether4.
-- siteb: API55730, management10.78.2.15, WANs100.64.20.2/30 and100.65.20.2/30,
-  LAN10.201.2.1/24 on ether4.
-- nata: API55731, management10.78.3.15; shared public198.18.100.2 on ether2,
-  inside gateways on ether3/4, Internet transit198.18.200.1 on ether5.
-- natb: API55732, management10.78.4.15; shared public198.18.200.2 on ether2,
-  inside gateways on ether3/4, default through198.18.200.1.
+`tools/overlay_lab.py --project-root <private project>` управляет только своими
+`runtime/overlay-lab` дисками, портами, credentials и bootstrap-маркерами.
+Команды: up/status/baseline/keys/down. Не повторяйте ожидающую mutation.
+Management/API привязаны к loopback; пять CHR используют отдельные qcow2 overlays
+закреплённого официального raw 7.24.5.
 
-NAT-A translates only100.64.0.0/16 and routes NAT-B's public source unchanged.
-NAT-B translates100.65.0.0/16. There are no inbound mappings into the branches.
-Both providers reach the same hub IPv4; this was verified from all four WANs.
-Probe HTTP services58081..58083 are test endpoints, not decision controllers.
-NAT-A/B loopback probe IPs198.19.100.1 and198.19.200.1 DNAT to their QEMU host
-service addresses. Host LAN endpoints behind each branch are10.201.N.2.
+- hub: API 55728, management10.78.0.15, public198.18.100.1/30, ether2 WAN.
+- sitea: API 55729, management10.78.1.15, WAN100.64.10.2/30 и 100.65.10.2/30,
+  LAN 10.201.1.1/24 на ether4.
+- siteb: API 55730, management10.78.2.15, WAN100.64.20.2/30 и 100.65.20.2/30,
+  LAN 10.201.2.1/24 на ether4.
+- nata: API 55731, management10.78.3.15, public198.18.100.2 ether2,
+  внутренние gateways ether3/4, Internet transit198.18.200.1 ether5.
+- natb: API 55732, management10.78.4.15, public198.18.200.2 ether2,
+  внутренние gateways ether3/4, default через 198.18.200.1.
 
-## Configuration and keys
+NAT-A переводит только 100.64.0.0/16, сохраняя публичный source NAT-B.
+NAT-B переводит 100.65.0.0/16. Входящих mappings в филиалы нет. Все четыре WAN
+достигают одного IPv4 hub. HTTP58081..58083 — тестовые цели, не контроллеры.
+Loopback проб NAT-A/B198.19.100.1/198.19.200.1 DNAT к QEMU host service addresses.
+Клиентские адреса за филиалами —10.201.N.2.
 
-`sdwan/overlay.py` validates the optional overlay block through the main
-JSON validator and native installer. Roles are site
-and hub; defaults: MTU1380, optional MSS clamp off, bounded inner SLA timings.
-Each tunnel declares name, underlay WAN, unique local listen port, /30 or /31
-local address, peer address, local/peer PUBLIC keys, peer prefixes and OSPF cost.
-Sites additionally require endpoint and endpoint_port, with keepalive25s.
-Hubs forbid endpoints/keepalives. Up to16 tunnels per router, no private keys.
-Local/remote site prefixes must not overlap; defaults/multicast/loopback/link
-prefix overlap and recursive hub endpoints are rejected. Derived local bypass
-networks include explicit local/remote site prefixes and tunnel link subnets.
+## Конфигурация и ключи
 
-Preparation creates only disabled `sdwan-wg-<name>` interfaces. Ownership comment
-is `sdwan:v1:overlay:interface:<name>`. `sdwan/overlay_runtime.py` requests an
-explicit public-only API property list, never reads private-key, refuses foreign
-name/port collisions and pending deployments, and removes only newly created,
-still unused disabled interfaces after a partial API failure. Protected install
-must check the current local public key against the declared key; it must never
-silently regenerate a lost identity. Existing settings change only in a protected
-transaction. All8 lab identities are prepared; public-only exchange file is in
-`runtime/overlay-lab/runtime/overlay-public-keys.json` (private lab runtime).
+`sdwan/overlay.py` проверяет optional overlay через основной JSON validator и
+native installer. Роли site/hub; MTU по умолчанию 1380, MSS clamp выключен,
+внутренние SLA-таймеры ограничены. Туннель задаёт имя, WAN, уникальный local
+listen port, /30 или /31 local address, peer address, local/peer PUBLIC keys,
+peer prefixes и OSPF cost. Site требует endpoint/endpoint_port, keepalive25 с.
+Hub запрещает endpoints/keepalives. Максимум 16 туннелей на роутер, private keys нет.
+Local/remote prefixes не пересекаются; default/multicast/loopback, пересечения
+с линками и рекурсивные endpoints отклоняются. Derived bypass включает явно
+заданные local/remote prefixes и link subnets.
 
-Planned lab links: sitea hub-wan1/2 paired with hub sitea-wan1/2, siteb equivalents.
-Site local listen ports51821/22; hub ports51821/22 for A and51823/24 for B.
-Use distinct10.203.N.0/31 link networks, local site .0 and hub .1, unique stable
-router IDs in10.202.0.0/24. Exchange keys from prepared interfaces; never invent
-keys or publish router exports. Both branches' peer prefixes cover remote branch
-LANs; each hub peer accepts only its corresponding branch LAN and inner peer IP.
-Include224.0.0.5/32 in allowed-address for OSPF multicast on each separate interface.
+Подготовка создаёт только выключенные `sdwan-wg-<name>`, комментарий владения
+`sdwan:v1:overlay:interface:<name>`. `sdwan/overlay_runtime.py` читает явный набор
+только публичных полей, без private-key, проверяет чужие name/port collisions и
+pending deployments. После частичной API-ошибки удаляются только новые, ещё не
+используемые выключенные интерфейсы. Install сверяет актуальный local public key,
+никогда не пересоздаёт молча потерянную identity. Существующие настройки меняются
+защищённой транзакцией. Восемь тестовых identities подготовлены; публичный обмен
+лежит в приватном `runtime/overlay-lab/runtime/overlay-public-keys.json`.
 
-## Native integration and remaining hardening
+Пары стенда: sitea hub-wan1/2 ↔ hub sitea-wan1/2, аналогично siteb. Site порты
+51821/22; hub51821/22 для A и 51823/24 для B. Раздельные 10.203.N.0/31: site.0,
+hub.1; Router ID из 10.202.0.0/24. Ключи берутся с подготовленных интерфейсов,
+не выдумываются; exports не публикуются. Peer prefixes филиалов охватывают LAN
+другого филиала; hub допускает только LAN своего peer и inner peer IP.
+Для OSPF multicast каждому отдельному интерфейсу нужен allowed-address224.0.0.5/32.
 
-The ninth RSC library `native/sdwan-overlay.rsc` now exists; links.rsc is ~50KB.
-Add it to FILES/bundle, SDK payload upload allowlist and native recovery archive.
-A new file absent from a legacy installation must be archived as absent, so
-recovery removes it. Review hardcoded package size/minimum manifest checks and
-GUI tests (currently9 files =8RSC+JSON). An updated package becomes10 files.
-Avoid importing optional overlay helpers on every tick when the feature is off.
-Controller and native installer must use the same effective bypass prefixes.
+## Требования интеграции native
 
-Installer preflight validates all planned objects and ownership before mutations.
-Require existing prepared WireGuard interfaces with matching public keys. Keep
-foreign OSPF instances/templates/routes intact. Reject a foreign enabled template
-that would also match a new WG interface/subnet; keys exist before addresses, so
-actual interface/list membership can be inspected safely. Account for built-in
-all/static lists and broad network matches. Never auto-migrate legacy OSPF.
+Первый overlay добавил девятую RSC-библиотеку. Теперь стандартный пакет —
+11RSC+JSON; FILES, SDK payload и recovery archive включают optional modules.
+Отсутствие файла в прежнем пакете архивируется как отсутствие для его удаления
+при rollback. Ниже архитектурные требования, а не перечень всё ещё неготовых
+шагов. Optional helpers не импортируются каждый выключенный такт; installer и
+controller используют одинаковые bypass prefixes.
 
-Core cleanup currently removes all managed routes/rules/Netwatch objects and
-sdwan-* tables not in its wanted sets; dataplane has a separate wanted map for
-mangle rules. Overlay must contribute its expected objects or explicitly preserve
-its namespace until its own reconciler runs. It must not delete/recreate active
-WG interfaces or peers on each apply. Teardown removes only owned objects.
+Preflight проверяет все планируемые объекты и владение до mutation. Нужны уже
+подготовленные WG с совпадающими public keys. Чужие OSPF instances/templates/routes
+сохраняются. Включённый чужой template, совпадающий с новым WG/подсетью, запрещён:
+ключи подготовлены до адресов, фактические списки интерфейсов уже доступны.
+Учитываются all/static и широкие сети; автоматической миграции legacy OSPF нет.
 
-Pin outer UDP using each owned local WG listen port to the configured WAN probe
-table, before generic source/router marks and local-net bypass. Preserve ingress
-reply symmetry; hub responder replies must use the receiving WAN. Each listener
-belongs to its declared WAN. The branch's outer UDP needs appropriate source NAT
-on that WAN, including packets whose initial main lookup selected another source.
-Revalidate dynamic WAN readiness/bindings and stop stale outer conntrack as needed.
+Core cleanup удаляет ненужные управляемые routes/rules/Netwatch/sdwan-таблицы;
+dataplane отдельно учитывает mangle wanted map. Overlay добавляет свои ожидаемые
+объекты или сохраняет namespace до своего reconciler. Active WG/peers не должны
+удаляться/создаваться на каждом apply; teardown убирает только свои объекты.
 
-For every inner peer, install a separate `sdwan-ol-<name>` lookup-only table,
-a /32 route through that WG interface and a default blackhole. A source/peer
-routing rule must precede generic local bypass rules. Inner Netwatch probes bind
-to the tunnel's local IP; no alternate tunnel can answer a failed path's SLA.
-Use inner RTT/jitter/loss/quorum + physical WAN readiness independently of public
-Internet probe quorum. Maintain bounded RAM state, fresh-generation barriers,
-fail/recovery windows and hold-down. Administrative drain/down withdraws that
-path from overlay admission; do not disable the WG interface solely to drain.
+Outer UDP по local listen port закрепляется за WAN probe table раньше общих
+source/router marks и local bypass. Входящие ответы симметричны: responder hub
+отвечает через принявший WAN. Listener принадлежит своему WAN. Branch outer UDP
+требует точного SNAT этого WAN, даже если initial main lookup выбрал другой
+source. Dynamic ready/bindings сверяются; старый outer conntrack выводится при смене.
 
-Create one owned OSPFv2 instance/area, default origination NEVER. Redistribute only
-connected routes through an output filter that accepts exactly local_prefixes
-then rejects everything else. Hub can have an empty local prefix set. Interface
-templates only on owned WG interfaces, typeptp, hello1s/dead4s, configured costs.
-Disable failed templates instead of merely raising their cost: all-bad paths
-must withdraw. Modify properties only on actual state transitions, not every tick.
-Protect each remote LAN prefix with a high-distance main blackhole; site prefixes
-bypass Internet classifiers. Stable inner addressing and conntrack must survive
-an outer WAN/OSPF path switch. MSS clamp, when enabled, affects only owned WG
-forward TCP SYN traffic and derives from the explicit IPv4 tunnel MTU.
+Для inner peer создаётся `sdwan-ol-<name>` lookup-only table, /32 через свой WG
+и default blackhole. Source/peer rule раньше общего local bypass. Netwatch привязан
+к local IP туннеля: другая линия не отвечает вместо неработающей. Inner RTT/jitter/
+loss/quorum и physical ready независимы от публичного Internet quorum. RAM ограничена,
+свежие поколения, fail/recover/hold-down обязательны. Drain/down отзывает допуск
+пути, но один drain не выключает WG.
 
-## Required checks and remaining work
+Свой OSPFv2 instance/area никогда не originates default. Connected redistribution
+через output filter принимает только local_prefixes, затем всё отклоняет. У hub
+local prefixes могут быть пустыми. Templates только на собственных WG: ptp,
+hello1 с/dead4 с и заданная cost. Плохой template отключается, а не только получает
+высокую cost: all-bad отзывает путь. Меняются только переходы состояния. Каждый
+remote LAN защищён высоким main blackhole; site prefixes обходят Internet
+classifiers. Стабильные inner address/conntrack переживают WAN/OSPF-переход.
+Optional MSS clamp действует только на forward TCP SYN собственных WG и вычисляется
+из явного IPv4 MTU.
 
-- Native import/validation, ownership collisions and protected rollback with the
-  extra library; key preparation idempotency/public-only inventory.
-- Two WAN tunnels per site behind shared CGNAT, authenticated inner SLA, OSPF
-  neighbors and only explicit site prefix advertisements; no default/WAN leakage.
-- Outer path pinning/source NAT, provider faults/recovery, both down blackholes,
-  NAT endpoint changes, dynamic source/address changes and unrelated OSPF scope.
-- A real inner TCP stream across site A/hub/site B remains established while
-  the outer path changes. Test services may run on the QEMU host; control stays
-  on MikroTik. Add a lab-only site-B LAN SNAT if the user-network endpoint needs
-  a directly connected source for its return traffic.
-- GUI public-key exchange/topology draft and per-node configs, diagnostics,
-  bounded optional web telemetry, MTU/MSS checks, actual Rust/native parity.
-- Only after final functional code: one48–72h soak, guarded PID/lock/checkpoints;
-  no duplicate soak. Then privacy audit, CI/release and reviewed root source sync.
+## Условия приёмки
 
-Drain follow-up is implemented: a deliberate drain/down of ALL WANs in the
-default policy carries a narrowly derived allow_no_default flag in the protected
-deployment journal. Commit additionally requires fresh RouterOS evidence that
-all default-policy WANs have admission disabled and a fresh management session.
-An unavailable/unverified health state alone does not qualify. Four unit flag
-combinations and3 real single-WAN CHR drain/down/re-enable cases pass, in addition
-to6 multi-WAN TCP drain cases. Incoming management and probes stay independent.
+- Native import/schema/ownership и protected rollback новой библиотеки; повторная
+  подготовка ключей/public-only inventory.
+- Два WAN-туннеля каждого CGNAT-site, inner SLA, OSPF и только явные site-prefix
+  advertisements, без default/WAN leak.
+- Outer pinning/SNAT, отказы/возврат, all-down blackholes, NAT endpoint/dynamic
+  source changes и границы чужого OSPF.
+- Настоящий inner TCP siteA→hub→siteB остаётся established. Тестовые сервисы могут
+  жить на QEMU-хосте, решения — на MikroTik. Lab-only site-B LAN SNAT допустим,
+  если тестовому endpoint нужен напрямую подключённый return source.
+- GUI/ключи/topology/per-node JSON, диагностика, bounded web, MTU/MSS, Rust/native parity.
+- После функционального freeze один 48–72 чsoak с PID/lock/checkpoints. Затем
+  privacy/CI/release и сверенная синхронизация root source, без duplicate soak.
 
-## Primary references
+Drain/down всех WAN default допускается узким derived allow_no_default в
+protected journal. Commit требует свежего RouterOS-подтверждения, что admission
+всех default WAN отключён, и нового management connection. Одного unavailable
+состояния недостаточно. Четыре unit combinations и 3 single-WAN CHR drain/down/
+re-enable прошли, дополнительно 6 multi-WAN TCP cases. Incoming management/probes
+остаются независимыми.
 
-- [WireGuard and multi-WAN replies](https://manual.mikrotik.com/docs/virtual-private-networks/wireguard/)
+## Основные источники
+
+- [WireGuard и multi-WAN replies](https://manual.mikrotik.com/docs/virtual-private-networks/wireguard/)
 - [OSPF instance](https://manual.mikrotik.com/docs/cli-reference/routing/ospf/instance/)
-- [OSPF interface templates](https://manual.mikrotik.com/docs/cli-reference/routing/ospf/interface-template/)
-- [OSPF area/redistribution behavior](https://manual.mikrotik.com/docs/user-guides/routing-and-networking-protocols/unicast/ospf/areas-and-virtual-links/)
+- [OSPF templates](https://manual.mikrotik.com/docs/cli-reference/routing/ospf/interface-template/)
+- [OSPF areas/redistribution](https://manual.mikrotik.com/docs/user-guides/routing-and-networking-protocols/unicast/ospf/areas-and-virtual-links/)
 
-Docs currently describe7.26; relevant responder/instance/template/filter commands
-were separately tested on the isolated7.24.5 hub with disabled temporary objects,
-then removed. No existing OSPF objects were changed.
+Manual описывает 7.26; нужные responder/instance/template/filter команды отдельно
+проверены на hub7.24.5 с выключенными временными объектами, затем удалены.
+Существующие OSPF-объекты не менялись.
 
-## Verified vertical slice
+## Подтверждённый первый срез
 
-The main validator, derived bypass objects, native installer/dataplane/controller,
-SDK payload upload and recovery manifest now include overlay support. The package
-contains10RSC+JSON including optional VPN egress. Core cleanup preserves the overlay namespace for module-owned
-reconciliation. Initial peer activation happens after outer pinning/NAT/firewall.
-A real failed installation restored the encrypted pre-overlay configuration and
-removed the formerly absent ninth library. The corrected installation is active
-on hub and both sites. Fresh counters are normalized before comparison: RouterOS
-nil done-tests before the first Netwatch run otherwise prevents recovery forever.
-Native /31 membership also needs a canonical subnet rather than a host-bit prefix.
+Валидатор, bypass, native install/dataplane/controller, SDK payload и recovery
+manifest включили overlay. Тогда пакет имел 10RSC+JSON с VPN-egress, сейчас —
+11RSC+JSON. Core сохраняет overlay namespace для своего reconciler. Initial peer
+активируется после outer pinning/NAT/firewall. Настоящий failed install вернул
+pre-overlay encrypted config и удалил прежне отсутствовавшую девятую библиотеку.
+Исправленный пакет установлен на hub и обоих sites. Свежие счётчики нормализуются:
+nil done-tests до первого Netwatch иначе навсегда мешал recover. Проверка /31
+требует каноническую subnet, а не prefix с host bits.
 
-The four real-TCP acceptance checks cover initial OSPF forwarding, data reception
-on the SAME conntrack ID after WAN1 failure, preferred-path failback and all-down
-blackhole. Native API blackhole is an empty flag value, not the text true.
-Further required hardening: partial config/peer/endpoint changes and scoped outer
-UDP conntrack cleanup, strict native health/key bounds and foreign OSPF/interface
-list protection, default-off/disable/re-enable/full rollback, further diagnostics and
-new container parity. Do not treat the smoke/flow checks as full release acceptance.
+Четыре TCP-кейса: initial OSPF, reception на ТОМ ЖЕ conntrack ID после WAN1 fail,
+preferred failback, all-down blackhole. Native API blackhole — пустой flag,
+не строка true. Первоначальный hardening охватывал partial config/peer/endpoint,
+точный outer cleanup, health/key bounds, foreign OSPF/list, off/on/rollback,
+диагностику и новый container parity. Последующие targeted gates — в
+[текущем статусе](CURRENT-STATUS.md); один smoke не является полным release gate.
 
+## Windows к существующему CHR
 
-## Windows access to the existing CHR lab
+Hyper-V/WSL может резервировать порты диапазона 55728. QEMU/Linux API 55728..55732
+доступны. Windows GUI использует loopback aliases45728hub/45729siteA/45730siteB/
+45731NATA/45732NATB. `python3 tools/overlay_lab.py windows-api --project-root PRIVATE_ROOT`
+добавляет/переиспользует forwards существующих NIC, не перезапускает гостей и
+не создаёт fabric. Новые запуски включают aliases автоматически.
 
-Hyper-V/WSL can reserve Windows TCP ports in the55728range. Existing Linux/QEMU
-API endpoints55728..55732 remain available. For the Windows GUI use the added
-loopback aliases45728hub,45729siteA,45730siteB,45731NATA,45732NATB. On a running
-fabric, `python tools/overlay_lab.py windows-api --project-root PRIVATE_ROOT`
-adds/reuses those forwards on the existing NICs. It does not restart guests or
-create another fabric. New launches include the aliases automatically.
+QEMU TCP links могут задерживать пакеты даже с KVM/здоровыми physical probes.
+Functional lab явно использует inner jitter250 мс; продукт default50 мс. За 90 с
+с default все три native routers, включая нетронутый второй site, кратко отзывали
+OSPF: потери 0, jitter>50 мс. Functional routing проверяется с lab budget, strict
+SLA — отдельно. Это не разрешение расширять SLA рабочей сети.
 
-The isolated QEMU TCP socket links can introduce delayed packet delivery even
-with KVM and healthy physical probes. The functional lab explicitly uses a
-250 ms inner jitter budget; the product default remains 50 ms. A 90-second
-baseline observation with the default budget recorded transient OSPF withdrawals
-on all three native routers, including the untouched second branch; Netwatch
-reported zero packet loss but jitter above 50 ms. Functional routing tests use
-the declared lab budget; strict SLA rejection is tested separately. This does
-not justify widening an operator's SLA on a real network.
+Outer geometry хранится в bounded RAM. Изменение learned endpoint, parent IP/gateway
+или peer/listener удаляет только прежний remote UDP tuple этого listener в обоих
+направлениях. Снимок local IPv4 учитывает кэширование WireGuard source другого WAN
+до NAT. Стабильная структура сохраняет conntrack, inner TCP не входит в очистку.
+CGNAT port-change retire занял 1,444 с при оставшемся timeout2 м 59 с, сохранив SiteB UDP
+и обычный/private TCP. Forced geometry тест проверяет standby cached source,
+но не заменяет реальную смену DHCP. [DNS bootstrap](DNS-BOOTSTRAP.md).
 
-Outer transport geometry is now tracked in bounded RouterOS RAM. A changed
-learned endpoint, parent address/gateway or configured peer/listener retires
-only that listener's previous remote UDP tuple in either conntrack direction.
-A snapshot of local IPv4 addresses accounts for WireGuard caching another WAN's
-socket source before NAT. Stable geometry retains conntrack; inner TCP is never
-included in this cleanup. The CHR CGNAT port-change test observed retirement
-within 1.444 seconds while the old tuple still had 2m59s remaining, preserving
-another branch's UDP and the same ordinary/private TCP streams. A separate
-forced geometry test exercises standby cached-source handling; it is not a
-substitute for an actual DHCP change. See [DNS bootstrap](DNS-BOOTSTRAP.md) for
-hostname endpoints when the ordinary default policy is closed.
+## Неполный адресный кэш
 
-### Incomplete address snapshots
+Изолированная регрессия 7.24.5 обнаружила incoming standby UDP, чей local WAN IP
+отсутствовал в кэше. Cached WAN source был верен, fresh inventory содержал адрес;
+старый retire вернул 0. Доказана ошибочная membership-проверка, не время/причина
+возникновения неполного кэша.
 
-An isolated 7.24.5 regression found an existing incoming standby UDP tuple whose
-local WAN address was absent from the cached address snapshot. The cached WAN
-source was correct; a fresh inventory contained the missing address. The old
-retirement helper returned zero. This identifies the failed membership check;
-it does not establish when the earlier snapshot became incomplete.
+Теперь retire объединяет прошлый socket snapshot, прошлый resolved WAN source
+и текущие valid local IP. Старые адреса сохраняются после исчезновения аренды.
+Текущие flags читаются из строк, disabled/invalid исключены; оба inventory≤1024.
+Unknown geometry, чужой endpoint/ports, неверные типы/слишком большой inventory
+не дают удаления. Exact UDP/listener filters и оба направления сохранены.
+Дополнительный inventory читается только при retirement; stable путь не получает
+новый polling/flash writes. Overlay library revision2 обновляет runtime loader.
 
-Retirement now combines the previous socket-address snapshot, the previous
-resolved WAN source and currently valid local addresses. Previous addresses are
-retained when a lease/address has disappeared. Current address flags are read
-directly from returned rows; disabled/invalid rows are excluded. Both inventories
-are bounded at1024 rows. Unknown geometry, wrong endpoint/ports, invalid cache
-types or oversized inventories refuse deletion. The existing exact UDP endpoint
-and listener-port filters, including both conntrack directions, remain in place.
-The additional inventory read occurs only during retirement; stable transport
-geometry performs no extra polling or flash writes. Overlay library revision2
-also refreshes the runtime loader after an update.
-
-Run the actual old/new function regression on the owned five-CHR fixture:
+Запуск old/new функции на собственном пяти-CHR-стенде:
 
 ```sh
 python3 tests/overlay_retirement_cache_acceptance.py \
@@ -232,12 +205,9 @@ python3 tests/overlay_retirement_cache_acceptance.py \
   --previous-source /srv/sdwan/private/previous/native/sdwan-overlay.rsc
 ```
 
-Fifteen checks pass: the old function reproduces zero removal, the new function
-retires the real standby tuple, cache/WAN-hint/current-inventory combinations and
-flag/bound checks hold, and primary/SiteB UDP plus ordinary/private TCP survive.
-Inventory fault cases replace the function's read expression only; they do not
-remove router addresses. The live controller cache/configuration is retained.
-The initial test-driver attempt read an unfinished result marker and failed;
-the driver now waits for a complete JSON result. Its failed report is retained.
-These checks are separate from the native DHCP/PPPoE/rollback/cold-boot suite and
-the still-required source-matching long soak.
+Пятнадцать проверок прошли: old воспроизводит 0, new удаляет настоящий standby;
+комбинации кэша/WAN hint/current inventory и flags/bounds соблюдены, primary/SiteB
+UDP и обычный/private TCP сохранены. Fault inventory подменяет только read expression,
+не удаляет адреса. Live cache/config сохраняются. Первая попытка драйвера прочитала
+незавершённый marker и упала; теперь ждёт полный JSON. Её failed report сохранён.
+Это отдельные проверки, не замена native DHCP/PPPoE/rollback/cold-boot и matching soak.

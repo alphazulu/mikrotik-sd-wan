@@ -1,15 +1,15 @@
-# SD-WAN lab tools / Инструменты стенда SD-WAN
+# Инструменты стенда SD-WAN
 
-External test tools for Linux. SD-WAN decisions stay on MikroTik: RouterOS RSC or
-the router's local Rust scratch container. These tools generate traffic, observe
-continuity and exercise the configurator; they are not an external controller.
+[English](README.en.md)
 
-Внешние инструменты Linux-стенда: генерация трафика, измерение перерывов,
-обезличенные API-снимки и настоящий Tk GUI. Управление WAN остаётся на MikroTik.
+Внешние тестовые инструменты Linux. Решения остаются на MikroTik: RouterOS RSC
+либо локальный Rust scratch-контейнер роутера. Эти средства создают трафик,
+наблюдают непрерывность и проверяют конфигуратор, включая синтетические API-снимки
+и настоящий Tk GUI. Это не внешний контроллер.
 
-## Quick start / Запуск
+## Быстрый запуск
 
-Python3.12+, standard library. Run commands from `labtools/`:
+Python 3.12+, стандартная библиотека. Команды выполнять из `labtools/`:
 
 ```sh
 python3 -m sdwan_lab check --config configs/smoke.json
@@ -18,42 +18,43 @@ sudo python3 -m sdwan_lab run --config configs/smoke.json \
 python3 -m sdwan_lab status --workspace /var/tmp/sdwan-lab
 ```
 
-Selected modes require iproute2/ethtool, iperf3, tcpreplay/tcpdump or a C compiler.
-Tool paths are configurable in JSON; relative paths resolve against the JSON file.
-The functional four-mode smoke uses TCP, UDP, bounded C/POSIX-poll CPS and IMIX.
-The measured lab used iperf3 3.19.1; calibrate other versions before comparisons.
+Отдельным режимам нужны iproute2/ethtool, iperf3, tcpreplay/tcpdump или компилятор C.
+Пути инструментов задаются в JSON; относительные пути отсчитываются от JSON-файла.
+Четырёхрежимный smoke использует TCP, UDP, ограниченный C/POSIX-poll CPS и IMIX.
+Измеренный стенд использовал iperf3 3.19.1; иные версии калибровать до сравнения.
 
-IMIX is direct L2 veth calibration with experimental EtherType0x88b5. Frame sizes
-include FCS; pcap lengths exclude four FCS bytes. It is not routed IP IMIX or
-physical wire PPS. The original short CPS tool limits each case to20,000
-connections. The separate `cps_pool_calibration.py` tool uses a durable source
-address/port pool and multiple destination ports for longer tests through NAT.
-TIME_WAIT settings are not changed.
+IMIX — прямая L2-калибровка veth с экспериментальным EtherType 0x88b5. Размеры кадров
+включают FCS; длины pcap исключают четыре байта FCS. Это не маршрутизируемый IP IMIX
+и не физический PPS на проводе. Исходный короткий CPS ограничен 20000 соединений
+на случай. Отдельный `cps_pool_calibration.py` применяет устойчивый пул source-
+адресов/портов и несколько destination-портов для длительных NAT-тестов.
+Настройки TIME_WAIT не меняются.
 
-CPU p95 uses nearest-rank samples every200ms across the whole case, including
-setup/warmup/drain. iperf receiver rates use post-omit measurements. IMIX permits
-a two-second receiver drain. These are distinct windows, retained in the reports.
+CPU p95 берётся ближайшим рангом из выборок каждые 200 мс за весь случай, включая
+подготовку/прогрев/завершение. Скорость iperf receiver относится к периоду после
+omit. Для IMIX есть две секунды завершения приёма. Это разные окна, они сохранены
+в отчётах.
 
-## Isolation and recovery / Изоляция и восстановление
+## Изоляция и восстановление
 
-Host-per-UID and workspace locks prevent overlapping tool runs. Namespace names
-are random. Veth endpoints are created inside owned namespaces. Process ownership
-uses PID/start time/boot ID; namespaces use inode/device/boot ID. Owned TAPs also
-check ifindex and a run-specific alias before deletion. Logs/run IDs are never
-silently overwritten. JSON journals use fsync plus atomic replace.
+Блокировки хоста для UID и workspace исключают пересечение запусков. Имена
+namespace случайны; veth создаются внутри собственных namespace. Владение процессом
+проверяет PID/start time/boot ID, namespace — inode/device/boot ID. У TAP перед
+удалением проверяются ifindex и уникальный alias запуска. Логи/run ID не
+перезаписываются молча. JSON-журналы используют fsync и атомарную замену.
 
-SIGINT/SIGTERM perform cleanup. After SIGKILL, recover a registered run explicitly:
+SIGINT/SIGTERM запускают очистку. После SIGKILL явно восстановить зарегистрированный запуск:
 
 ```sh
 sudo python3 -m sdwan_lab recover --workspace /var/tmp/sdwan-lab --run-id smoke-001
 ```
 
-Recovery does not turn an unsuccessful measurement into a pass and preserves the
-original report. A crash during an unconfirmed resource creation leaves `pending`;
-the tool requires inspection rather than guessing ownership. Locks cover this
-package, not unrelated host workloads; performance windows need a quiet host.
+Восстановление не превращает неудачное измерение в PASS и сохраняет исходный отчёт.
+Сбой при неподтверждённом создании ресурса оставляет `pending`: нужна проверка,
+а не угадывание владельца. Блокировки защищают этот пакет, не посторонние нагрузки;
+для измерения нужен свободный хост.
 
-## Echo continuity / Перерывы связи
+## Непрерывность echo
 
 ```sh
 python3 -m sdwan_lab.continuity serve --listen 198.18.251.2 --port 25351
@@ -61,46 +62,46 @@ python3 -m sdwan_lab.continuity measure --host 198.18.251.2 --port 25351 \
   --seconds 60 --interval-ms 20 --output /var/tmp/continuity-001.json
 ```
 
-Use `--source-address` with an existing local IPv4 to select the client policy
-under test. Both UDP and TCP bind that address; reports retain their actual tuples.
-This permits separate affected and pinned-client streams without changing routes.
+`--source-address` с существующим локальным IPv4 выбирает проверяемую политику.
+UDP и TCP привязываются к нему; отчёты содержат реальные tuples. Так создаются
+раздельные переключаемые и закреплённые потоки без изменения маршрутов.
 
-The echo peer belongs in an isolated test network; default bind is loopback.
-A run nonce and client monotonic timestamps identify replies. Reports distinguish
-unanswered messages, duplicates, reordering, RTT, initial/trailing silence and
-maximum reply gaps. TCP connection IDs and tuples distinguish survival from
-reconnection. The client does not close a stalled TCP connection merely because
-an echo is late. TCP offered means application queue submission, not wire sends.
-A two-second drain accepts late replies; the drain does not inflate trailing silence.
+Echo-peer размещается в изолированной тестовой сети; по умолчанию слушает loopback.
+Ответы определяются nonce запуска и монотонными метками клиента. Отчёт различает
+неотвеченные сообщения, дубли, перестановку, RTT, начальную/конечную тишину и
+максимальные разрывы ответов. TCP ID/tuples отличают сохранение от переподключения.
+Клиент не закрывает зависший TCP только из-за позднего echo. Offered TCP означает
+постановку в очередь приложения, а не отправку на провод. Двухсекундный drain
+принимает поздние ответы, не увеличивая конечную тишину.
 
-Разрыв между ответами включает интервал проб, RTT и планирование. Он не равен
-точному времени сетевого отказа. Если ответов нет, max gap=null. Общий лимит —
-30,000 probes на протокол. Для корреляции с внешними событиями нужны сопоставимые
-часы; два namespace одного Linux-хоста используют общий CLOCK_MONOTONIC.
+Разрыв включает интервал проб, RTT и планирование, а не точное время сетевого
+отказа. Без ответов max gap=null. Лимит — 30000 проб на протокол. Корреляции с
+внешними событиями нужны сопоставимые часы; namespace одного Linux-хоста разделяют
+CLOCK_MONOTONIC.
 
-## Configurator replay / Проверки конфигуратора
+## Воспроизведение конфигуратора
 
 ```sh
 python3 snapshot_matrix.py --source .. --output /var/tmp/snapshot-001.json
 xvfb-run -a python3 gui_replay.py --source .. --output /var/tmp/gui-001
 ```
 
-`fixtures/mixed-router.json` is entirely synthetic: documentation addresses,
-example.test endpoints and test interfaces. No production export was used.
-The replay API only permits known reads and applies `.proplist` projection.
-The11 headless cases exercise discovery/generation, LTE/APN permissions, dynamic
-WANs, legacy mangle drafts, missing packages/features and all four VPN protocols.
+`fixtures/mixed-router.json` полностью синтетический: документальные адреса,
+example.test и тестовые интерфейсы. Рабочий экспорт не использовался. Replay API
+разрешает только известные чтения и выполняет проекцию `.proplist`. Одиннадцать
+headless-случаев проверяют discovery/generation, права LTE/APN, динамические WAN,
+черновик при старых mangle, отсутствующие пакеты/функции и четыре VPN-протокола.
 
-GUI replay uses real Tk widgets, callbacks, modal editors and files; only the API
-transport, file chooser and message acknowledgement are replaced. It covers13
-checks including source IP AND destination Address List, VPN-first priorities,
-export/reopen and a disabled installation button for foreign mangle conflicts.
-Storage checks cover renamed mount points, exclusion of read-only/unmounted
-disks, blocked preparation and readiness of a verified writable volume.
-It proves Linux/Tk behaviour, not Windows rendering or live router installation.
-Tk8.6 and Xvfb are required. Python network connections are rejected in this replay.
+GUI replay использует настоящие Tk widgets, callbacks, модальные редакторы и файлы;
+подменены только API-транспорт, выбор файла и подтверждение сообщений. Тринадцать
+проверок покрывают source IP И destination Address List, приоритет VPN, экспорт/
+повторное открытие и запрет установки при конфликте посторонних mangle. Проверяется
+переименованный mount-point, исключение read-only/unmounted дисков, блокировка
+подготовки и готовность подтверждённого записываемого тома. Это поведение Linux/Tk,
+не отображение Windows или живая установка. Нужны Tk 8.6/Xvfb; Python-соединения
+в сеть запрещены в этом replay.
 
-## LTE/RNDIS regression
+## Регрессия LTE/RNDIS
 
 ```sh
 sudo env PYTHONPATH=. python3 lte_acceptance.py \
@@ -108,22 +109,22 @@ sudo env PYTHONPATH=. python3 lte_acceptance.py \
   --workspace /var/tmp/sdwan-lab --run-id lte-001 --port-base 25500
 ```
 
-This creates two fresh CHRs, an owned TAP and loopback management endpoints.
-Probe must choose usbredir-userspace. Serve becomes ready before QEMU connects.
-The ISP CHR serves DHCP; the emulator forwards Ethernet. RouterOS APN controls
-the dynamic LTE DHCP client. USB modules, usbip and production routers are unused.
-CHR Free bandwidth limits make this a functional test, not a capacity measurement.
+Создаются два новых CHR, собственный TAP и loopback-управление. Probe должен выбрать
+usbredir-userspace; serve готов до подключения QEMU. DHCP обслуживает ISP CHR,
+эмулятор передаёт Ethernet. APN RouterOS управляет динамическим LTE DHCP-клиентом.
+USB-модули, usbip и рабочие роутеры не используются. Лимит CHR Free делает проверку
+функциональной, а не измерением мощности.
 
-The candidate passes public HTTPS,40 local TLS GETs,40 TLS POSTs with server-side
-POST-body validation and registration-gate recovery. The local TLS certificate is
-synthetic/self-signed with certificate checking disabled for that fixture; this is
-not a PKI test. [Actual scope and results](VALIDATION.md) distinguish older failures.
+Кандидат проходит публичный HTTPS, 40 локальных TLS GET, 40 TLS POST с проверкой
+тела сервером и восстановление registration gate. У локальной синтетической
+самоподписанной TLS-цели проверка сертификата отключена; это не проверка PKI.
+[Результаты и пределы](VALIDATION.md) отделяют ранние неудачи.
 
-Generated disks, router credentials, TLS keys, captures and raw router dumps stay
-in a private workspace. Never add the whole workspace to Git. Processes and owned
-TAPs are cleaned; diagnostic disks remain available privately.
+Диски, учётные данные, TLS-ключи, captures и сырые выгрузки остаются в приватном
+workspace. Никогда не добавлять его целиком в Git. Процессы и собственные TAP
+очищаются; диагностические диски сохраняются приватно.
 
-## Comparison preparation / Подготовка сравнения режимов
+## Подготовка сравнения режимов
 
 ```sh
 python3 comparison.py prepare --source .. --config ../config/sdwan.json \
@@ -131,34 +132,34 @@ python3 comparison.py prepare --source .. --config ../config/sdwan.json \
   --lan-interface ether5 --lan-source 192.168.50.0/24
 ```
 
-Prepared sequence: baseline-before → RouterOS → container → container-web →
-baseline-after. Three validated mode configs and a plan bind native source hashes,
-covered container source, verified base/web archive hashes and config hashes.
-The default150 measurements each use120s warmup+60s measurement: at least7.5h,
-plus mode settling and switching. TCP forward/reverse/bidir, UDP64/1472 payload
-and CPS share one workload definition. Long CPS requires a source address pool.
+Последовательность: baseline-before → RouterOS → container → container-web →
+baseline-after. Три проверенные конфигурации и план связывают native-хеши,
+покрытые исходники контейнера, проверенные хеши base/web-архивов и конфигураций.
+По умолчанию 150 измерений, каждое с 120 с прогрева и 60 с измерения: минимум
+7,5 часа плюс установка режимов и переключения. TCP forward/reverse/bidir,
+UDP payload 64/1472 и CPS используют единое описание нагрузки. Длительному CPS
+нужен пул source-адресов.
 
-An owned-QEMU DUT adapter is included. Its short five-stage functional cycle
-passes; the full long comparison and hardware capacity validation have not run.
-See [DUT setup and limits](DUT-ADAPTER.md).
-The reference FakeAdapter in tests must never be presented as benchmark evidence.
-The run command is gated on successful completion/restoration of the original
-48-hour native/container acceptance and a source-bound cleanup attestation.
-Recovery remains available after a failed run.
+Есть адаптер собственной QEMU DUT. Его короткий функциональный пятиэтапный цикл
+пройден; полное длительное сравнение и аппаратная мощность ещё не проверены.
+См. [настройку DUT и ограничения](DUT-ADAPTER.md). Тестовый FakeAdapter никогда не
+выдаётся за доказательство benchmark. Команда run требует успешной соответствующей
+48-часовой приёмки на зафиксированных исходниках, восстановления и связанного
+с исходниками подтверждения очистки. После ошибки восстановление доступно.
 
-The adapter implements readonly `preflight`, durable `snapshot`, `set_mode`,
-`measure`, `switching` and verified `restore`. See comparison.py for the contract.
-It must confirm source bindings, ownership, generator calibration and CPS pooling.
-Measurements include explicit rate units, DUT CPU/RAM, container peak memory,
-generator CPU, host steal and write-sector delta or unknown. Write-sector counts
-are not physical NAND erase cycles. Web mode includes one reader polling every5s.
+Адаптер реализует readonly `preflight`, устойчивый `snapshot`, `set_mode`,
+`measure`, `switching` и проверенный `restore`. Контракт — в comparison.py.
+Проверяются привязки исходников, владение, калибровка и CPS-пул. Измеряются явные
+единицы скорости, CPU/RAM DUT, пик выборок памяти контейнера, CPU генератора,
+host steal и write-sector либо unknown. Секторы — не циклы стирания NAND.
+Web-режим включает одного читателя каждые пять секунд.
 
-A >5% before/after baseline drift or exhausted generator/host reserve invalidates
-the comparison. Switching requires the continuity observer and preservation of a
-flow pinned to the unaffected WAN. No automatic hardware profile is produced;
-`capacity_validated` remains false.
+Дрейф baseline до/после свыше 5% или исчерпание запаса генератора/хоста делают
+сравнение недействительным. Переключение требует наблюдателя непрерывности и
+сохранения потока, закреплённого за незатронутым WAN. Автоматический аппаратный
+профиль не создаётся; `capacity_validated` остаётся false.
 
-## Tests
+## Тесты
 
 ```sh
 python3 -W error::ResourceWarning -m unittest discover -s tests -v
@@ -170,27 +171,25 @@ sudo env PYTHONPATH=. python3 continuity_integration.py \
   /var/tmp/sdwan-lab reconnect-001 reconnect
 ```
 
-Privileged integration commands belong on the dedicated Linux lab. CI runs the
-pure unit/replay checks; QEMU/TAP acceptance is reported separately with its scope.
-Controller code is unchanged by this package, including its mandatory exact-source
-unit coverage requirements.
+Привилегированные проверки выполнять на выделенном Linux-стенде. CI запускает
+чистые unit/replay; QEMU/TAP-приёмка описывается отдельно со своим охватом.
+Пакет не меняет код контроллера или требования точного модульного покрытия.
 
-## Namespace TAP descriptors / TAP внутри netns
+## Дескрипторы TAP внутри namespace
 
-`sdwan_lab.namespace_tap.open_tap(run, namespace, name)` opens a nonpersistent
-TAP in a namespace already owned by the run. It exports one descriptor through
-a private filesystem UNIX socket with peer PID/UID verification. Abstract UNIX
-sockets cannot cross network namespaces. The returned descriptor is not
-inheritable until explicitly passed with `Run.spawn(..., pass_fds=(fd,))`.
-Close it after the child stops; the final descriptor closure removes the TAP.
-The QEMU process can retain loopback management while its data TAPs remain
-inside disposable peer namespaces, without a host bridge or host IP changes.
+`sdwan_lab.namespace_tap.open_tap(run, namespace, name)` открывает непостоянный TAP
+в namespace, уже принадлежащем запуску. Один дескриптор передаётся через приватный
+файловый UNIX-сокет с проверкой PID/UID peer. Абстрактные UNIX-сокеты не пересекают
+сетевые namespace. Дескриптор не наследуется до явного
+`Run.spawn(..., pass_fds=(fd,))`. Закрыть после остановки дочернего процесса;
+последнее закрытие удаляет TAP. QEMU сохраняет loopback-управление, а data TAP
+остаются в одноразовых peer namespace без моста или изменений host IP.
 
 ```sh
 sudo env PYTHONPATH=. python3 namespace_tap_integration.py \
   --workspace /var/tmp/sdwan-lab --run-id namespace-tap-001
 ```
 
-This privileged check relays frames between two namespace TAPs and verifies
-three ICMP replies and cleanup. It is a transport fixture check, not a DUT
-capacity or SD-WAN failover measurement.
+Привилегированная проверка передаёт кадры между двумя namespace TAP, получает
+три ICMP-ответа и проверяет очистку. Это проверка транспорта стенда, не измерение
+мощности DUT или SD-WAN failover.

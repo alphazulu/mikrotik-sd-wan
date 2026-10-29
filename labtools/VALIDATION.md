@@ -1,210 +1,209 @@
-# Lab validation / Проверки стенда — 2026-10-29
+# Проверки стенда — 29 октября 2026
 
-The original48-hour controller soak, frozen at
-`c3e188070c4d526ebcb3c5235ca86808283c05fe`, **failed after148,171 seconds
-(about41.16 hours)** with an assertion whose location was not captured by the old
-wrapper. Its process has exited; both locks are free. Independent checks confirm
-restoration of all three configurations/native files, healthy overlay and full
-OSPF neighbors, stopped container and removal of temporary soak rules/forwarding.
-The exact failure cause remains unproven. No completed48-hour acceptance is claimed.
-The observations below cover external tools and isolated functional candidates,
-not physical router capacity. Earlier checkpoint counts are retained as history;
-the latest validation is listed at the end.
+[English](VALIDATION.en.md)
 
-| Check | Actual result | Scope |
+Исходный 48-часовой тест контроллера на
+`c3e188070c4d526ebcb3c5235ca86808283c05fe` **завершился ошибкой через 148171 с
+(около 41,16 часа)**: старый wrapper не сохранил место assert. Процесс вышел,
+обе блокировки свободны. Независимая проверка подтвердила восстановление трёх
+конфигураций/native-файлов, здоровый overlay, полных соседей OSPF, остановленный
+контейнер и удалённые временные правила/forwarding. Точная причина не доказана.
+Завершённая 48-часовая приёмка не заявлена. Новый текущий тест и условия выпуска —
+[текущий статус](../docs/CURRENT-STATUS.md).
+
+Ниже внешние инструменты и изолированные функциональные кандидаты, не мощность
+физических роутеров. Количества ранних этапов сохранены как история; последующие
+проверки указаны в конце.
+
+| Проверка | Фактический результат | Охват |
 | --- | --- | --- |
-| Consolidated external-tool units |64 passed|Linux/POSIX, including explicit source-IP binding and real HTTP reader checks|
-| SDK unit tests |365 passed|Linux Python3.12; includes both native API service prefix field names and web source NAT bypass|
-| Configurator API snapshots |11 passed|Synthetic replies, headless model path|
-| Tk configurator|10 passed;0 network calls|Real LinuxTk8.6/Xvfb, mocked transport/dialog acknowledgement|
-| Generator smoke|4 passed, cleanup passed|TCP bidir, UDP, CPS/netem and L2 IMIX; functional only|
-| SIGKILL recovery|Passed|Registered child stopped, namespaces removed, original unsuccessful report preserved|
-| Continuity control|400 UDP and400 TCP replies|External Linux namespace/veth peers|
-| Two-second egress drop|100/400 UDP unanswered;2019.91ms maximum reply gap|Actual netem loss100%, not MikroTik failover|
-| TCP during that drop|400/400 replies, one connection,3333.99ms maximum gap|Retransmission delayed recovery; session survived|
-| Echo-server restart|Two TCP connections, one disconnect; later replies on new session|Actual reconnect distinguished from survival|
-| Current RNDIS candidate|25 unit checks passed|Includes privileged TAP fixture and MTU/OUT-completion regression|
-| Fresh CHR LTE chain|USB, lte1, APN-controlled dynamic DHCP, ICMP and public HTTPS passed|Two new CHRs, no licensed-x86 or production mutation|
-| TLS bulk input/output|40 GET:6225920bytes;40 POST:1310720bytes|Each POST body checked; local synthetic certificate|
-| Registration gate|ICMP3/3→0/3→3/3|Drop/recovery through the same emulated LTE interface|
-| TAP capture|8563 Ethernet frames;8434 IPv4 TCP;0 oversized/badchecksums/uncheckedfragments|IP/TCP checksums checked offline|
-| Capture-inspector negative checks|Corrupted TCP checksum and truncated packet rejected|Synthetic corruption of one captured test packet|
-| Comparison preparation|150 slots generated; gate rejects the failed/incomplete soak report|No actual four-mode DUT comparison yet|
+| Общие unit внешних инструментов | 64 PASS | Linux/POSIX, включая явную source-IP привязку и реальный HTTP reader |
+| SDK units | 365 PASS | Linux Python 3.12; оба имени prefix-поля API и web source NAT bypass |
+| API-снимки конфигуратора | 11 PASS | Синтетические ответы, headless-модель |
+| Tk-конфигуратор | 10 PASS; 0 сетевых вызовов | Настоящий Linux Tk 8.6/Xvfb, подменённый transport/подтверждение диалогов |
+| Smoke генератора | 4 PASS, очистка PASS | TCP bidir, UDP, CPS/netem, L2 IMIX; только функциональность |
+| Восстановление SIGKILL | PASS | Свой дочерний процесс остановлен, namespace удалены, исходный неуспешный отчёт сохранён |
+| Контроль непрерывности | 400 UDP и 400 TCP ответов | Внешние Linux namespace/veth peers |
+| Две секунды egress drop | 100/400 UDP без ответа; max gap 2019.91 мс | Настоящий netem loss100%, не MikroTik failover |
+| TCP при этом обрыве | 400/400 ответов, одно соединение, max gap 3333.99 мс | Задержка retransmission, сессия сохранена |
+| Перезапуск echo-сервера | Два TCP-соединения, один disconnect; последующие ответы в новой сессии | Переподключение отличено от сохранения |
+| Текущий RNDIS-кандидат | 25 units PASS | Привилегированный TAP, регрессии MTU/OUT-completion |
+| Новая CHR LTE-цепочка | USB, lte1, DHCP через APN, ICMP/публичный HTTPS PASS | Два новых CHR, без изменения licensed x86/production |
+| TLS input/output | 40 GET: 6225920 байт; 40 POST: 1310720 байт | Каждое тело POST проверено, локальный синтетический сертификат |
+| Registration gate | ICMP 3/3 → 0/3 → 3/3 | Обрыв/возврат через тот же LTE-интерфейс |
+| TAP capture | 8563 Ethernet-кадра, 8434 IPv4 TCP; 0 oversized/ошибок checksum/непроверенных fragments | IP/TCP checksum проверены офлайн |
+| Отрицательные проверки инспектора | Повреждённая TCP checksum и усечённый пакет отклонены | Синтетическое повреждение захваченного пакета |
+| Подготовка сравнения | Созданы 150 слотов; неуспешный/незавершённый soak отклонён | Полное сравнение четырёх режимов ещё не выполнялось |
 
-The consolidated package's unit and replay checks are also run against its final
-publication layout before publishing. CI records the corresponding commit checks.
-At that checkpoint, controller runtime source digest was
+Unit/replay пакета проверяются и в окончательной структуре публикации перед
+отправкой; CI сохраняет проверки соответствующего коммита. На том этапе runtime-
+хеш контроллера:
 `0d023c5f0a8d1cecbe47ddb429359dc9f58f676d3036118a99c286acb26775ca`.
-Those external-tool changes did not change Rust/JavaScript controller code;
-its coverage is not attributed to these Python tests. The later dashboard changes
-have their own exact-source coverage and image check below.
+Внешние инструменты не меняли Rust/JavaScript; эти Python-тесты не считаются
+покрытием контроллера. Поздние изменения dashboard имеют отдельное покрытие и
+проверку образа ниже.
 
-## RNDIS trigger and fix scope
+## Входное условие RNDIS и границы исправления
 
-Mixed64/2598-byte receive frames reproduce QEMU8.2.2's
-`usb_packet_complete_one` assertion on the original emulator and the OUT-only fix.
-Normal64-byte control frames do not. A backtrace passes through
-`usb_combined_input_packet_complete` and USB redirection. The captured bulk FIFO
-order is intact; this does not prove correctness of the entire USB protocol.
+Смешанные кадры приёма 64/2598 байт воспроизводят assert QEMU 8.2.2
+`usb_packet_complete_one` на исходном эмуляторе и исправлении только OUT length.
+Обычные 64-байтовые кадры не воспроизводят. Backtrace проходит через
+`usb_combined_input_packet_complete` и USB redirection. Захваченный порядок bulk
+FIFO сохранён; это не доказывает корректность всего USB-протокола.
 
-The candidate rejects Ethernet receive frames above1514bytes for its advertised
-IP MTU1500, before RNDIS wrapping. Mixed input then delivers450 valid frames
-without BABBLE/assertion; a normal series delivers600. This prevents that invalid
-input condition, not every QEMU assertion. Jumbo/VLAN data paths are not claimed.
-Source-side GSO/checksum offload still needs disabling on the dedicated fixture
-NIC: a length guard does not repair an incomplete TCP checksum.
+Кандидат отбрасывает Ethernet RX свыше 1514 байт до RNDIS-упаковки при заявленном
+IP MTU 1500. Смешанный ввод передаёт 450 допустимых кадров без BABBLE/assert;
+обычная серия — 600. Устраняется это недопустимое входное условие, а не любой
+assert QEMU. Jumbo/VLAN не заявлены. На выделенной NIC источника всё ещё нужно
+отключать GSO/checksum offload: длина не исправляет незавершённую TCP checksum.
 
-## Retained failed attempts
+## Сохранённые неудачные попытки
 
-- An early USB experiment never opened bulk-IN URBs and was inconclusive.
-- GDB initially stopped on QEMU's internal SIGUSR1; the corrected run passes that
-  signal through and captures the actual assertion.
-- A background shell inherited SIGINT-ignore and caused a service-test shutdown
-  timeout. Restoring the default signal disposition made the suite pass.
-- The first Tk replay failed during test-driver timer cleanup. The driver's Tcl
-  cancellation was fixed; the product GUI was unchanged.
-- Fresh-CHR bootstrap initially tried to remove the LTE-owned dynamic DHCP object.
-  It now removes nondynamic clients only. A later readiness check compared literal
-  false while LTE REST returned no; both representations are now accepted.
+- Ранний USB-эксперимент не открыл bulk-IN URB и не дал вывода.
+- GDB сначала остановился на внутреннем SIGUSR1 QEMU; исправленный запуск пропускает
+  этот сигнал и фиксирует настоящий assert.
+- Фоновая оболочка наследовала SIGINT-ignore и дала timeout остановки службы.
+  Восстановление стандартного обработчика позволило пройти набор.
+- Первый Tk replay упал при очистке таймеров драйвера теста. Исправлено Tcl-cancel
+  тестового драйвера; GUI продукта не менялся.
+- Bootstrap нового CHR пытался удалить динамический DHCP, принадлежащий LTE.
+  Теперь удаляются только нединамические клиенты. Поздняя проверка ждала буквальный
+  false, а LTE REST вернул no; теперь принимаются оба представления.
 
-Raw failed reports remain private; they were not relabelled as passes. Successful
-cleanup stops owned processes and deletes owned network objects while retaining
-private diagnostic disks. Backing CHR image hashes remain unchanged.
+Сырые неудачные отчёты приватны и не переименованы в PASS. Очистка останавливает
+свои процессы/сетевые объекты, сохраняя приватные диагностические диски.
+Хеши исходных backing CHR остаются прежними.
 
 ## Границы доказательств
 
-Пройдены функциональные проверки внешних инструментов, GUI и отдельного LTE
-кандидата. Сравнение производительности четырёх режимов ещё не выполнялось:
-нужны завершённые проверки DUT adapter и исходного soak. Пределы физических
-MikroTik, RF/SIM, WindowsGUI и SD-WAN failover новым измерителем не подтверждены.
-Измеренные echo gaps включают шаг проб, RTT и планирование, а не только простой
-сети. Каталог рекомендаций оборудования остаётся без неподтверждённых профилей.
+Функциональные проверки внешних инструментов, GUI и отдельного LTE-кандидата
+пройдены. Полное сравнение четырёх режимов ещё не выполнялось: требуются
+соответствующий завершённый soak и условия DUT adapter. Мощность физических
+MikroTik, RF/SIM, Windows GUI и SD-WAN failover новым измерителем не подтверждены.
+Echo gaps включают шаг проб, RTT и планирование, а не только простой сети.
+Каталог оборудования не содержит неподтверждённых рекомендаций.
 
-## Namespace TAP transport follow-up
+## Дополнительная проверка namespace TAP
 
-Five additional unit checks cover explicit child descriptor transfer, peer
-identity, rejection/closure of excess descriptors and namespace ownership.
-At that checkpoint the consolidated lab unit suite contained41 tests. A dedicated Linux
-privileged integration passes3/3 ICMP replies with frames in both directions
-and verified cleanup. The first attempt timed out because an abstract UNIX
-socket is network-namespace scoped; switching to a private filesystem socket
-resolved that specific cause. No DUT capacity or SD-WAN switching claim follows.
+Пять units покрывают явную передачу дочернего дескриптора, идентичность peer,
+отклонение/закрытие лишних дескрипторов и владение namespace. Тогда общий набор
+содержал 41 тест. Привилегированная Linux-проверка прошла 3/3 ICMP, кадры в обе
+стороны и очистку. Первая попытка дала timeout: абстрактный UNIX-сокет ограничен
+network namespace. Приватный файловый сокет устранил именно эту причину.
+Мощность DUT или SD-WAN failover этим не доказаны.
 
-## Comparison adapter preparation follow-up
+## Дополнительная подготовка адаптера сравнения
 
-The extended lab suite passes 64 unit tests, including compiled CPS networking,
-source/port reservations, receiver/resource windows, restoration and completed-soak
-attestation checks. The positive attestation test uses a synthetic temporary Git
-repository; it is not evidence that the real 48-hour soak has finished.
+Расширенный набор прошёл 64 units: собранный CPS networking, резервы source/port,
+окна приёмника/ресурсов, восстановление и подтверждение завершённого soak.
+Положительный тест подтверждения использует синтетический временный Git-репозиторий,
+а не доказательство завершения реального 48-часового теста.
 
-| Check | Actual result | Scope |
+| Проверка | Фактический результат | Охват |
 | --- | --- | --- |
-| Long CPS pool calibration | 3 × (120 s warmup + 60 s measurement), 540,000 validated echoes | 128 source addresses, pooled destination ports, 5 ms netem per interface; cleanup passed |
-| Measured CPS | 999.983333 / 1000.016667 / 999.983333 | 1000 CPS offered; direct namespace peers, no DUT |
-| Long CPS through the actual x86 NAT path | 180,000 validated echoes per case; 1000.0 CPS baseline, 1000.016667 CPS RSC | 120 s warmup + 60 s measurement each; 353 control snapshots, no errors, cleanup and backing hashes passed |
-| TCP/UDP generator reserve | 15 cases passed, cleanup passed | Three repetitions; 40 Mbps TCP forward/reverse/bidir and 6000 PPS UDP64/1472; iperf3 3.19.1 |
-| Short x86 L6 baseline | Six workloads passed with VirtIO data NICs | 20/20/40 Mbps TCP, 3000 PPS UDP64/1472, short 1000 CPS through NAT; not steady-state capacity |
-| Same UDP64 baseline with E1000 | Approximately 1422 PPS at 3000 PPS offered, guest CPU 100%, host TAP drops | Virtual NIC bottleneck; failed generator-path prerequisite, not a physical MikroTik limit |
-| Same UDP64 baseline with VirtIO | Approximately 3000 PPS, zero reported loss | Both sides captured 28,665 frames, no bad IPv4/UDP checksums; L6 and parent image unchanged |
-| Original RSC startup after those baseline workloads | Failed and automatically rolled back; cleanup verified | Private instrumentation locates `no such item (4)` in the initial conntrack `find`, before deletion |
-| Candidate native retry checks | Five checks passed on RouterOS 7.24.5 x86 L6 via Scheduler | Explicit selectors, transient recovery, empty result, permission propagation and five-attempt bound |
-| Candidate RSC short cycle | Six baseline and six RSC workloads passed; WAN failover/failback and pinned flow passed | Container stage then hit its confirmation deadline and rolled back; cleanup passed |
+| Длительная калибровка CPS-пула | 3 × (120 с прогрева + 60 с измерения), 540000 проверенных echo | 128 source-адресов, пул destination-портов, netem 5 мс на интерфейс; очистка PASS |
+| Измеренный CPS | 999.983333 / 1000.016667 / 999.983333 | Предложено 1000 CPS; прямые namespace peers без DUT |
+| Длительный CPS через настоящий x86 NAT | По 180000 проверенных echo; baseline 1000.0 CPS, RSC 1000.016667 | По 120 с прогрева + 60 с измерения; 353 контрольных снимка, без ошибок, очистка/backing hashes PASS |
+| Запас генераторов TCP/UDP | 15 случаев PASS, очистка PASS | Три повтора; TCP 40 Mbps forward/reverse/bidir, UDP 64/1472 6000 PPS, iperf3 3.19.1 |
+| Короткий baseline x86 L6 | Шесть нагрузок PASS с VirtIO data NIC | TCP 20/20/40 Mbps, UDP 64/1472 3000 PPS, короткий NAT 1000 CPS; не устоявшаяся мощность |
+| Тот же UDP 64 baseline с E1000 | Около 1422 PPS при предложенных 3000, guest CPU100%, host TAP drops | Виртуальная NIC ограничивает; не пройдена предпосылка генераторного пути, не предел физического MikroTik |
+| Тот же UDP 64 baseline с VirtIO | Около 3000 PPS, заявленных потерь нет | По 28665 кадров с двух сторон, неверных IPv4/UDP checksum нет; L6/родительский образ прежние |
+| Исходный RSC после baseline-нагрузок | Ошибка и автоматический откат; очистка проверена | Приватная диагностика локализует `no such item (4)` в исходном conntrack `find` до удаления |
+| Проверки bounded retry native | Пять PASS на RouterOS 7.24.5 x86 L6 через Scheduler | Явные селекторы, transient recovery, пустой результат, ошибки прав, предел пяти попыток |
+| Короткий цикл кандидата RSC | Шесть baseline + шесть RSC нагрузок PASS, отказ/возврат WAN и закреплённый поток PASS | Затем контейнер не уложился в confirmation deadline и откатился; очистка PASS |
 
-The full five-stage short smoke now passes: 30 workload cases, three WAN switching
-checks, pinned-flow preservation, 72 HTTP reads with zero errors, rebuilt baseline
-and verified cleanup/backing hashes. This is a functional check with short windows;
-the 150-measurement long comparison remains unaccepted. An earlier separate short RSC fixture passed failover/failback,
-pinned-flow preservation and rollback; it did not include the preceding CPS
-churn and does not override the newer failure. Diagnostic payloads have private
-stage markers and are not frozen-source acceptance. The frozen original remains
-unchanged. The candidate now includes a [bounded native retry](../docs/CONNTRACK-EXPIRY.md)
-and needs its own runtime acceptance. Rust/JS sources and covered container image
-source remain unchanged.
+Поздний полный пятиэтапный короткий smoke прошёл: 30 нагрузок, три переключения
+WAN, сохранение закреплённого потока, 72 HTTP-чтения без ошибок, новый baseline и
+очистка/backing hashes. Это функциональные короткие окна; длительное сравнение
+150 измерений не принято. Ранняя отдельная RSC-схема прошла отказ/возврат,
+закреплённый поток и откат, но не включала предшествующий CPS churn и не отменяет
+новую ошибку. Диагностические payload содержат приватные маркеры этапов и не
+являются приёмкой frozen source. Исходный frozen остаётся прежним. Кандидат
+содержит [ограниченный native retry](../docs/CONNTRACK-EXPIRY.md) и требует своей
+runtime-приёмки. Rust/JS и исходники покрытого образа на том этапе не менялись.
 
-## Restricted native API service follow-up
+## Ограниченный native API service
 
-Before installing SD-WAN, the new x86 fixture exposed the API service prefix list
-as `available-from=10.89.0.0/24`. The old SDK read only `address`, treated the
-missing field as unrestricted and did not add the container address. The local
-container's complete login sentence matched its provisioned credentials, while
-the same credentials worked from the management network. User/group relaxation
-and a fragmented host login did not explain or fix the container failure.
+До установки SD-WAN новый x86 показывал разрешённые префиксы API как
+`available-from=10.89.0.0/24`. Старый SDK читал только `address`, считал отсутствие
+поля отсутствием ограничения и не добавлял адрес контейнера. Полное предложение
+login из локального контейнера соответствовало выданным данным; те же данные
+работали из management-сети. Ослабление user/group и фрагментированный login
+хоста не объяснили и не исправили отказ контейнера.
 
-The candidate now reads both `available-from` and the legacy `address` and updates
-the field returned by the router. Existing management prefixes are retained; only
-the container's /32 is added when needed. Readiness checks use the same effective
-prefix list. Five new SDK units pass for aliases, repeatability, IPv4/IPv6 prefix
-retention, disabled services and unreadable values. Live installation, six
-container workloads and WAN failover/failback with the fix pass. The updated
-[MikroTik documentation](https://manual.mikrotik.com/changelog/changelog-2026-09-29/)
-also identifies `available-from` as the replacement for deprecated `address`.
+Кандидат читает `available-from` и старое `address`, меняет именно возвращённое
+роутером поле. Прежние management-префиксы сохраняются, при необходимости
+добавляется только /32 контейнера. Readiness использует ту же эффективную очередь
+префиксов. Пять новых SDK units прошли aliases, повторяемость, сохранение IPv4/IPv6,
+выключенные службы и нечитаемые значения. Живая установка, шесть контейнерных
+нагрузок и отказ/возврат WAN после исправления прошли. [Документация MikroTik](https://manual.mikrotik.com/changelog/changelog-2026-09-29/)
+также называет `available-from` заменой устаревшего `address`.
 
-## Web source address and image transition follow-up
+## Source web-клиента и переход образов
 
-The adapter now waits for the owned container's actual stopped state before
-replacing its image, checking its ID and ownership comment throughout. The live
-base-to-web transition passes that check and starts the web controller.
+Адаптер ждёт фактической остановки собственного контейнера перед заменой образа,
+всё время проверяя ID и комментарий владения. Живой переход base→web прошёл и
+запустил web controller.
 
-The fixture's broad existing masquerade exposed another real integration case:
-it translated the allowed LAN client to the router's container-side address.
-The web server correctly rejected that source. Preparation now adds a narrow
-owned source-NAT bypass for the configured clients, container address, bridge
-and HTTP port, before foreign source-NAT rules. Existing NAT rules are retained.
-Two SDK regression checks cover scope and ordering; disabled telemetry adds no
-such rule.
+Широкий masquerade стенда выявил реальный случай интеграции: разрешённый LAN-
+клиент преобразовывался в адрес контейнерной стороны роутера. Web справедливо
+отклонял этот source. Подготовка теперь добавляет узкий собственный source-NAT
+bypass по клиентам, адресу контейнера, bridge и HTTP-порту перед посторонними
+srcnat. Существующие NAT сохраняются. Два SDK-теста покрывают область/порядок;
+при выключенной телеметрии правило не создаётся.
 
-An actual owned-guest A/B/A check passes: all three endpoints return HTTP200 with
-the bypass, all are rejected/reset when only that rule is disabled, and all
-return HTTP200 with valid JSON after it is re-enabled. The final full five-stage
-short smoke passes, including that reader and the fresh baseline. These checks do not approve the
-full 150-case performance comparison or a hardware recommendation.
+Настоящая A/B/A-проверка собственного guest прошла: три endpoint возвращают
+HTTP200 с bypass, все отклоняются/reset при выключении только этого правила,
+затем снова HTTP200 с валидным JSON. Полный пятиэтапный короткий smoke прошёл,
+включая reader и свежий baseline. Это не одобряет полные 150 измерений или
+аппаратную рекомендацию.
 
-## Configurator storage regression (Python SDK / offline GUI)
+## Регрессия хранилища конфигуратора (SDK / офлайн GUI)
 
-A writable internal disk previously let `container-storage` report ready for a
-selected read-only or unmounted external disk. A renamed mount also used its
-slot instead of the actual `mount-point`. The SDK now checks the selected mount
-and preserves an unknown/blocked result rather than substituting internal space.
+Раньше записываемый внутренний диск позволял `container-storage` показать ready
+для выбранного внешнего read-only/unmounted. У переименованного тома использовался
+slot вместо настоящего `mount-point`. SDK проверяет выбранный mount и сохраняет
+unknown/blocked, не подставляя внутреннее место.
 
-Validation: 377 SDK unit tests, including 12 storage scenarios; 11 synthetic API
-snapshot cases; 13 real Tk/Xvfb GUI checks with all live network calls rejected.
-The GUI checks the offered directory, readiness failure for a read-only disk and
-readiness of a writable mounted volume. A failed storage check is also asserted
-to precede image metadata lookup, download, transfer and container preparation.
-Legacy projections can prove the mount with a `/file` disk entry.
+Проверено: 377 SDK units, включая 12 storage-сценариев; 11 синтетических API-снимков;
+13 настоящих Tk/Xvfb GUI-проверок с запретом всех сетевых вызовов. GUI проверяет
+предлагаемый каталог, отказ read-only и готовность записываемого mounted volume.
+Ошибка storage должна предшествовать чтению image metadata, скачиванию, передаче
+и подготовке контейнера. Старые проекции могут подтвердить mount записью disk
+в `/file`.
 
-These are SDK and synthetic GUI checks, not a physical USB-disk acceptance. No
-RouterOS script, Rust/JavaScript runtime or running container image was changed.
+Это SDK/синтетический GUI, не приёмка физического USB-диска. RouterOS scripts,
+Rust/JS runtime и работающий образ не менялись.
 
-## Dashboard freshness and soak diagnostics
+## Свежесть dashboard и диагностика soak
 
-After an HTTP polling failure the dashboard now marks the last WAN/VPN/overlay
-snapshot as stale and clears its displayed age. A fresh reply restores current
-states; missing snapshots and logout clear old values. `none` is displayed as
-"Нет доступного канала". Only one last snapshot is retained in browser RAM;
-poll frequency, API endpoints and persistent-storage behavior are unchanged.
+После HTTP-ошибки dashboard помечает последний снимок WAN/VPN/overlay устаревшим
+и очищает показанный возраст. Свежий ответ возвращает актуальные состояния;
+отсутствие снимка/выход очищают старые значения. `none` показывается как «Нет
+доступного канала». В RAM браузера только один последний снимок; частота, API
+и постоянное хранение не меняются.
 
-The candidate's covered source SHA256 is
+Хеш покрытых исходников этого кандидата:
 `7af650e6b49c6aaa925c7be72836b01255a60478be52f5ceafde245d322e0ead`.
-Both Rust profiles and browser JavaScript pass100% executable-line/function
-coverage per runtime file (41 base Rust,75 web Rust,8 JavaScript tests).
-Branch coverage is reported separately, without a100% branch claim. All six
-static scratch images pass artifact inspection.
+Оба Rust-профиля и браузерный JavaScript имеют 100% исполняемых строк/функций
+каждого runtime-файла: 41 base Rust, 75 web Rust, восемь JS-тестов. Ветви
+показаны отдельно, без утверждения 100%. Шесть статических scratch-образов прошли
+проверку артефактов.
 
-Six Chromium fixture checks pass with the runtime CSP retained, including HTTP
-failure/recovery, escaped text, stale VPN/overlay, no-WAN and mobile/logout.
-The old UI fails the new HTTP-failure check. Four additional browser checks pass
-using actual four-WAN demo API replies and candidate assets in that browser only;
-the running demo was not changed. Separately, the exact covered amd64 web image
-was imported on an isolated CHR: served HTML/JS/CSS bytes match, the local
-container selects physical/VPN WANs, and12 fresh snapshots over one minute retain
-four WANs and two healthy overlay paths. Cleanup restores the baseline
-configuration with current native scripts; the image remains stopped in the
-disposable child. These are short functional checks, not48-hour acceptance.
+Шесть Chromium fixture-проверок прошли при штатном CSP: HTTP-отказ/возврат,
+экранирование, устаревший VPN/overlay, отсутствие WAN, mobile/logout. Старый UI
+падает на новой проверке HTTP-ошибки. Четыре дополнительные браузерные проверки
+прошли с реальными ответами четырёх-WAN demo API и assets кандидата только в
+этом браузере; работающий демо в том тесте не менялся. Отдельно точный покрытый
+amd64 web-образ импортирован на изолированный CHR: HTML/JS/CSS совпали, локальный
+контейнер выбирал физические/VPN WAN, 12 свежих снимков за минуту сохранили четыре
+WAN и два здоровых overlay-пути. Очистка восстановила baseline с текущими native
+scripts; образ остался остановлен в одноразовом дочернем диске. Это короткие
+функциональные проверки, не 48-часовая приёмка.
 
-The SDK suite now passes382 units, including five new failure-diagnostic cases.
-The soak driver records the assertion location and bounded last web context
-before restoration; a cleanup error has its own context. Existing conditions,
-durations and thresholds are unchanged. This cannot reconstruct the old failed
-assertion or turn that failed report into a pass. Matching long acceptance is
-still required before the150-case comparison or hardware recommendations.
+На этом этапе SDK прошёл 382 units, включая пять новых случаев диагностики
+отказа. Драйвер soak сохраняет место assert и ограниченный последний web-контекст
+до восстановления; ошибка очистки имеет свой контекст. Условия, длительности
+и пороги прежние. Это не восстанавливает утраченный старый assert и не превращает
+неудачный отчёт в PASS. Перед 150 измерениями или рекомендациями нужна
+соответствующая длительная приёмка.

@@ -1,66 +1,68 @@
-# QEMU comparison adapter / Адаптер сравнения QEMU
+# Адаптер сравнения QEMU
 
-Experimental Linux lab tooling. This is not a completed benchmark or a hardware
-recommendation. The original 48-hour acceptance and its restoration must finish
-before running the full comparison. Short functional smoke and generator
-calibration are separate checks and cannot satisfy that gate.
+[English](DUT-ADAPTER.en.md)
 
-Экспериментальный адаптер создаёт отдельную VM с новым дочерним qcow2-диском.
-Он не подключается к рабочему MikroTik. Полное сравнение ещё не выполнено;
-короткие проверки не являются основанием для рекомендаций по производительности.
+Экспериментальные инструменты Linux-стенда. Это не завершённый benchmark и не
+аппаратная рекомендация. Сначала должна успешно завершиться приёмка 48 часов на
+соответствующих зафиксированных исходниках с восстановлением. Короткие smoke и
+калибровка генератора — отдельные проверки, не заменяющие это условие.
 
-## Fixture
+Адаптер создаёт отдельную VM с новым дочерним qcow2-диском и не подключается к
+рабочему MikroTik. Полное сравнение ещё не выполнено; короткие проверки не дают
+оснований для рекомендаций по производительности.
 
-Use a dedicated Linux host with KVM, QEMU, iproute2, ethtool, tcpdump, a C compiler,
-Python 3.12+ and calibrated iperf3 3.19.1. Commands require root on that host.
-Do not use a disk from a running VM. Prepare and shut down a separate RouterOS
-7.24.5 x86 L6 base with the container package, working API credentials and
-Scheduler/Fetch/Container enabled in device-mode. Pin its SHA256. Device-mode
-confirmation is a separate preparation step.
+## Подготовка стенда
 
-The disk uses `format=qcow2,bus=0,unit=0,media=disk` to preserve the tested x86
-license arrangement. License level is checked after each boot. The backing chain
-is hashed before allocation and after restoration; a changed parent fails cleanup.
+Нужен выделенный Linux-хост с KVM, QEMU, iproute2, ethtool, tcpdump, компилятором C,
+Python 3.12+ и откалиброванным iperf3 3.19.1. Команды требуют root. Не использовать
+диск запущенной VM. Подготовить и штатно выключить отдельную базу RouterOS 7.24.5
+x86 L6 с пакетом container, рабочими API-данными и разрешёнными Scheduler/Fetch/
+Container в device-mode. Зафиксировать SHA256. Подтверждение device-mode —
+отдельный подготовительный шаг.
 
-Management listeners bind loopback. The first management NIC uses E1000; four
-data NICs use VirtIO by default. Owned nonpersistent TAP descriptors belong to
-two network namespaces. No host bridge or host route is created. The fixture
-supports this explicit synthetic topology:
+Диск использует `format=qcow2,bus=0,unit=0,media=disk` для сохранения проверенной
+схемы лицензии x86. После каждого старта проверяется уровень лицензии. Цепочка
+backing хешируется до выделения и после восстановления; изменение родителя
+означает ошибку очистки.
 
-| Role | Guest address | Peer / client |
+Управление слушает loopback. Первая management NIC — E1000, четыре data NIC по
+умолчанию VirtIO. Собственные непостоянные TAP-дескрипторы принадлежат двум
+сетевым namespace. Хостовые мосты или маршруты не создаются. Синтетическая схема:
+
+| Роль | Адрес guest | Peer / клиент |
 | --- | --- | --- |
 | wan1..wan3 | 172.20.i.2/24 | 172.20.i.1 |
-| lan | 192.168.50.1/24 | affected .101, pinned .102 |
-| CPS sources | — | .110 through .237 |
-| Echo target | — | 198.18.79.1 |
-| SLA targets | — | 10.77.i.2, ports 28081–28083 |
+| lan | 192.168.50.1/24 | переключаемый .101, закреплённый .102 |
+| Источники CPS | — | .110–.237 |
+| Echo-цель | — | 198.18.79.1 |
+| Цели SLA | — | 10.77.i.2, порты 28081–28083 |
 
-The product supports other WAN kinds; this performance fixture intentionally
-uses three static WANs. Prepare a configuration with interface names `wan1`,
-`wan2`, `wan3`, LAN `lan`, those addresses and the supplied SLA targets. Preserve
-the affected/pinned policies and include management 10.89.0.0/24 in local networks.
+Продукт поддерживает другие типы WAN; эта нагрузочная схема намеренно использует
+три статических WAN. В конфигурации нужны интерфейсы `wan1`, `wan2`, `wan3`, LAN
+`lan`, указанные адреса и цели SLA. Сохранить политики переключаемого/закреплённого
+клиентов и включить management 10.89.0.0/24 в локальные сети.
 
-## Generator calibration
+## Калибровка генераторов
 
-Calibrate TCP/UDP directly in isolated namespaces at at least twice the planned
-offer, with three repetitions per workload and sufficient CPU reserve. Use the
-same iperf3 build during measurement. Long CPS calibration runs independently:
+Калибровать TCP/UDP напрямую в изолированных namespace как минимум на удвоенной
+планируемой нагрузке, с тремя повторами каждого профиля и запасом CPU. При измерении
+использовать ту же сборку iperf3. Длительная CPS-калибровка выполняется отдельно:
 
 ```sh
 sudo python3 cps_pool_calibration.py --workspace /var/tmp/cps-calibration \
   --run-id cps-001 --rate 1000 --warmup 120 --seconds 60 --repeats 3 --delay-ms 5
 ```
 
-It exercises 128 source addresses, unique explicit source ports and a destination
-port pool. Reservations are persisted before launch and never recycled after an
-error. Destination pooling accounts for source NAT collapsing the source IPs.
-Both endpoints validate each 32-byte echo; accepted/completed/client counts must
-agree. No system TIME_WAIT settings are changed. The adapter checks the source
-and compiled binary against the completed, cleaned calibration on the same boot.
+Она использует 128 source-адресов, уникальные явные source-порты и пул destination-
+портов. Резервы сохраняются до запуска и не переиспользуются после ошибки.
+Destination-пул учитывает объединение source IP при NAT. Обе стороны проверяют
+каждый 32-байтовый echo; числа accepted/completed/client должны совпадать.
+Системный TIME_WAIT не меняется. Адаптер сверяет исходник и собранный бинарник с
+завершённой очищенной калибровкой на той же загрузке хоста.
 
-## Private configuration
+## Приватная конфигурация
 
-Create a private JSON file outside Git; paths resolve relative to that file:
+Создать JSON вне Git; относительные пути отсчитываются от него:
 
 ```json
 {
@@ -81,14 +83,14 @@ Create a private JSON file outside Git; paths resolve relative to that file:
 }
 ```
 
-Credentials use the SDK's `username`/`password` JSON format. Keep credentials,
-tokens, disks, configuration exports and captures private. The adapter accepts
-no arbitrary router URL: it manages only the QEMU instance it creates. Listener
-ports must be free; unrelated guests and ports are left alone.
+Учётные данные используют SDK-формат JSON `username`/`password`. Данные доступа,
+токены, диски, экспорты и захваты хранить приватно. Произвольный URL роутера не
+принимается: адаптер управляет только собственной созданной QEMU. Порты должны
+быть свободны; посторонние гости и порты не меняются.
 
-Prepare with `comparison.py prepare` as described in README. Operational Python/C
-sources, native scripts, container archives and mode configurations are bound to
-the plan. Regenerate the plan after changing them. Test the adapter separately:
+Подготовить через `comparison.py prepare`, как описано в [README.md](README.md).
+Рабочие Python/C-исходники, native scripts, архивы контейнера и конфигурации режимов
+связываются с планом. После их изменения план пересоздать. Отдельная проверка адаптера:
 
 ```sh
 sudo python3 dut_smoke.py --config /srv/sdwan/private/adapter.json \
@@ -96,13 +98,13 @@ sudo python3 dut_smoke.py --config /srv/sdwan/private/adapter.json \
   --workspace /var/tmp/dut-smoke --run-id smoke-001
 ```
 
-This uses two seconds warmup and five seconds measurement by default, plus WAN
-switching observers. It explicitly records `capacity_validated=false`.
+По умолчанию это две секунды прогрева, пять секунд измерения и наблюдатели
+переключения WAN. Явно записывается `capacity_validated=false`.
 
-## Completed-soak gate
+## Условие завершённого длительного теста
 
-On the original soak host, after its process exits and restoration releases both
-locks, create a portable proof:
+На исходном хосте теста после выхода процесса, восстановления и освобождения
+обеих блокировок создать переносимое подтверждение:
 
 ```sh
 python3 -m sdwan_lab.acceptance --soak-report /private/network-soak.json \
@@ -110,35 +112,37 @@ python3 -m sdwan_lab.acceptance --soak-report /private/network-soak.json \
   --output /private/completed-soak-proof.json
 ```
 
-The proof binds the exact report bytes, Git commit and complete tracked-file
-manifest, native runtime hashes, covered container source and image identity.
-It refuses running/failed tests, held locks, incomplete restoration or changed
-sources. It creates no bytecode inside the frozen tree. Copy the report and proof
-to the lab, then use `comparison.py run --adapter qemu_adapter.py
---adapter-config ... --soak-report ... --soak-attestation ...` with the prepared
-plan, workspace and a new run ID. Recovery uses the same private adapter config
-and the recorded run; acceptance gates do not prevent cleanup.
+Оно связывает точные байты отчёта, Git-коммит, полный manifest отслеживаемых файлов,
+нативные runtime-хеши, покрытые исходники контейнера и идентичность образа.
+Отклоняются запущенные/неудачные тесты, занятые блокировки, неполное восстановление
+и изменённые исходники. Bytecode в frozen-дереве не создаётся. Скопировать отчёт и
+подтверждение в лабораторию, затем использовать
+`comparison.py run --adapter qemu_adapter.py --adapter-config ... --soak-report ... --soak-attestation ...`
+с подготовленным планом, workspace и новым run ID. Восстановление использует ту же
+приватную конфигурацию и записанный запуск; условия приёмки не блокируют очистку.
 
-The proof is an operational consistency check, not a signature or a replacement
-for reviewing independent overlay/OSPF/cleanup evidence before release. A native
-runtime change needs matching acceptance; the old report cannot approve it.
+Подтверждение проверяет операционную согласованность, не является подписью и не
+заменяет просмотр независимых overlay/OSPF/cleanup-доказательств перед выпуском.
+Изменение нативного runtime требует соответствующей приёмки; старый отчёт его не
+одобряет.
 
-## Measurement and restoration
+## Измерение и восстановление
 
-Resource samples are aligned to the post-warmup receiver window. Reports retain
-raw iperf events, timing-fit deviation and terminal interval delivery delay.
-Generator CPU measures owned endpoint processes and excludes the DUT QEMU.
-Container memory is the maximum sampled `memory-current` at 1 Hz; it is not RSS
-or the kernel's lifetime peak. Write-sector deltas are logical RouterOS counters,
-not NAND erase cycles. Missing/reset counters remain unknown.
+Ресурсные отсчёты совмещаются с окном приёмника после прогрева. Сохраняются сырые
+события iperf, отклонение временной аппроксимации и задержка доставки конечного
+интервала. CPU генератора относится только к своим endpoint-процессам, исключая
+DUT QEMU. Память контейнера — максимум выборок `memory-current` с частотой 1 Гц,
+а не RSS или исторический пик ядра. Изменение write-sector — логический счётчик
+RouterOS, а не циклы стирания NAND. Отсутствие/сброс счётчиков остаются unknown.
 
-Web mode adds one reader polling status, history and events every five seconds.
-Its token stays in a private file. Switching blackholes WAN1, verifies failover
-and failback, observes the affected flow on both WANs and requires the pinned
-TCP connection to survive without UDP loss.
+Web-режим добавляет одного читателя status/history/events каждые пять секунд;
+токен остаётся в приватном файле. Переключение блокирует WAN1, проверяет отказ и
+возврат, наблюдает затронутый поток на обоих WAN и требует сохранения закреплённого
+TCP без потери UDP.
 
-The final baseline is booted from a fresh child of the same stopped base; its
-static forwarding projection must match the initial baseline. This removes
-container leftovers from the baseline comparison. Owned resources are cleaned;
-private diagnostic disks/logs remain. Cleanup failure never becomes a passing
-measurement. Recovery uses the durable journal and refuses uncertain ownership.
+Окончательный baseline загружается на свежем дочернем диске той же выключенной
+базы; проекция статической маршрутизации должна совпасть с начальной. Так остатки
+контейнера не попадают в базовое сравнение. Свои ресурсы очищаются, приватные
+диагностические диски/логи сохраняются. Неудачная очистка не становится успешным
+измерением. Восстановление использует устойчивый журнал и отказывает при
+неопределённом владении.

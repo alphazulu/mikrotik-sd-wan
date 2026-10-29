@@ -1,5 +1,7 @@
 # Подготовка устройства и выбор локального контроллера
 
+Русский | [English](CONFIGURATOR-PROVISIONING.en.md)
+
 Ветка разработки 0.3.0. Решения SD-WAN по-прежнему выполняются внутри MikroTik:
 RSC либо локальный Rust-контейнер scratch. Конфигуратор нужен для подготовки.
 
@@ -100,24 +102,13 @@ SDK создаёт отдельную локальную сеть, API-поль�
 - Покрытие Rust base/web и браузерного JS повторно измерено: 100% исполняемых строк
   и функций; метрики ветвей сохранены отдельно. Runtime-source digest прежний.
 
-Рабочий MikroTik не изменялся. Запуск SD-WAN с настоящим LTE в новой x86-топологии,
-сравнительный нагрузочный тест и новый 48-часовой soak ещё предстоят.
+Рабочий MikroTik не изменялся. После этого этапа на отдельном x86 L6 проверены
+три WAN и USB RNDIS LTE, полный цикл переключений и реальные HTTPS-загрузки через
+SD-WAN. Это функциональные проверки, а не оценка предельной производительности.
+Подготовленная серия из 150 сравнительных измерений ещё не выполнена; новый
+48-часовой прогон идёт. [Текущее состояние](CURRENT-STATUS.md).
 
 Связанные документы: [план нагрузочных измерений](PERFORMANCE-PLAN.md),
 [план MBIM/AT полей LTE](../lte-rndis-emu/MODEM-CONTROL-PLAN.md),
 [RouterOS device-mode](https://manual.mikrotik.com/docs/system-information-and-utilities/device-mode/),
 [RouterOS Containers](https://manual.mikrotik.com/docs/containers/).
-
-## Background device-mode request (English)
-
-The configurator starts a temporary RouterOS script whose `:execute` job runs
-the per-feature update in the background. It returns during the physical
-confirmation window instead of retaining a streaming API call for five minutes.
-The launcher is removed by its unique name and comment. The named worker remains
-until completion is checked, then is removed too. Readback checks the actual named
-job: cancellation can terminate it while leaving a stale RAM marker.
-No polling statistics or worker-status files are written to the router flash.
-A persisted local intent prevents a blind duplicate update after transport loss.
-Readback of the actual feature flags establishes readiness. Expired or ended
-requests require another explicit preparation action. Physical confirmation is
-still required; ordinary reboot cancels the request.

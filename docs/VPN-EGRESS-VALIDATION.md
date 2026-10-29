@@ -1,110 +1,113 @@
-# Optional VPN egress: development checkpoint
+# Проверки опционального выхода через VPN
 
-Target: isolated CHR **7.24.5**, existing five-node CGNAT/branch fabric. No
-production router was accessed or changed. The controller stays on RouterOS;
-the external Python/Tk utility configures and observes it through the API.
-This is a development checkpoint, not completed release acceptance.
+[English](VPN-EGRESS-VALIDATION.en.md)
 
-## Cached intent priority regression
+Цель: изолированный CHR **7.24.5**, существующая пятиузловая схема CGNAT/филиалов.
+Рабочий MikroTik не опрашивался и не менялся. Контроллер остаётся на RouterOS;
+внешняя Python/Tk-утилита настраивает и наблюдает его через API.
+Страница объединяет исторические этапы разработки и не означает завершения
+приёмки выпуска. Количества тестов относятся к своим этапам, а не текущему итогу
+SDK. Актуальные CI и длительные проверки указаны в [текущем статусе](CURRENT-STATUS.md).
 
-The RouterOS container adapter formerly accepted any still-eligible cached WAN,
-even after a higher-priority WAN had recovered in the current native SLA window.
-It could also accept cached `none` while a current eligible WAN existed. The
-adapter now accepts intent only when it agrees with the current native priority
-choice; otherwise that native choice remains effective for the tick.
+## Регрессия приоритетов закэшированного intent
 
-The actual native selector and derived guard were executed on owned CHR and x86
-RouterOS 7.24.5: 20 cases per device pass, and the historical guard reproduces
-seven counterexamples on each. The separate USB RNDIS container regression also
-passes seven checks: fresh admission, both incoming WAN API return paths, real
-TCP/NAT failover/failback, unaffected original backup TCP/HTTP/API retention and
-protected APN rollback. That test compares uploaded generated controller,
-installer and watchdog files against the tested source and verifies the actual
-controller script, not only the native library hashes. The exact CI base image
-is unchanged. These checks do not replace the final frozen-source smoke/soak.
+Раньше адаптер RouterOS принимал любой ещё допущенный WAN из кэша, даже если
+предпочтительный WAN уже восстановился в текущем нативном окне SLA. Он также мог
+принять `none`, хотя подходящий WAN уже существовал. Теперь intent принимается
+только при совпадении с текущим нативным выбором по приоритетам; иначе на этом
+такте действует нативный выбор.
 
-## SSTP quality observation in the virtual fixture
+Реальный нативный селектор и соответствующая защита выполнены на принадлежащих
+стенду CHR и x86 RouterOS 7.24.5: по 20 успешных случаев на устройство. Историческая
+защита воспроизводит по семь контрпримеров. Отдельная контейнерная регрессия USB
+RNDIS прошла семь проверок: свежий допуск, входящий API по обоим WAN, настоящий
+TCP/NAT при отказе/возврате, сохранение прежних резервных TCP/HTTP/API и защищённый
+откат APN. Загруженные сгенерированные controller, installer и watchdog сравниваются
+с проверяемым исходником; проверяется реальный controller, а не только хеши
+нативных библиотек. Точный базовый CI-образ не менялся. Эти проверки не заменяют
+окончательные smoke/soak на зафиксированных исходниках.
 
-A later four-WAN warm-up did not obtain 60 continuous seconds within its existing
-SLA because the SSTP exit repeatedly exceeded 100 ms jitter. An ICMP cadence
-experiment at 50/100/50 ms, with unchanged thresholds, counted 13/13/16 samples
-above that jitter limit out of 73 samples per phase; maxima were
-132.336/139.327/141.400 ms. Changing cadence did not resolve the observation.
-The configuration was restored; those warm-up attempts remain failed checks.
-No general SSTP implementation defect was established by this observation.
+## Качество SSTP в виртуальном стенде
 
-The final healthy-start fixture therefore uses its existing WireGuard and
-L2TP/IPsec exits, with the same SLA thresholds and original probe cadence. This
-does not establish long-term SSTP stability or authorize a physical-device
-performance recommendation. Earlier SSTP functional checks below remain scoped
-to their original test conditions.
+Поздний прогрев четырёх WAN не получил 60 непрерывных секунд в существующем SLA:
+выход SSTP регулярно превышал jitter 100 мс. Эксперимент с интервалом ICMP
+50/100/50 мс при прежних порогах получил 13/13/16 превышений из 73 отсчётов на
+этап; максимумы — 132.336/139.327/141.400 мс. Смена интервала не решила проблему.
+Конфигурация восстановлена, неудачные прогревы остаются неудачными. Общий дефект
+реализации SSTP этим наблюдением не установлен.
 
-## Earlier functional matrix
+Поэтому окончательный стенд со здоровым начальным состоянием использует имеющиеся
+WireGuard и L2TP/IPsec с прежними порогами SLA и исходной частотой проб. Это не
+подтверждает длительную стабильность SSTP и не даёт рекомендации по мощности
+физического оборудования. Ранние функциональные проверки SSTP ниже действуют
+только в своих исходных условиях.
 
-| Checks | Result |
+## Ранняя функциональная матрица
+
+| Проверки | Результат |
 | --- | --- |
-| Python unit suite | 265 PASS |
-| Existing Address List, static membership, removal, timed membership and retained TCP | 4 PASS |
-| Python/native VPN contract | 18 PASS, including rejection of L2TP FastPath |
-| Native/Python list types, explicit null, control bytes, UTF-8 byte limit | 44 PASS |
-| WireGuard real SLA / TCP / scoped conntrack / physical failover | 8 PASS |
-| L2TP/IPsec plus protected reapply | 9 PASS |
-| SSTP real SLA / TCP / scoped conntrack / physical failover | 8 PASS |
-| OpenVPN TCP real SLA / TCP / scoped conntrack / physical failover | 8 PASS |
-| OpenVPN protected reapply | PASS; all three stream IDs retained, data resumed within20s |
-| VPN1 → VPN2 → physical → all-down, recovery with main closed | 7 PASS |
-| Full encrypted rollback after real VPN routing/dataplane mutation | 3 PASS |
-| Real server-pushed def1 rejection and protected adoption | 3 PASS |
-| Duplicate VPN source IPv4 | Both exits rejected; physical WANs remained ready |
-| Cold restart with active WireGuard egress | 3 PASS; unchanged public identity, fresh SLA, two OSPF neighbors Full |
-| WireGuard hostname and real DNS address rotation | 2 PASS; old server blocked, hostname retained, fresh VPN TCP and unrelated streams preserved |
-| Public-only key preparation against actual CHR API | 2 PASS; disabled local identity and idempotent public readback |
-| DHCP and PPPoE parent address change with VPN and private OSPF | 2 PASS per protocol; live leases, scoped transport cleanup and retained branch TCP |
-| API/native full-default route boundary | 5 PASS; enabled inactive defaults rejected, exact adoption validated |
-| Windows GUI offline | 4 PASS |
-| Windows GUI against live CHR API | 3 PASS; router configuration unchanged |
+| Модульные Python-тесты на этом этапе | 265 PASS |
+| Существующий Address List: состав, удаление, timeout, сохранение TCP | 4 PASS |
+| Контракт VPN Python/native | 18 PASS, включая отклонение L2TP FastPath |
+| Типы списков native/Python, null, управляющие байты, длина UTF-8 | 44 PASS |
+| WireGuard: SLA / TCP / точный conntrack / отказ физического транспорта | 8 PASS |
+| L2TP/IPsec и защищённое повторное применение | 9 PASS |
+| SSTP: SLA / TCP / точный conntrack / отказ физического транспорта | 8 PASS |
+| OpenVPN TCP: SLA / TCP / точный conntrack / отказ физического транспорта | 8 PASS |
+| Защищённое повторное применение OpenVPN | PASS; три ID потоков сохранены, данные возобновились за 20 с |
+| VPN1 → VPN2 → физический WAN → полный отказ, возврат при закрытом main | 7 PASS |
+| Полный зашифрованный откат после изменения VPN-маршрутизации/dataplane | 3 PASS |
+| Реальные серверные def1: отклонение и защищённое принятие | 3 PASS |
+| Одинаковый source IPv4 у VPN | Оба выхода отклонены; физические WAN остаются готовы |
+| Холодный старт с активным WireGuard-выходом | 3 PASS; прежняя публичная идентичность, свежий SLA, два соседа OSPF Full |
+| Имя endpoint WireGuard и реальная смена DNS-адреса | 2 PASS; старый сервер заблокирован, имя сохранено, свежий VPN TCP и посторонние потоки работают |
+| Подготовка только публичного ключа через реальный CHR API | 2 PASS; отключённая локальная идентичность и идемпотентное чтение публичных данных |
+| Смена родительского адреса DHCP/PPPoE при VPN и частном OSPF | По 2 PASS; живые lease, точная очистка транспорта, сохранение филиального TCP |
+| Граница полного default в API/native | 5 PASS; включённые неактивные defaults отклонены, точное принятие проверено |
+| Windows GUI офлайн | 4 PASS |
+| Windows GUI с живым CHR API | 3 PASS; конфигурация роутера не менялась |
 
-The tunnel-up flag is insufficient: a forward filter beyond a running exit
-blocks representative resource probes. The shared SLA engine then chooses the
-next declared channel. Real forwarded TCP proves only old policy/channel marks
-are retired; unrelated Internet and private OSPF streams retain their connection
-IDs and keep receiving data. A separate matrix tests two VPN exits before
-physical backups, a policy blackhole with every exit unavailable, VPN recovery
-while generic main Internet is still SLA-closed, and loss of all physical parents.
+Флага поднятого туннеля недостаточно: forward-фильтр за работающим выходом
+блокирует пробы представительных ресурсов. Общий SLA выбирает следующий
+объявленный канал. Реальный транзитный TCP подтверждает удаление только старых
+меток политики/канала; посторонние интернет-потоки и частный OSPF сохраняют ID
+и продолжают получать данные. Отдельная матрица проверяет два VPN перед
+физическим резервом, закрытие политики при полном отказе, возврат VPN при ещё
+закрытом общем main и потерю всех физических родителей.
 
-Fixtures use existing WireGuard, L2TP/IPsec, SSTP and OpenVPN clients on a branch,
-with servers on the emulated hub. Authentication is private runtime data. The
-OpenVPN certificate and private keys are generated on CHR. No private keys are
-exported to configuration JSON, GUI inventory or public source.
+Стенд использует существующие клиенты WireGuard, L2TP/IPsec, SSTP и OpenVPN в
+филиале и серверы на эмулированном hub. Аутентификация хранится только в приватных
+данных выполнения. Сертификат и закрытые ключи OpenVPN создаются на CHR. Приватные
+ключи не выгружаются в JSON, инвентарь GUI или публичные исходники.
 
-Rollback validation deliberately fails after original OpenVPN automatic-default
-and pull options have been changed and classifiers installed. The local watchdog
-restores the encrypted full backup, all ten RSC files and JSON/baseline files,
-original client options and disabled state. Native SLA and both private overlay
-legs recover after reboot.
+Проверка отката намеренно вызывает сбой после изменения автоматического default
+и pull-опций OpenVPN и установки классификаторов. Локальный watchdog восстанавливает
+зашифрованный полный backup, все десять RSC того этапа, JSON/исходную конфигурацию,
+прежние опции клиента и состояние disabled. После перезапуска восстанавливаются
+нативный SLA и обе ветви частного overlay.
 
-The pushed-route test uses an actual OpenVPN server with `redirect-gateway=def1`
-and a fresh client with automatic default enabled. API preflight and the native
-installer independently reject unadopted split defaults. After explicit adoption,
-automatic and pushed routes disappear, original options are captured, and the
-existing tunnel becomes eligible through normal resource SLA.
+Проверка серверных маршрутов использует реальный OpenVPN-сервер с
+`redirect-gateway=def1` и новый клиент с включённым автоматическим default.
+API и native installer независимо отклоняют непринятые split defaults. После
+явного принятия автоматические и серверные маршруты исчезают, исходные опции
+сохраняются, а существующий туннель допускается обычным SLA ресурсов.
 
-Observed7.24.5 details relevant to tests:
+Наблюдения именно на 7.24.5:
 
-- Dynamic RIB routes can be omitted by `where disabled=no` even though `get
-  disabled` returns false. Native split-default validation filters that flag after
-  finding the route prefix. The real pushed-route test covers this behavior.
-- API values report a VPN next-hop IP plus `immediate-gw`/`vrf-interface`, rather
-  than always putting the logical interface name in `gateway`.
-- Address List timeout can display0s before the object is retired. Acceptance waits
-  for actual retirement and checks a new real connection; it does not create a
-  second list-expiry mechanism or assume zero means immediate kernel removal.
-- Live TCP after protected reapply can wait for retransmission backoff. The test
-  requires the same conntrack IDs and renewed data within a bounded20s check.
-- Windows can reserve55728range ports through Hyper-V. Loopback aliases45728..32
-  reach the same existing CHRs without restarting them or creating another fabric.
+- Динамические маршруты RIB могут отсутствовать в `where disabled=no`, хотя `get
+  disabled` возвращает false. Нативная проверка split defaults сначала ищет
+  префикс, затем проверяет флаг. Это покрывает тест реальных серверных маршрутов.
+- API может показывать IP next-hop вместе с `immediate-gw`/`vrf-interface`,
+  а не имя логического интерфейса непосредственно в `gateway`.
+- Timeout Address List может показывать 0 с до удаления объекта. Приёмка ждёт
+  фактического удаления и проверяет новое реальное соединение. Второго механизма
+  истечения списков нет; ноль не считается немедленным удалением из ядра.
+- После защищённого применения TCP может ждать увеличенного интервала повторной
+  передачи. Требуются прежние ID conntrack и новые данные за ограниченные 20 с.
+- Windows может резервировать диапазон портов 55728 через Hyper-V. Loopback-
+  псевдонимы 45728..32 достигают тех же CHR без перезапуска или второй схемы.
 
-Private runtime reports remain outside the publication tree. Repeatable tools:
+Приватные отчёты остаются вне публикации. Повторяемые инструменты:
 
 ```text
 python tests/address_list_acceptance.py --lab-root PRIVATE_ROOT
@@ -126,50 +129,53 @@ python tests/vpn_dynamic_underlay_acceptance.py --kind pppoe --lab-root PRIVATE_
 python tests/default_route_guard_acceptance.py --lab-root PRIVATE_ROOT
 ```
 
-Tests use nonblocking ownership locks and restore their configuration/fixtures.
-Check existing processes and reports before running; never duplicate the fabric
-or a long soak. Do not run live GUI assertions during a test that temporarily
-changes fixture clients.
+Тесты используют неблокирующие блокировки владения и восстанавливают свои
+конфигурации/стенды. Перед запуском проверять существующие процессы и отчёты;
+не дублировать схему или длительный тест. Живые GUI-проверки не выполнять во
+время теста, временно меняющего клиентов стенда.
 
-The captured repeated-handshake failure exposed a test-fixture ACL boundary:
-the server reply followed OSPF's second return leg, but the temporary public
-source prefixes were authorized only on the first WireGuard peer. The fixture
-now authorizes both legitimate return legs and restores all original ACLs.
-The subsequent Rust/two-VPN matrix passed all7cases. Additional sustained
-fault/reapply repeatability still belongs to the final acceptance and soak.
+Зафиксированный повторный отказ handshake выявил границу ACL тестового стенда:
+ответ сервера шёл по второй обратной ветви OSPF, но временные публичные source-
+префиксы разрешались только первым WireGuard peer. Теперь стенд разрешает оба
+законных обратных пути и восстанавливает исходные ACL. Последующая матрица
+Rust/двух VPN прошла все семь случаев. Дополнительная длительная повторяемость
+отказов и повторного применения относится к окончательной приёмке.
 
-Current 0.3.0 container acceptance passes all four protocols (8 checks each),
-plus the two-VPN priority matrix (7), authenticated web/fallback/steady intent
-checks (6) and the short same-configuration resource sample. Plain cold external
-DNS has 5 checks and hostname/custom-port HTTPS DoH has 6. The new DNS module's
-absent-file encrypted rollback has 2 checks. See [current gates](NEXT-NETWORK-PLAN.md)
-for the completed dynamic/lifecycle batch and the remaining single 48–72h final soak.
-Duplicate source addresses require an independently validated VRF layout; VRF
-support is not claimed here. The emulated SSTP fixture does not replace testing
-an operator's TLS/certificate configuration.
+Контейнерная приёмка 0.3.0 прошла четыре протокола по восемь проверок, матрицу
+приоритетов двух VPN — семь, web с аутентификацией/резервом/устойчивым intent —
+шесть, а также короткое измерение ресурсов на одной конфигурации. Холодный внешний
+DNS имеет пять проверок, HTTPS DoH с именем и нестандартным портом — шесть.
+Зашифрованный откат с отсутствующим файлом нового DNS-модуля — две. См.
+[план сетевой приёмки](NEXT-NETWORK-PLAN.md): завершённые динамические/жизненные
+циклы и ожидаемая длительная приёмка. Повторяющиеся source требуют отдельно
+проверенной VRF-схемы; её поддержка здесь не заявлена. Эмулированный SSTP не
+заменяет проверку пользовательских TLS/сертификатов.
 
-## Unified WAN steering (current development branch)
+## Единый выбор WAN в текущей ветке
 
-VPN exits now belong only to `wans`; all selection is in ordinary `policies`.
-The GUI no longer creates a feature switch or an implicit destination policy.
-Legacy configurations remain readable and migrate on SDK/GUI output.
+VPN-выходы входят только в `wans`; весь выбор задаётся обычными `policies`.
+GUI не создаёт переключатель функции или неявную политику назначения. Старые
+конфигурации читаются и преобразуются при выводе SDK/GUI.
 
-Verified after this change:265 Python tests;88 native/Python source/destination
-Address List contract cases;18 VPN native/Python cases;5 offline and4 read-only
-live Windows GUI checks;6 real-CHR checks in
-`tests/unified_wan_acceptance.py`. The CHR checks cover source IP, destination IP,
-source list, both lists with AND, mixed VPN/physical queues, source-list updates,
-per-policy SLA failover/failback with scoped conntrack cleanup, readable per-policy
-jump chains, independent branch/Internet TCP survival, and VPN as the general
-Internet default with physical tunnel transport pinning.
+После этого изменения проверены: 265 Python-тестов, 88 контрактных случаев
+source/destination Address List native/Python, 18 VPN-случаев native/Python,
+пять офлайн- и четыре живые Windows GUI-проверки только чтения, шесть реальных
+CHR-проверок `tests/unified_wan_acceptance.py`. Последние покрывают source IP,
+destination IP, source list, оба списка с И, смешанные очереди VPN/физических
+WAN, обновление source list, SLA-переключение/возврат с точной очисткой conntrack,
+читаемые jump-цепочки политик, сохранение независимых филиальных/интернет-TCP и
+VPN как общий интернет-выход с физической привязкой внешнего транспорта.
 
-Overlay native schema/ownership gates pass 123/24 cases. The final native batch
-passes DHCP (2), PPPoE (2), outer-UDP retirement (4) and lifecycle/complete-package
-rollback (6). The unit suite now has 273 tests including observer safety and path-alias checks.
-Linux passes all tests; Windows skips the five POSIX-only observer cases.
-The full-branch soak, CI and publication remain open.
+Нативные проверки схемы/владения overlay прошли 123/24 случая. Соответствующий
+нативный этап прошёл DHCP — 2, PPPoE — 2, удаление внешнего UDP — 4 и жизненный
+цикл/откат полного пакета — 6. Тогда модульный набор достиг 273 тестов, включая
+безопасность наблюдателя и псевдонимы путей. Linux выполнил все; Windows пропустил
+пять POSIX-проверок наблюдателя. Это исторические количества. Актуальный CI указан
+отдельно; окончательная длительная приёмка и выпуск ожидаются:
+[текущий статус](CURRENT-STATUS.md).
 
-Shared TCP acceptance now binds full original/reply tuples and policy marks,
-requires increasing counters and a single live HTTP request, and checks retired
-paths independently of RouterOS API handle numbering. Focused policy checks use
-`--traffic --policy-only` and keep separate reports from full protocol recovery.
+Общая TCP-приёмка теперь связывает полные original/reply tuples с метками политики,
+требует роста счётчиков и одного живого HTTP-запроса, проверяет удалённые пути
+независимо от нумерации API handles RouterOS. Узкие проверки политики используют
+`--traffic --policy-only` и отдельные отчёты относительно полного восстановления
+протокола.

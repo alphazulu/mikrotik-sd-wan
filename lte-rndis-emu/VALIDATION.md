@@ -1,5 +1,7 @@
 # Проверка на WSL / QEMU / RouterOS — 26 октября 2026
 
+[English](VALIDATION.en.md)
+
 Это результаты выполненных проверок, не обещание поддержки всех LTE-модемов.
 
 | Проверка | Фактический результат |
@@ -20,7 +22,7 @@
 | TCP через LTE | На обоих DUT `/tool/fetch`: status finished, code 200, 1 KiB |
 | APN на CHR | add-default-route=no/use-peer-dns=no отражены в динамическом DHCP-client |
 | Управляемый обрыв на CHR | --gate, registered: 3/3; searching: 0/3; registered: 3/3 + HTTP200 |
-| Unit / socket tests | 21 tests: 20 passed, 1 explicitly skipped privileged TAP test |
+| Unit / socket | 21 тест: 20 PASS, один привилегированный TAP-тест явно пропущен |
 | Изоляция lab.py | Opt-in меняет только edge; команды остальных VM побайтно прежние |
 
 TCP-цель — HTTP-сервер хоста через выделенный виртуальный ISP, не публичный
@@ -83,8 +85,9 @@ RSSI/RSRP/оператор из JSON доступны в HTTP, не доказа
 Профиль AT отдельно в этих live-проверках не применялся. MBIM не реализован.
 `--gate` имитирует потерю данных, не гарантирует аппаратное снятие RUNNING.
 Старый QEMU socket netdev после рестарта сервиса требует отдельного переподключения.
-Это тест LTE-пути, не полный SD-WAN failover/48h soak. Основная SD-WAN работа остаётся
-на паузе владельца, существующие узлы и production не изменялись.
+Это тест LTE-пути, не полный SD-WAN failover/48h soak. На дату этого исторического этапа основная SD-WAN работа была
+на паузе владельца; это не текущее состояние проекта. Существующие узлы и production
+в том тесте не менялись.
 
 
 ## Повторная проверка TAP на отдельной Ubuntu VM — 28 октября 2026
@@ -155,11 +158,11 @@ BABBLE нет, cleanup успешен. Jumbo и VLAN frames этим профи�
 
 ## MTU guard: полная CHR data-path проверка (2026-10-28)
 
-После изменения MTU выполнена отдельная серия на двух новых CHR7.24.5/KVM:
+После изменения MTU выполнена отдельная серия на двух новых CHR 7.24.5/KVM:
 DUT с RNDIS и ISP с DHCP/NAT. Licensed x86 и существующие VM не использовались.
 USB12d1:14db и lte1 RUNNING подтверждены; APN управляет dynamic DHCP client,
 add-default-route=no/use-peer-dns=false. Публичный HTTPS fetch выполнен с LTE
-source и /32 route. Затем40TLSGET/40TLSPOST:6225920/1310720 bytes, сервер проверил
+source и /32 route. Затем 40TLSGET/40TLSPOST:6225920/1310720 bytes, сервер проверил
 тело каждого POST. Локальный TLS fixture использует тестовый самоподписанный
 сертификат с отключённой проверкой сертификата только для этой цели.
 Gate ICMP3/3→0/3→3/3. QEMU не завершался по assert.

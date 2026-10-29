@@ -1,56 +1,57 @@
-# Conntrack expiry during cleanup / Истечение записей connection tracking
+# Истечение записей conntrack во время очистки
 
-An isolated RouterOS 7.24.5 x86 L6 fixture reproduced a deployment failure after
-short TCP/UDP workloads and 7,000 CPS connections. The protected deployment
-reported `no such item (4)` and automatically rolled back. A no-load fixture had
-passed, so that earlier success did not cover this condition.
+Русский | [English](CONNTRACK-EXPIRY.en.md)
 
-Private stage instrumentation narrowed the failure to the policy purge call.
-A separate error handler around its initial
-`/ip/firewall/connection/find where connection-mark=$mark` captured the same
-error before any removal. An earlier last-stage label pointed at mangle; it was
-not sufficient evidence that the mangle operation failed. No production router
-was changed during diagnosis.
+Изолированный x86 L6 с RouterOS 7.24.5 воспроизвёл ошибку установки после коротких
+TCP/UDP-нагрузок и 7000 CPS-соединений. Защищённая установка сообщила
+`no such item (4)` и автоматически откатилась. Стенд без нагрузки ранее проходил
+проверку, но тот успех не покрывал этот случай.
 
-На стенде ошибка возникала уже при получении списка записей, до `remove`.
-Защита только вокруг удаления была недостаточна. Кандидат повторяет получение
-списка ограниченное число раз, сохраняя точные фильтры и передачу остальных ошибок.
+Локальная инструментальная диагностика сузила причину до вызова очистки политики.
+Отдельный обработчик вокруг начального
+`/ip/firewall/connection/find where connection-mark=$mark` поймал ту же ошибку
+до удаления. Прежняя метка последнего этапа указывала на mangle, но не доказывала,
+что ошиблась именно операция mangle. Рабочий роутер при диагностике не менялся.
 
-## Candidate behaviour
+Ошибка возникала при перечислении записей до `remove`; защита только вокруг
+удаления была недостаточна. Кандидат ограниченно повторяет получение списка,
+сохраняя точные селекторы и передачу остальных ошибок.
 
-`sdwanConntrackFind`, loaded from `sdwan-links.rsc`, executes an explicit query
-callback. It passes named mark/socket/endpoint selectors rather than relying on
-the caller's variable scope. Only an error beginning with `no such item` is
-retried: at most five attempts, with 10 ms between attempts. A fifth failure or
-any other error is propagated. An empty successful result returns immediately.
+## Поведение кандидата
 
-Controller, dynamic-link, VPN transport, overlay transport, dataplane retirement
-and rollback cleanup use this helper. Their existing mark/tuple/local-address
-filters are preserved. Removal still tolerates an already vanished ID; permission
-and other failures propagate without another racy full-table existence query.
-This does not disable connection tracking or flush unrelated connections.
+`sdwanConntrackFind` из `sdwan-links.rsc` вызывает явную callback-функцию запроса.
+Именованные селекторы mark/socket/endpoint передаются аргументами, без зависимости
+от области переменных вызывающего кода. Повторяется только ошибка с началом
+`no such item`: максимум пять попыток, по 10 мс между ними. Пятая ошибка или
+любая другая передаётся выше. Успешный пустой результат возвращается сразу.
 
-The generic callback helper is used only by router-local scripts. It adds no
-external controller, API endpoint, scheduler or periodic flash writes.
+Обработчик используется контроллером, динамическими линками, транспортом VPN и
+overlay, выводом dataplane из эксплуатации и откатом. Фильтры mark/tuple/local-address
+сохранены. Удаление допускает уже исчезнувший ID; ошибки прав и прочие ошибки
+передаются выше без дополнительного конкурентного запроса всей таблицы.
+Connection tracking не выключается, чужие соединения не очищаются.
 
-The [RouterOS scripting reference](https://help.mikrotik.com/docs/spaces/ROS/pages/47579229/Scripting)
-documents internal-ID results from `find` and `:onerror` handling. The race above
-is an observed lab result; the documentation does not promise an atomic conntrack
-snapshot.
+Общая callback-функция вызывается только локальными скриптами роутера. Нового
+внешнего контроллера, API endpoint, scheduler или периодических записей flash нет.
 
-## Validation boundary
+[Справочник RouterOS Scripting](https://help.mikrotik.com/docs/spaces/ROS/pages/47579229/Scripting)
+описывает внутренние ID, возвращаемые `find`, и обработку `:onerror`. Описанная
+гонка — наблюдение стенда; документация не обещает атомарный снимок conntrack.
 
-`tests/conntrack_retry_acceptance.rsc` exercises actual RouterOS semantics with
-synthetic callbacks: selectors/results survive retries, two transient failures
-recover on the third attempt, empty results remain empty, permission errors are
-not retried and persistent transient errors stop after five attempts. Run it
-after importing `sdwan-links.rsc` in the same script environment. The dedicated
-fixture ran it through a self-disabling Scheduler, matching controller execution.
+## Границы проверок
 
-These five checks pass on the isolated x86 L6 fixture. A short loaded RSC startup,
-six workloads, WAN failover/failback and pinned-flow preservation also pass.
-The complete native/container/web cycle and broader transport regressions remain
-pending. A passing original 48-hour soak
-would cover its frozen native source only; it cannot approve this native change.
-The comparison gate checks native file hashes for that reason. Container Rust/JS
-source and its exact-source coverage are unchanged by this fix.
+`tests/conntrack_retry_acceptance.rsc` проверяет настоящую семантику RouterOS с
+синтетическими callback: сохранение селекторов/результатов между повторами,
+успех третьей попытки после двух временных ошибок, пустые результаты, отсутствие
+повтора ошибки прав и остановку после пяти временных ошибок. Запускается после
+импорта `sdwan-links.rsc` в том же окружении скрипта. На выделенном стенде он
+исполнялся через самоотключающийся Scheduler, как код контроллера.
+
+Пять проверок прошли на изолированном x86 L6. Короткий запуск RSC под нагрузкой,
+шесть нагрузок, переключение/возврат WAN и сохранение закреплённого потока тоже
+прошли. Последующие нативные транспортные/lifecycle проверки, точный CI-образ и
+принудительный smoke прошли; длительная приёмка текущего кандидата ещё идёт.
+[Текущий статус](CURRENT-STATUS.md) содержит коммиты фактического выполнения и
+отдельно сохранённый старый неуспешный прогон. Замороженный тест не подтверждает
+другие нативные байты; сравнение проверяет их хэши. Это исправление не меняло
+исполняемый Rust/JS-код контейнера.

@@ -1,5 +1,9 @@
 # Приёмка диагностики и расширенных политик
 
+[English](POLICIES-VALIDATION.en.md)
+
+Исторический отчёт: количества файлов/тестов и состояние стенда относятся к этому запуску. Актуальные условия выпуска — [CURRENT-STATUS.md](CURRENT-STATUS.md).
+
 **Итерация завершена: 147 unit, 121 проверка CHR и пять Windows GUI-наборов PASS.** Все 17 последовательных suite завершились exit0; установленные восемь RSC совпадают с frozen исходниками. Итог: `runtime/policies-final-validation.json`; аудит: `runtime/policies-final-clean-state.json`. Дата UTC: 2026-10-24T00:35:31.381990+00:00.
 
 ## Новый функциональный набор

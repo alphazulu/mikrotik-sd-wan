@@ -1,22 +1,24 @@
-# Минимальный локальный SD-WAN controller
+# Минимальный локальный контроллер SD-WAN
 
-Rust/musl, `FROM scratch`, один исполняемый файл, без shell/дистрибутива/БД.
-Конфигурация и пароль — отдельные mounts read-only. Controller работает на
-самом MikroTik; RouterOS измеряет SLA, применяет решения и держит нативный резерв.
+Русский | [English](README.en.md)
 
-[Установка, JSON/GUI, сборка и ограничения](../docs/CONTAINER.md).
-[Приёмка](../docs/CONTAINER-VALIDATION.md).
+Rust/musl, `FROM scratch`, один исполняемый файл без shell, дистрибутива и БД.
+Конфигурация и пароль подключаются отдельными mounts только для чтения.
+Контроллер работает на самом MikroTik; RouterOS измеряет SLA, применяет решения
+и сохраняет нативный резерв.
 
-Из корня проекта: `python3 container-controller/build.py`.
-Архивы, SHA256 и готовые Docker build contexts: `dist/container/`.
-Для запуска не нужен внешний Docker daemon. Физический ARM ещё не проверен.
+Профиль `base` не содержит HTTP. Опциональный `web` содержит встроенную страницу
+и ограниченную историю/события в RAM; модуль выключен по умолчанию. Нет БД,
+журнала HTTP-доступа, CDN и автоматического сохранения истории на диск.
+[Настройка статистики](../docs/STATISTICS.md).
 
-Приёмка завершена; результаты — `runtime/container-final-validation.json`. Рабочий MikroTik не изменялся.
+Из корня проекта: `python3 container-controller/build.py`. Перед сборкой после
+каждого изменения обязательна проверка точного покрытия обоих Rust-профилей,
+`main` и браузерного JS: [команды и требования](../docs/CONTAINER-TESTING.md).
+Архивы, SHA256 и Docker contexts создаются в `dist/container/`; внешний Docker
+daemon не нужен. Для ARM выполнена сборка, аппаратная приёмка ещё предстоит.
 
-
-Optional `web` feature (0.2.0): separate scratch image and entrypoint, bounded RAM
-history/events and embedded read-only UI, runtime disabled by default. No database,
-access logs, CDN or automatic disk checkpoints. See [statistics guide](../docs/STATISTICS.md).
-
-Unit coverage is mandatory on every change, before building either profile.
-See [coverage commands and CI gates](../docs/CONTAINER-TESTING.md).
+Кандидат 0.3.0 и его длительная приёмка описаны в
+[текущем статусе](../docs/CURRENT-STATUS.md). Ранний завершённый этап описан в
+[исторической приёмке](../docs/CONTAINER-VALIDATION.md); он не заменяет новые проверки.
+[Установка, JSON/GUI и ограничения](../docs/CONTAINER.md) · [Сборка](../docs/BUILD.md).
