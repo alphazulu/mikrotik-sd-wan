@@ -13,8 +13,8 @@ WORKLOADS=[{'id':'tcp-forward','kind':'tcp','direction':'forward','offered_bps':
 
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def gate(report):
- if not (report.get('status')=='passed' and report.get('pass') is True and report.get('kind')=='release' and report.get('elapsed_seconds',0)>=172800 and not report.get('failures') and all(report.get('phase_samples',{}).get(x,0)>0 for x in ('native','container'))):
-  raise ValueError('Full original48h acceptance and restoration must finish before DUT comparison')
+ from sdwan_lab.acceptance import completed
+ completed(report)
 
 def build_plan(config,bindings,*,warmup=120,seconds=60,repeats=5):
  if type(warmup) is not int or not 120<=warmup<=600 or type(seconds) is not int or not 60<=seconds<=600 or type(repeats) is not int or not 3<=repeats<=5:raise ValueError('Require warmup120..600, seconds60..600, repeats3..5')
@@ -109,7 +109,7 @@ def prepare(source,config,artifacts,output,lan_interface,lan_source):
  cfg=validate(json.loads(config.read_text()));catalog=json.loads((source/'config/platform-benchmarks.json').read_text());build=json.loads((artifacts/'build-report.json').read_text())
  from tools.container_checks import source_digest
  if source_digest(source)!=catalog['controller_source_sha256']:raise ValueError('Current container source differs from covered artifact source')
- bindings={'routeros':'7.24.5','controller_source_sha256':catalog['controller_source_sha256'],'native_sources':{p.name:sha(p) for p in sorted((source/'native').glob('*.rsc'))},'images':{}}
+ bindings={'lab_sources':{str(p.relative_to(source)):sha(p) for p in sorted((source/'labtools').rglob('*')) if p.is_file() and p.suffix in ('.py','.c')},'sdk_sources':{str(p.relative_to(source)):sha(p) for p in [source/'sdwan.py',*sorted((source/'sdwan').glob('*.py'))]},'routeros':'7.24.5','controller_source_sha256':catalog['controller_source_sha256'],'native_sources':{p.name:sha(p) for p in sorted((source/'native').glob('*.rsc'))},'images':{}}
  for profile in ('base','web'):
   row=next(r for r in build if r['architecture']=='amd64' and r['profile']==profile)
   archive=artifacts/('sdwan-controller-'+('web-' if profile=='web' else '')+'amd64.tar.gz')
@@ -119,7 +119,7 @@ def prepare(source,config,artifacts,output,lan_interface,lan_source):
  for mode in ('routeros','container','container-web'):
   variant=copy.deepcopy(cfg);variant.pop('controller_backend',None);variant.pop('container',None)
   if mode!='routeros':
-   variant['controller_backend']='container';variant['container']=settings(variant);variant['container']['image_file']=bindings['images']['web' if mode=='container-web' else 'base']['file']
+   variant['controller_backend']='container';variant['container']=settings(variant);variant['container']['image_file']=bindings['images']['web' if mode=='container-web' else 'base']['file'];variant['container']['storage']='sdwan-container-'+('web' if mode=='container-web' else 'base')
    subnet=variant['container']['subnet']
    if subnet not in variant['local_networks']:variant['local_networks'].append(subnet)
    if mode=='container-web':variant['container']['telemetry']={'enabled':True,'allowed_sources':[lan_source],'allowed_interfaces':[lan_interface]}
@@ -129,19 +129,30 @@ def prepare(source,config,artifacts,output,lan_interface,lan_source):
 def main():
  p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='command',required=True)
  q=sub.add_parser('prepare');q.add_argument('--source',type=Path,required=True);q.add_argument('--config',type=Path,required=True);q.add_argument('--artifacts',type=Path,required=True);q.add_argument('--output',type=Path,required=True);q.add_argument('--lan-interface',required=True);q.add_argument('--lan-source',required=True)
- q=sub.add_parser('run');q.add_argument('--plan',type=Path,required=True);q.add_argument('--adapter',type=Path,required=True);q.add_argument('--soak-report',type=Path,required=True);q.add_argument('--workspace',type=Path,required=True);q.add_argument('--run-id',required=True);q.add_argument('--recover',action='store_true')
+ q=sub.add_parser('run');q.add_argument('--plan',type=Path,required=True);q.add_argument('--adapter',type=Path,required=True);q.add_argument('--adapter-config',type=Path);q.add_argument('--soak-report',type=Path,required=True);q.add_argument('--soak-attestation',type=Path);q.add_argument('--workspace',type=Path,required=True);q.add_argument('--run-id',required=True);q.add_argument('--recover',action='store_true')
  args=p.parse_args()
  if args.command=='prepare':
   plan=prepare(args.source.resolve(),args.config.resolve(),args.artifacts.resolve(),args.output,args.lan_interface,args.lan_source);print(json.dumps({'prepared':True,'stages':plan['stages'],'measurements':len(plan['stages'])*len(plan['workloads'])*plan['repeats'],'capacity_validated':False}));return 0
- if not args.recover:gate(json.loads(args.soak_report.read_text()))
- spec=importlib.util.spec_from_file_location('comparison_adapter',args.adapter.resolve());adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
+ if not args.recover:
+  report_bytes=args.soak_report.read_bytes();gate(json.loads(report_bytes))
+  if args.soak_attestation is None:raise ValueError('DUT comparison requires --soak-attestation from the original host')
  plan=json.loads(args.plan.read_text());validate_plan(plan)
+ if not args.recover:
+  from sdwan_lab.acceptance import match_attestation
+  match_attestation(json.loads(args.soak_attestation.read_text()),report_bytes,plan)
+ spec=importlib.util.spec_from_file_location('comparison_adapter',args.adapter.resolve());adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
+ if hasattr(adapter,'configure'):
+  if args.adapter_config is None:raise ValueError('This DUT adapter requires --adapter-config')
+  adapter.configure(args.adapter_config.resolve(),args.plan.resolve())
+ elif args.adapter_config is not None:raise ValueError('Adapter does not accept configuration')
  for mode,digest in plan['variant_sha256'].items():
   if sha(args.plan.parent/(mode+'.json'))!=digest:raise ValueError('Mode configuration changed after preparation')
  install_signals()
  with Lease(args.workspace) as lease:
-  run=Run(lease,args.run_id,{'adapter_sha256':sha(args.adapter),'plan_sha256':sha(args.plan)},recover=args.recover)
-  if run.data['config']!={'adapter_sha256':sha(args.adapter),'plan_sha256':sha(args.plan)}:raise ValueError('Recovery requires exact adapter and plan')
+  inputs={'adapter_sha256':sha(args.adapter),'plan_sha256':sha(args.plan)}
+  if args.adapter_config is not None:inputs['adapter_config_sha256']=sha(args.adapter_config)
+  run=Run(lease,args.run_id,inputs,recover=args.recover)
+  if run.data['config']!=inputs:raise ValueError('Recovery requires exact adapter and plan')
   result=execute(plan,adapter,run,recover=args.recover);print(json.dumps({k:result[k] for k in ('pass','status','cleanup_pass')}));return 0 if result.get('recovery_pass',result['pass']) else 1
 
 if __name__=='__main__':raise SystemExit(main())

@@ -12,6 +12,20 @@ ALL_POLICIES={'local','telnet','ssh','ftp','reboot','read','write','policy','tes
 
 def one(value):return value[0] if isinstance(value,list) else value
 
+def api_service_access(api,guest):
+    # RouterOS builds expose the service prefix list under either name. An
+    # omitted legacy field must not hide a present, restrictive canonical one.
+    field='available-from' if 'available-from' in api else 'address'
+    value=api.get(field,'')
+    if not isinstance(value,str):raise ValueError('Native API service access list is unreadable')
+    prefixes=[s.strip() for s in value.split(',') if s.strip()]
+    permitted=not prefixes or any(ipaddress.IPv4Address(guest) in ipaddress.ip_network(n) for n in prefixes)
+    disabled=api.get('disabled')=='true';update={}
+    if disabled:update['disabled']='no'
+    if prefixes and not permitted:update[field]=','.join(prefixes+[guest+'/32'])
+    elif disabled and not prefixes:update[field]=guest+'/32'
+    return permitted and not disabled,update
+
 def paths(config):
     storage=settings(config)['storage']
     return {'storage':storage,'root':storage+'/root','config':storage+'/config',
@@ -62,8 +76,8 @@ def check_ready(router,config,expected):
     if row.get('file')!=settings(config)['image_file'] or int(row.get('memory-max',0))!=settings(config)['memory_max_bytes']:raise ValueError('Prepared container archive/memory limit differs; prepare it before applying')
     if row.get('dns')!=host:raise ValueError('Prepared container requires an explicit local DNS setting even though its API uses numeric IP')
     api=next(x for x in router.call('ip/service') if x.get('name')=='api' and x.get('dynamic')!='true')
-    acl=[x for x in api.get('address','').split(',') if x]
-    if api.get('disabled')=='true' or actual.get('endpoint')!=host+':'+str(api['port']) or (acl and not any(ipaddress.IPv4Address(guest) in ipaddress.ip_network(n) for n in acl)):raise ValueError('Prepared local native API endpoint/ACL changed')
+    permitted,_=api_service_access(api,guest)
+    if not permitted or actual.get('endpoint')!=host+':'+str(api['port']):raise ValueError('Prepared local native API endpoint/ACL changed')
     if not any(x['name']==router.storage_prefix+'sdwan-container-intent.json' for x in router.call('file/print',{'.proplist':'name'},'POST')):raise ValueError('Prepared intent file is missing')
     mounts=[x for x in router.call('container/mounts') if x.get('list')=='sdwan-controller']
     expected_mounts={(runtime['config'],'/config'),(runtime['secrets'],'/secrets')}
@@ -127,10 +141,7 @@ def prepare(router,config,expected,*,timeout=120):
     ensure('user','name',USER,{'group':USER,'address':guest+'/32','disabled':'no','password':password,'comment':PREFIX+'api-user'})
     router.upload(runtime['password'],password)
     api=next(row for row in router.call('ip/service') if row.get('name')=='api' and row.get('dynamic')!='true')
-    allowed=[s for s in api.get('address','').split(',') if s]
-    update={}
-    if api.get('disabled')=='true':update.update(disabled='no',address=guest+'/32')
-    elif allowed and not any(ipaddress.IPv4Address(guest) in ipaddress.ip_network(n) for n in allowed):update['address']=','.join(allowed+[guest+'/32'])
+    _,update=api_service_access(api,guest)
     if update:router.call('ip/service/'+api['.id'],update,'PATCH')
     process={'endpoint':host+':'+str(api.get('port','8728')),'identity':expected,'username':USER,
              'password_file':'/secrets/api-password','mode':'active','poll_ms':cfg['poll_ms'],
@@ -148,7 +159,7 @@ def prepare(router,config,expected,*,timeout=120):
     # Insert managed input/forward rules before existing rules, without moving
     # any existing rule. Exact veth/source constraints do not open WAN services.
     web.provision_sources(router,config)
-    rule_specs=[('ip/firewall/filter',tag,fields) for tag,fields in web.rule_specs(config)]+[
+    rule_specs=[('ip/firewall/filter',tag,fields) for tag,fields in web.rule_specs(config)]+[('ip/firewall/nat',tag,fields) for tag,fields in web.nat_rule_specs(config)]+[
         ('ip/firewall/mangle','heartbeat',dict(chain='prerouting',action='add-src-to-address-list',passthrough='yes',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'udp','dst-port':str(HEARTBEAT_PORT),'address-list':'sdwan-container-live','address-list-timeout':'6s'})),
         ('ip/firewall/filter','api',dict(chain='input',action='accept',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'tcp','dst-port':str(api.get('port','8728'))})),
         ('ip/firewall/filter','heartbeat-drop',dict(chain='input',action='drop',**{'in-interface':BRIDGE,'src-address':guest,'dst-address':host,'protocol':'udp','dst-port':str(HEARTBEAT_PORT)})),
@@ -156,10 +167,10 @@ def prepare(router,config,expected,*,timeout=120):
         ('ip/firewall/filter','no-forward',dict(chain='forward',action='drop',**{'in-interface':BRIDGE})),
         ('ip/firewall/filter','no-forward-to-container',dict(chain='forward',action='drop',**{'out-interface':BRIDGE})),
     ]
-    for menu in ('ip/firewall/mangle','ip/firewall/filter'):
+    for menu in ('ip/firewall/mangle','ip/firewall/filter','ip/firewall/nat'):
         owned={PREFIX+tag for kind,tag,_ in rule_specs if kind==menu}
         for row in router.call(menu):
-            if row.get('comment') in owned or (menu=='ip/firewall/filter' and row.get('comment','').startswith(web.PREFIX)):router.call(menu+'/'+row['.id'],method='DELETE')
+            if row.get('comment') in owned or (menu in ('ip/firewall/filter','ip/firewall/nat') and row.get('comment','').startswith(web.PREFIX)):router.call(menu+'/'+row['.id'],method='DELETE')
         remaining=router.call(menu);before=remaining[0]['.id'] if remaining else None
         for kind,tag,fields in rule_specs:
             if kind!=menu:continue

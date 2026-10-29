@@ -387,11 +387,14 @@
     :local localAddresses ($previous->"local_addresses")
     :if (([:typeof $remoteIP] != "ip") || ($remoteIP = 0.0.0.0) || ([:typeof $localPort] != "num") || ([:typeof $remotePort] != "num") || ($localPort < 1) || ($localPort > 65535) || ($remotePort < 1) || ($remotePort > 65535) || ([:typeof $localAddresses] != "array") || ([:len $localAddresses] = 0) || ([:len $localAddresses] > 1024)) do={ :return 0 }
     :local count 0
-    :foreach cid in=[/ip/firewall/connection/find where protocol=udp and src-port=$localPort and dst-address=$remoteIP and dst-port=$remotePort] do={
-        :onerror expired in={ :local source [:tostr [/ip/firewall/connection/get $cid src-address]]; :if (($localAddresses->$source) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+    :global sdwanConntrackFind
+    :local outbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-port=$localPort and dst-address=$remoteIP and dst-port=$remotePort] }
+    :foreach cid in=[$sdwanConntrackFind query=$outbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
+        :onerror expired in={ :local source [:tostr [/ip/firewall/connection/get $cid src-address]]; :if (($localAddresses->$source) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
     }
-    :foreach cid in=[/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] do={
-        :onerror expired in={ :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]; :if (($localAddresses->$destination) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+    :local inbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] }
+    :foreach cid in=[$sdwanConntrackFind query=$inbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
+        :onerror expired in={ :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]; :if (($localAddresses->$destination) = true) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
     }
     :return $count
 }

@@ -12,7 +12,8 @@ class Router:
                    'interface/bridge/port/print':[],'interface/list/member/print':[],'interface/list/print':[],
                    'interface/pppoe-client/print':[],'interface/vlan/print':[],'disk/print':[],
                    'ip/firewall/filter':[dict(fields,comment='sdwan-container:'+tag) for tag,fields in web.rule_specs(config)]+[{'comment':'sdwan-container:'+s,'chain':'forward','action':'drop'} for s in ('no-forward','no-forward-to-container')],
-                   'ip/firewall/address-list':[{'list':web.CLIENTS,'address':s,'comment':web.PREFIX+'source'} for s in telemetry(config)['allowed_sources']]}
+                   'ip/firewall/address-list':[{'list':web.CLIENTS,'address':s,'comment':web.PREFIX+'source'} for s in telemetry(config)['allowed_sources']],
+                   'ip/firewall/nat':[dict(fields,comment='sdwan-container:'+tag) for tag,fields in web.nat_rule_specs(config)]+[{'chain':'srcnat','action':'masquerade','comment':'existing LAN NAT'}]}
         for rows in self.data.values():
             for n,row in enumerate(rows):row['.id']='*'+str(n)
         self.calls=[]
@@ -26,7 +27,7 @@ class TelemetryTests(unittest.TestCase):
         self.cfg['container']['telemetry']={'enabled':True,'allowed_sources':['192.168.50.0/24'],'allowed_interfaces':['ether5']}
     def test_disabled_default_adds_no_listener_rules_or_process_settings(self):
         self.cfg['container'].pop('telemetry');validate(self.cfg)
-        self.assertFalse(telemetry(self.cfg)['enabled']);self.assertIsNone(web.process_settings(self.cfg));self.assertEqual(web.rule_specs(self.cfg),[])
+        self.assertFalse(telemetry(self.cfg)['enabled']);self.assertIsNone(web.process_settings(self.cfg));self.assertEqual(web.rule_specs(self.cfg),[]);self.assertEqual(web.nat_rule_specs(self.cfg),[])
     def test_explicit_lan_scopes_and_bounded_ram(self):
         validate(self.cfg);process=web.process_settings(self.cfg)
         self.assertEqual(process['listen'],'172.31.255.2:8080');self.assertEqual(process['token_file'],'/secrets/web-token')
@@ -61,6 +62,15 @@ class TelemetryTests(unittest.TestCase):
     def test_tokens_have_fixed_dedicated_shape(self):
         self.assertTrue(web.valid_token('a'*64))
         for token in ('a'*63,'a'*65,'A'*64,'a'*63+'\n','secret',None):self.assertFalse(web.valid_token(token))
+    def test_source_nat_bypass_cannot_be_missing_disabled_or_broader_than_web(self):
+        actual={'telemetry':web.process_settings(self.cfg)}
+        for mutate in [lambda r:r.data['ip/firewall/nat'].pop(0),lambda r:r.data['ip/firewall/nat'][0].update(disabled='true'),lambda r:r.data['ip/firewall/nat'][0].update(**{'dst-address':'0.0.0.0/0'}),lambda r:r.data['ip/firewall/nat'][0].update(**{'out-interface':'ether2'})]:
+            r=Router(self.cfg);mutate(r)
+            with self.assertRaisesRegex(ValueError,'NAT bypass'):web.check_ready(r,self.cfg,actual,'/sdwan-controller-web','token')
+    def test_source_nat_bypass_precedes_broad_masquerade_without_changing_it(self):
+        actual={'telemetry':web.process_settings(self.cfg)};r=Router(self.cfg);foreign=dict(r.data['ip/firewall/nat'][-1]);web.check_ready(r,self.cfg,actual,'/sdwan-controller-web','token');self.assertEqual(r.data['ip/firewall/nat'][-1],foreign)
+        r.data['ip/firewall/nat'].reverse()
+        with self.assertRaisesRegex(ValueError,'precede existing source NAT'):web.check_ready(r,self.cfg,actual,'/sdwan-controller-web','token')
     def test_enabled_swap_is_rejected_without_modifying_global_disks(self):
         r=Router(self.cfg);r.data['disk/print']=[{'slot':'swap-file','swap':'true'}]
         with self.assertRaisesRegex(ValueError,'swap devices'):web.validate_interfaces(r,self.cfg)

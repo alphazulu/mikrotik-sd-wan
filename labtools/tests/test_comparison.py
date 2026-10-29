@@ -23,7 +23,7 @@ class ComparisonTests(unittest.TestCase):
   self.assertTrue(result['pass']);self.assertEqual(adapter.modes,list(STAGES));self.assertEqual(adapter.restores,1);self.assertEqual(len(result['runs']),90);self.assertEqual(len(result['switching']),3);self.assertFalse(result['capacity_validated'])
  def test_source_port_pool_is_required_for_cps_window(self):self.assertTrue(next(w for w in self.plan['workloads'] if w['kind']=='cps')['requires_source_pool'])
  def test_original_soak_must_pass_both_phases(self):
-  d={'status':'passed','pass':True,'kind':'release','elapsed_seconds':172800,'failures':[],'phase_samples':{'native':1,'container':1}};gate(d)
+  d={'status':'passed','pass':True,'kind':'release','elapsed_seconds':172800,'required_seconds':172800,'native_seconds':86400,'pid':99999999,'measured_started_utc':1,'container_started_utc':86401,'finished_utc':172801,'failures':[],'phase_samples':{'native':1,'container':1}};gate(d)
   for patch in [{'status':'running'},{'elapsed_seconds':172799},{'phase_samples':{'native':1,'container':0}},{'failures':['failed']}]:
    with self.assertRaises(ValueError):gate(dict(d,**patch))
  def test_changed_order_and_l2_imix_rejected(self):

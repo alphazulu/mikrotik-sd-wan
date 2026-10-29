@@ -25,8 +25,10 @@ The measured lab used iperf3 3.19.1; calibrate other versions before comparisons
 
 IMIX is direct L2 veth calibration with experimental EtherType0x88b5. Frame sizes
 include FCS; pcap lengths exclude four FCS bytes. It is not routed IP IMIX or
-physical wire PPS. CPS limits each case to20,000 connections; longer tests need
-a validated source address/port pool. TIME_WAIT settings are not changed.
+physical wire PPS. The original short CPS tool limits each case to20,000
+connections. The separate `cps_pool_calibration.py` tool uses a durable source
+address/port pool and multiple destination ports for longer tests through NAT.
+TIME_WAIT settings are not changed.
 
 CPU p95 uses nearest-rank samples every200ms across the whole case, including
 setup/warmup/drain. iperf receiver rates use post-omit measurements. IMIX permits
@@ -134,11 +136,13 @@ The default150 measurements each use120s warmup+60s measurement: at least7.5h,
 plus mode settling and switching. TCP forward/reverse/bidir, UDP64/1472 payload
 and CPS share one workload definition. Long CPS requires a source address pool.
 
-An actual DUT adapter is **not included yet**. The orchestrator is unit tested
-with synthetic observations, and real comparative measurements have not run.
+An owned-QEMU DUT adapter is included. Its short five-stage functional cycle
+passes; the full long comparison and hardware capacity validation have not run.
+See [DUT setup and limits](DUT-ADAPTER.md).
 The reference FakeAdapter in tests must never be presented as benchmark evidence.
 The run command is gated on successful completion/restoration of the original
-48-hour native/container acceptance. Recovery remains available after a failed run.
+48-hour native/container acceptance and a source-bound cleanup attestation.
+Recovery remains available after a failed run.
 
 The adapter implements readonly `preflight`, durable `snapshot`, `set_mode`,
 `measure`, `switching` and verified `restore`. See comparison.py for the contract.

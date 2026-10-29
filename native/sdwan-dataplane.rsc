@@ -15,6 +15,7 @@
 }
 :global sdwanRecordEvent
 :global sdwanConntrackRemoved
+:global sdwanConntrackFind
 :local oldConfig false
 :local classificationChanged false
 :local activeFile [/file/find where name=($dir . "sdwan-active.json")]
@@ -220,9 +221,10 @@
 /ip/firewall/mangle/move [/ip/firewall/mangle/find where comment="sdwan:v1:jump:prerouting"] destination=$out
 # Retire only marks whose policy/WAN was removed from this configuration.
 :local retired 0
-:foreach id in=[/ip/firewall/connection/find where connection-mark~"^sdwan-"] do={
+:local managedQuery do={ :return [/ip/firewall/connection/find where connection-mark~"^sdwan-"] }
+:foreach id in=[$sdwanConntrackFind query=$managedQuery] do={
     :onerror expired in={ :if (($marks->[/ip/firewall/connection/get $id connection-mark]) != true) do={ /ip/firewall/connection/remove $id; :set retired ($retired + 1) } } do={
-        :if ([:len [/ip/firewall/connection/find where .id=$id]] > 0) do={ :error $expired }
+        :if ([:pick $expired 0 12] != "no such item") do={ :error $expired }
     }
 }
 
@@ -233,8 +235,9 @@
     :foreach policy in=($oldConfig->"policies") do={
         :foreach wn in=($policy->"wans") do={
             :local mark ("sdwan-out-" . ($policy->"name") . ":" . $wn)
-            :foreach cid in=[/ip/firewall/connection/find where connection-mark=$mark] do={
-                :onerror expired in={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } do={ :if ([:len [/ip/firewall/connection/find where .id=$cid]] > 0) do={ :error $expired } }
+            :local query do={ :return [/ip/firewall/connection/find where connection-mark=$mark] }
+            :foreach cid in=[$sdwanConntrackFind query=$query mark=$mark] do={
+                :onerror expired in={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
             }
         }
     }
