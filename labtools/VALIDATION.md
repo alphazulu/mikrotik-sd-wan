@@ -1,9 +1,15 @@
 # Lab validation / Проверки стенда — 2026-10-29
 
-This preparation is based on controller commit
-`c3e188070c4d526ebcb3c5235ca86808283c05fe`. The original48-hour controller soak is
-still running; no complete48-hour acceptance is claimed here. These reports cover
-external tools and a separately tested RNDIS candidate, not physical router capacity.
+The original48-hour controller soak, frozen at
+`c3e188070c4d526ebcb3c5235ca86808283c05fe`, **failed after148,171 seconds
+(about41.16 hours)** with an assertion whose location was not captured by the old
+wrapper. Its process has exited; both locks are free. Independent checks confirm
+restoration of all three configurations/native files, healthy overlay and full
+OSPF neighbors, stopped container and removal of temporary soak rules/forwarding.
+The exact failure cause remains unproven. No completed48-hour acceptance is claimed.
+The observations below cover external tools and isolated functional candidates,
+not physical router capacity. Earlier checkpoint counts are retained as history;
+the latest validation is listed at the end.
 
 | Check | Actual result | Scope |
 | --- | --- | --- |
@@ -23,14 +29,15 @@ external tools and a separately tested RNDIS candidate, not physical router capa
 | Registration gate|ICMP3/3→0/3→3/3|Drop/recovery through the same emulated LTE interface|
 | TAP capture|8563 Ethernet frames;8434 IPv4 TCP;0 oversized/badchecksums/uncheckedfragments|IP/TCP checksums checked offline|
 | Capture-inspector negative checks|Corrupted TCP checksum and truncated packet rejected|Synthetic corruption of one captured test packet|
-| Comparison preparation|150 slots generated; gate rejects current running-soak report|No actual four-mode DUT comparison yet|
+| Comparison preparation|150 slots generated; gate rejects the failed/incomplete soak report|No actual four-mode DUT comparison yet|
 
 The consolidated package's unit and replay checks are also run against its final
 publication layout before publishing. CI records the corresponding commit checks.
-Controller runtime source digest remains
+At that checkpoint, controller runtime source digest was
 `0d023c5f0a8d1cecbe47ddb429359dc9f58f676d3036118a99c286acb26775ca`.
-No Rust/JavaScript controller code was changed, so existing exact-source coverage
-is retained rather than attributed to these Python tests.
+Those external-tool changes did not change Rust/JavaScript controller code;
+its coverage is not attributed to these Python tests. The later dashboard changes
+have their own exact-source coverage and image check below.
 
 ## RNDIS trigger and fix scope
 
@@ -168,3 +175,36 @@ Legacy projections can prove the mount with a `/file` disk entry.
 
 These are SDK and synthetic GUI checks, not a physical USB-disk acceptance. No
 RouterOS script, Rust/JavaScript runtime or running container image was changed.
+
+## Dashboard freshness and soak diagnostics
+
+After an HTTP polling failure the dashboard now marks the last WAN/VPN/overlay
+snapshot as stale and clears its displayed age. A fresh reply restores current
+states; missing snapshots and logout clear old values. `none` is displayed as
+"Нет доступного канала". Only one last snapshot is retained in browser RAM;
+poll frequency, API endpoints and persistent-storage behavior are unchanged.
+
+The candidate's covered source SHA256 is
+`7af650e6b49c6aaa925c7be72836b01255a60478be52f5ceafde245d322e0ead`.
+Both Rust profiles and browser JavaScript pass100% executable-line/function
+coverage per runtime file (41 base Rust,75 web Rust,8 JavaScript tests).
+Branch coverage is reported separately, without a100% branch claim. All six
+static scratch images pass artifact inspection.
+
+Six Chromium fixture checks pass with the runtime CSP retained, including HTTP
+failure/recovery, escaped text, stale VPN/overlay, no-WAN and mobile/logout.
+The old UI fails the new HTTP-failure check. Four additional browser checks pass
+using actual four-WAN demo API replies and candidate assets in that browser only;
+the running demo was not changed. Separately, the exact covered amd64 web image
+was imported on an isolated CHR: served HTML/JS/CSS bytes match, the local
+container selects physical/VPN WANs, and12 fresh snapshots over one minute retain
+four WANs and two healthy overlay paths. Cleanup restores the baseline
+configuration with current native scripts; the image remains stopped in the
+disposable child. These are short functional checks, not48-hour acceptance.
+
+The SDK suite now passes382 units, including five new failure-diagnostic cases.
+The soak driver records the assertion location and bounded last web context
+before restoration; a cleanup error has its own context. Existing conditions,
+durations and thresholds are unchanged. This cannot reconstruct the old failed
+assertion or turn that failed report into a pass. Matching long acceptance is
+still required before the150-case comparison or hardware recommendations.
