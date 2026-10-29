@@ -96,7 +96,7 @@ jobs:
         run: |
           python3 container-controller/build.py
           python3 tests/container_artifact_acceptance.py
-          python3 tools/release_checksums.py
+          python3 tools/release_checksums.py --check-catalog
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: scratch-images
