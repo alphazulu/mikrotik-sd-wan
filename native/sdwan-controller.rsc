@@ -47,9 +47,9 @@
     :if ($vpnEnabled) do={
         :global sdwanVPNLoaded
         :global sdwanVPNTick
-        :if (($sdwanVPNLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
+        :if (($sdwanVPNLoaded != 2) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
     }
-    :if ($sdwanDNSLoaded != 2) do={ /import file-name=($dir . "sdwan-dns.rsc") }
+    :if ($sdwanDNSLoaded != 3) do={ /import file-name=($dir . "sdwan-dns.rsc") }
     :local health ($cfg->"health")
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
     :if ([:typeof $sdwanWanDown] != "array") do={ :set sdwanWanDown [:toarray ""] }

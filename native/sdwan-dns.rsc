@@ -104,7 +104,8 @@
         :foreach protocol in={"udp";"tcp"} do={
             :local destinationPorts "53"
             :if ($protocol = "tcp") do={ :set destinationPorts $ports }
-            /ip/firewall/nat/add chain=srcnat src-address-type=local dst-address=($resolverIPText . "/32") protocol=$protocol dst-port=$destinationPorts out-interface=($parent->"interface") action=masquerade comment=$tag place-before=0
+            :local natAnchor [:pick [/ip/firewall/nat/find where dynamic=no] 0]
+            :if ([:len $natAnchor] = 0) do={ /ip/firewall/nat/add chain=srcnat src-address-type=local dst-address=($resolverIPText . "/32") protocol=$protocol dst-port=$destinationPorts out-interface=($parent->"interface") action=masquerade comment=$tag } else={ /ip/firewall/nat/add chain=srcnat src-address-type=local dst-address=($resolverIPText . "/32") protocol=$protocol dst-port=$destinationPorts out-interface=($parent->"interface") action=masquerade comment=$tag place-before=$natAnchor }
             :if ([:len $anchor] = 0) do={ /ip/firewall/mangle/add chain=sdwan-output src-address-type=local dst-address=($resolverIPText . "/32") protocol=$protocol dst-port=$destinationPorts action=mark-routing new-routing-mark=($parent->"probe_table") passthrough=no comment=$tag } else={ /ip/firewall/mangle/add chain=sdwan-output src-address-type=local dst-address=($resolverIPText . "/32") protocol=$protocol dst-port=$destinationPorts action=mark-routing new-routing-mark=($parent->"probe_table") passthrough=no comment=$tag place-before=$anchor }
         }
     }
@@ -112,4 +113,4 @@
     :return [:len $external]
 }
 
-:global sdwanDNSLoaded 2
+:global sdwanDNSLoaded 3

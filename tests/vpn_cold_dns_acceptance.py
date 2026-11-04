@@ -10,6 +10,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path[:0]=[str(ROOT),str(ROOT/'tools
 from vpn_lab import VPNLab
 from vpn_traffic import VPNTraffic
 from sdwan.diagnostics import seconds
+from overlay_readiness import read_forwarding_state
 
 class DNSFixture:
  def __init__(self):
@@ -105,8 +106,18 @@ def main():
   dns.ready.set();a.call('ip/dns/cache/flush',{},'POST');wait(healthy);assert a.status()['selected']['default']=='none' and dns.answers>answers
   routes=a.call('ip/route/print',{'.proplist':'dst-address,active,gateway,distance','.query':['comment=sdwan:v1:dns-bootstrap']},'POST');assert any(x.get('dst-address')==dns_ip+'/32' and x.get('active')=='true' and x.get('distance')=='250' for x in routes)
   record('real uncached DNS restores VPN SLA while the ordinary main policy remains closed')
-  # Inner SLA becoming healthy precedes both sides' OSPF adjacency convergence.
-  wait(lambda:all(sum(x.get('state')=='Full' for x in router.call('routing/ospf/neighbor/print',{'.proplist':'state'},'POST'))==expected for router,expected in ((a,2),(h,4),(traffic.b,2))))
+  # Full neighbors can precede the OSPF return route; the active remote-prefix
+  # blackhole must no longer win before a qualifying client TCP attempt starts.
+  preparation_started=time.monotonic();report['forwarding_preparation']=[]
+  def forwarding_ready():
+   state={}
+   for name,router,expected in (('sitea',a,2),('hub',h,4),('siteb',traffic.b,2)):
+    prefixes=json.loads((v.root/'config'/('overlay-'+name+'.json')).read_text())['overlay']['remote_prefixes']
+    state[name]=read_forwarding_state(router,prefixes,expected)
+   if not report['forwarding_preparation'] or report['forwarding_preparation'][-1]['nodes']!=state:
+    report['forwarding_preparation'].append({'seconds':round(time.monotonic()-preparation_started,3),'nodes':state})
+   return all(row['ready'] for row in state.values())
+  wait(forwarding_ready)
   traffic.prepare();connect_started=time.monotonic();traffic.stream(59410,'sdwan-out-vpn-targets:vpn1',timeout=60);report['cold_tcp_connect_seconds']=round(time.monotonic()-connect_started,3);branch=traffic.stream(59419,'no-mark',target='10.201.1.2');record('uncached real external DNS recovers the preferred VPN through a ready physical WAN while main remains SLA-closed; fresh VPN TCP and branch TCP work')
   packets=guard_packets()
   try:traffic.stream(59411,'sdwan-out-default:wan1',target=dns_ip)

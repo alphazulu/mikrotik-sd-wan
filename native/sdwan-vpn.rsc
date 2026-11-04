@@ -266,12 +266,14 @@
                 /ip/firewall/nat/remove [/ip/firewall/nat/find where comment=$tag]
                 /ip/route/remove [/ip/route/find where comment=$tag]
                 :local anchor [:pick [/ip/firewall/mangle/find where dynamic=no] 0]
+                # Console row numbers are not valid scheduler insertion IDs.
+                :local natAnchor [:pick [/ip/firewall/nat/find where dynamic=no] 0]
                 :local kind ($w->"vpn_type")
                 :if ($kind = "wireguard") do={
                     # A unique source port escapes stale cached socket sources.
                     :if ($live) do={
                         /ip/firewall/mangle/add chain=output protocol=udp src-port=($binding->"listen_port") action=mark-routing new-routing-mark=($parent->"probe_table") passthrough=no comment=$tag place-before=$anchor
-                        /ip/firewall/nat/add chain=srcnat protocol=udp src-port=($binding->"listen_port") out-interface=($parent->"interface") action=masquerade comment=$tag place-before=0
+                        :if ([:len $natAnchor] = 0) do={ /ip/firewall/nat/add chain=srcnat protocol=udp src-port=($binding->"listen_port") out-interface=($parent->"interface") action=masquerade comment=$tag } else={ /ip/firewall/nat/add chain=srcnat protocol=udp src-port=($binding->"listen_port") out-interface=($parent->"interface") action=masquerade comment=$tag place-before=$natAnchor }
                     } else={ /ip/firewall/mangle/add chain=output protocol=udp src-port=($binding->"listen_port") action=drop comment=$tag place-before=$anchor }
                     # Retire only this local socket's managed physical transports.
                     :global sdwanConntrackFind
@@ -303,7 +305,7 @@
                 :if ($live && ($kind != "wireguard")) do={
                     :local ports [:tostr ($binding->"port")]
                     :if ($kind = "l2tp") do={ :set ports "1-65535" }
-                    /ip/firewall/nat/add chain=srcnat dst-address-list=("sdwan-vpn-endpoint-" . $wn) protocol=($binding->"protocol") dst-port=$ports out-interface=($parent->"interface") src-address-type=local action=masquerade comment=$tag place-before=0
+                    :if ([:len $natAnchor] = 0) do={ /ip/firewall/nat/add chain=srcnat dst-address-list=("sdwan-vpn-endpoint-" . $wn) protocol=($binding->"protocol") dst-port=$ports out-interface=($parent->"interface") src-address-type=local action=masquerade comment=$tag } else={ /ip/firewall/nat/add chain=srcnat dst-address-list=("sdwan-vpn-endpoint-" . $wn) protocol=($binding->"protocol") dst-port=$ports out-interface=($parent->"interface") src-address-type=local action=masquerade comment=$tag place-before=$natAnchor }
                 }
                 :if ($live) do={
                     :foreach ip,exists in=$endpoints do={ /ip/route/add dst-address=($ip . "/32") gateway=($parent->"route_gateway") routing-table=main distance=1 comment=$tag }
@@ -354,4 +356,4 @@
         }
     }
 }
-:global sdwanVPNLoaded 1
+:global sdwanVPNLoaded 2
