@@ -2,7 +2,7 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-Snapshot dated **4 November 2026**. The native cold-start correction is tested at
+Snapshot dated **4 November 2026**, after the fresh long run started. The native cold-start correction is tested at
 `4015285b6a4ad651ef3be3cfe55765c14c804868`. Scenario preparation is strengthened in
 `57708b6a5c1aa50e860ee9a16cc018f0ba3fec62`; its executable controller, container
 and SDK code is unchanged from `4015285`. The preceding long run was bound to
@@ -19,10 +19,11 @@ are recorded below. Long acceptance has not passed.
 | UDP retirement fix | 15 targeted old/current-function CHR checks at `b75f56a`; unrelated UDP/TCP retained |
 | Native scenarios | 21 checks: transport 4, DHCP 2, PPPoE 2, lifecycle 6, cold start 3, post-start transport 4; executed at `b75f56a` |
 | Exact CI web image | Four actual CHR checks, HTML/JS/CSS byte equality, 12 fresh snapshots with four WANs and two healthy overlay paths; cleanup verified |
-| Forced switching | 600 seconds at `959495c`, VPN failure/return in both RSC and container; independent restoration verified |
+| Forced switching | 600 seconds at `57708b6`, VPN failure/return in both RSC and container; 57 samples, no failures; independent restoration verified |
 | Catalog | Six exact CI pins; stale catalog rejected; hardware recommendation profiles empty |
 | Cold-start NAT | At `4015285`: six WireGuard/PPP/DNS cases with empty/existing NAT tables; the previous code failed all six |
 | VPN cold start | At `4015285`: three real WireGuard, fresh SLA and both OSPF adjacency recovery checks; independent restoration passed |
+| Cold DNS/DoH | Both strengthened scenarios passed at `57708b6`, including real VPN TCP with main closed, the no-leak guard, recovery and independent restoration |
 
 After the initial native acceptance, commits `959495c` and `37a68a9` changed packaging/catalog
 metadata rather than executable logic. Equivalence is recorded explicitly; a
@@ -40,14 +41,12 @@ Raw local reports remain private because they can contain lab-specific settings.
 
 ## Still pending
 
-- A fresh 48-hour run (24 hours RSC, then 24 hours container) has not started.
-  The preliminary cold-DNS check stopped at client TCP forwarding: VPN SLA was
-  available while the ordinary policy remained closed, but TCP did not connect.
-  Subsequent diagnosis captured `Full` before an active OSPF return route existed.
-  Preparation at `57708b6` requires both adjacencies and active routes to all expected
-  remote prefixes. DNS/DoH and switching gates are running; the old failure remains
-  retained. After those pass, a complete long report and independent restoration
-  are still required.
+- One fresh 48-hour run (24 hours RSC, then 24 hours container) started measuring
+  at **2026-11-04 12:34 UTC**, execution source `57708b6`. DNS/DoH, forced switching
+  and their independent restorations passed before it started. Initial native
+  samples contain no failures; this is not a long PASS. The complete uninterrupted
+  run and final independent restoration remain required. Earlier failed and
+  power-interrupted hours are not counted.
 - The prepared 150-measurement comparison has not executed.
 - Physical ARM/ARM64 capacity is unproven; cross-compilation does not replace
   hardware acceptance. There are no automatic hardware recommendations.
@@ -95,8 +94,8 @@ them as unique tests or substitute them for current release gates.
 
 ## Documentation edition
 
-The RU/EN edition changes Markdown and catalog source pins while retaining executable
-code. Because the container source digest includes README, this edition has its own
+Documentation edition `f17bc57` changed Markdown and catalog pins while retaining
+its executable code. Later native NAT changes retain the same container Rust/JS. Because the container source digest includes README, this edition has its own
 Rust base/web and JS coverage: 100% lines/functions; branches separately. Its digest
 is `0772c14a13574b95c77faef9347bdaeb09e34afb835c73ec19aa0e11ca60db9d`. This does not replace the 7af source digest of the
 executed CHR checks or claim that those checks execute this documentation edition.
