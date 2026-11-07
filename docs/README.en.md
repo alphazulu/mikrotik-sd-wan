@@ -55,6 +55,7 @@ Each guide has a language switch; the links below follow the selected language.
 - [Performance comparison methodology](PERFORMANCE-PLAN.en.md)
 - [CPU attribution and optimization priority](CPU-ATTRIBUTION.en.md)
 - [150 measurements: results and limits](PERFORMANCE-COMPARISON.en.md)
+- [Native-cycle optimization: results and limits](NATIVE-CYCLE-OPTIMIZATION.en.md)
 - [External generators and observers](../labtools/README.en.md)
 - [Isolated x86 DUT](../labtools/DUT-ADAPTER.en.md)
 - [USB LTE emulator overview](../lte-rndis-emu/README.en.md)

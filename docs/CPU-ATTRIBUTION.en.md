@@ -75,8 +75,9 @@ The first optimization prototype should target the common native layer:
    replies, selective conntrack and RSC/container parity. Do not slow SLA sampling
    merely to obtain a favorable CPU number.
 
-These changes have not been applied; the current release and accepted executable
-files are preserved.
+At the time of this study, executable code was unchanged. A later bounded iteration
+implemented fresh snapshots, without a persistent configuration cache; see [results](NATIVE-CYCLE-OPTIMIZATION.en.md).
+The published v0.3.0 tag and its accepted files remain unchanged.
 
 [Plot](benchmarks/cpu-attribution-2026-11-07.svg) ·
 [JSON](benchmarks/cpu-attribution-2026-11-07.json) ·

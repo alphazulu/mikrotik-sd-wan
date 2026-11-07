@@ -9,6 +9,23 @@ continuity and exercise the configurator; they are not an external controller.
 They include synthetic API snapshot replay and real Tk GUI checks; WAN control
 remains on MikroTik.
 
+## Native snapshot helpers
+
+Run from the repository root:
+
+```sh
+mkdir -p build
+python3 labtools/native_policy_snapshot.py --output build/native-snapshot-selftest.rsc
+```
+
+The builder extracts the actual helpers from `native/sdwan-controller.rsc` and adds eight
+RAM-only case groups. On a disposable lab RouterOS, put the generated source into a
+temporary `/system/script` and run it from a one-shot, self-disabling scheduler with
+`read,write,policy,test,sensitive` permissions. Read `sdwanSnapshotSelfTestJSON` from
+`/system/script/environment`; require `pass=true` and all eight checks. Remove the
+temporary script, scheduler and result afterward. This checks helper logic, not real
+traffic or a full installation. [Measured scope](../docs/NATIVE-CYCLE-OPTIMIZATION.en.md).
+
 ## Quick start
 
 Python3.12+, standard library. Run commands from `labtools/`:

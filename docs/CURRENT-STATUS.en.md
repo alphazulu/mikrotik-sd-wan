@@ -2,6 +2,12 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
+**Main after v0.3.0:** the common native cycle now uses fresh per-tick route/classifier snapshots.
+Four new load windows measured mean RouterOS CPU **88.76% → 68.62%**, with SLAs enabled. Switching,
+DHCP, container fallback and CHR helper compatibility passed bounded checks. [Results, provenance
+and DHCP convergence limit](NATIVE-CYCLE-OPTIMIZATION.en.md). The 48-hour and 150-run results below
+belong to the original v0.3.0 source; they do not certify this new native code.
+
 Snapshot dated **7 November 2026**, after verifying completed 48-hour acceptance. The native cold-start correction is tested at
 `4015285b6a4ad651ef3be3cfe55765c14c804868`. Scenario preparation is strengthened in
 `57708b6a5c1aa50e860ee9a16cc018f0ba3fec62`; its executable controller, container

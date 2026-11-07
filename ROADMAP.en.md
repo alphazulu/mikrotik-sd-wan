@@ -17,11 +17,11 @@ The items below describe capabilities and next steps, not a release readiness cl
 - Optional RAM statistics and web, two image profiles for three architectures.
 - CI, mandatory container coverage and exact CI-image catalog validation.
 
-## Verified for the current candidate
+## Verified for the original v0.3.0 source
 
 - Uninterrupted 48 hours at `57708b6`: 24 hours RSC and 24 hours container, no failures.
 - Independent configuration/file, OSPF/route and resource restoration.
-- Consistent 65 RU/EN pairs; links and public materials checked.
+- RU/EN documentation pairs, links and public materials checked.
 
 ## Acceptance of 0.3.0
 
@@ -35,8 +35,9 @@ must not be filled with unverified extrapolations from virtual measurements.
 ## CPU attribution after 0.3.0
 
 14 diagnostic windows are complete; [findings and limits](docs/CPU-ATTRIBUTION.en.md).
-The next prototype targets the common native cycle while preserving SLAs.
-Executable controller code is unchanged so far.
+The common native cycle now uses fresh managed-object snapshots, preserving SLAs.
+[Four load windows and bounded switching/DHCP/CHR regression](docs/NATIVE-CYCLE-OPTIMIZATION.en.md) passed.
+New RSC code has not repeated the original 48-hour or 150-run acceptance.
 
 ## Subsequent iterations
 
