@@ -21,11 +21,11 @@ The items below describe capabilities and next steps, not a release readiness cl
 
 - Uninterrupted 48 hours at `57708b6`: 24 hours RSC and 24 hours container, no failures.
 - Independent configuration/file, OSPF/route and resource restoration.
-- Consistent 64 RU/EN pairs; links and public materials checked.
+- Consistent 65 RU/EN pairs; links and public materials checked.
 
 ## Before completing this release
 
-1. Execute the prepared 150-measurement comparison with fresh calibration.
+1. The 150/150 comparison with fresh calibration is complete; [results](docs/PERFORMANCE-COMPARISON.en.md).
 2. Record results/limits and audit the final source/assets.
 3. Prepare the release after its checks and verify image downloads.
 

@@ -9,7 +9,7 @@ and SDK code is unchanged from `4015285`. The preceding long run was bound to
 `37a68a943d16ef597da48fabda217e5e61e5226e`. The public edition may have another
 commit because it includes the RU/EN documentation. The actual execution commits
 are recorded below. Uninterrupted long acceptance passed; the performance
-comparison and release remain incomplete.
+comparison completed with 150/150 PASS. Results concern the virtual lab.
 
 ## Confirmed
 
@@ -67,17 +67,19 @@ maximum container memory of 864,256 bytes (844 KiB). This scenario reached
 were unavailable, so this report does not establish zero flash writes.
 These observations concern the virtual lab, not physical ARM/ARM64 capacity.
 
-## Still pending
+## Load comparison and limits
 
-- Fresh calibration passed: 15 TCP/UDP measurements and three long CPS cases,
-  with independently verified cleanup. The full five-stage, 150-measurement
-  comparison started on **7 November at 02:51 UTC**, including DUT preparation.
-  The initial baseline is running; success of the whole comparison is not yet
-  claimed. Each measurement includes 120 seconds warmup and 60 seconds measurement.
-- Physical ARM/ARM64 capacity is unproven; cross-compilation does not replace
-  hardware acceptance. There are no automatic hardware recommendations.
-- Candidate 0.3.0 is not a published release. Previous Releases and their reports
-  describe their own versions and do not establish acceptance of this candidate.
+All 150 measurements and three failure/recovery checks completed on 7 November.
+Pinned flows were preserved; independent checks of cleanup, processes, source
+and parent disks passed. Baseline drift was no greater than 0.000342%.
+Five stages × six workloads × five repeats, each with 120 s warmup and 60 s
+measurement. [Tables, JSON/CSV and limits](PERFORMANCE-COMPARISON.en.md).
+
+This is a fixed offered load on x86 L6 with 1 vCPU/1024 MiB, not peak capacity.
+At 1000 CPS, SD-WAN mean CPU is 87–92%; UDP p95 reaches 100% in baseline too.
+Physical ARM/ARM64 performance remains unproven, so automatic hardware
+recommendations are absent. Archive availability is checked for the exact tag
+in [Releases](https://github.com/alphazulu/mikrotik-sd-wan/releases).
 
 ## Retained failures
 

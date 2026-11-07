@@ -10,12 +10,12 @@ installation.
 
 ## Project status
 
-This branch develops candidate **0.3.0**. The web interface, VPN WANs and branch
-overlay are implemented and have passed targeted checks. Uninterrupted 48-hour
-RSC/container acceptance passed; the performance comparison remains incomplete.
-Release 0.3.0 has not been published. The
-image catalog contains its future URLs, so automatic downloads can return HTTP
-404 until publication.
+Implementation **0.3.0** includes the web interface, VPN WANs and branch overlay.
+Uninterrupted 48-hour RSC/container acceptance and the separate **150/150-measurement**
+comparison passed, with independent lab-restoration checks.
+[Results and limits](docs/PERFORMANCE-COMPARISON.en.md) concern virtual x86.
+Container archives come from [Releases](https://github.com/alphazulu/mikrotik-sd-wan/releases)
+with the exact catalog version and SHA256; other versions are not substitutes.
 
 [Current validation status](docs/CURRENT-STATUS.en.md) is separate from historical
 reports and the [roadmap](ROADMAP.en.md). A short passing check does not establish

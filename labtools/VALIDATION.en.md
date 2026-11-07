@@ -2,6 +2,11 @@
 
 [Русский](VALIDATION.md)
 
+Current comparison, 7 November: **150/150 PASS**, three switching checks and
+independent cleanup PASS. [Results](../docs/PERFORMANCE-COMPARISON.en.md).
+Earlier statements of an incomplete comparison below refer to their milestones.
+
+
 The original 48-hour controller soak, frozen at
 `c3e188070c4d526ebcb3c5235ca86808283c05fe`, **failed after148,171 seconds
 (about41.16 hours)** with an assertion whose location was not captured by the old
