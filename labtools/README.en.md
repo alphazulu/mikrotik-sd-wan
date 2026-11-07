@@ -160,6 +160,33 @@ the comparison. Switching requires the continuity observer and preservation of a
 flow pinned to the unaffected WAN. No automatic hardware profile is produced;
 `capacity_validated` remains false.
 
+## Comparison summary
+
+After a complete passing run, produce a summary without contacting the router:
+
+```sh
+python3 comparison_report.py --report /private/comparison/runs/run-001/report.json \
+  --plan /private/prepared/comparison-plan.json --output /private/summary-001
+```
+
+All 150 distinct measurements, three passing switching checks, acceptable baseline
+drift and verified restoration are required. Incomplete, failed and simulation-marked
+reports are rejected; an existing output directory is never overwritten. The tool
+checks the report/plan binding; it is neither a signature nor new acceptance.
+
+Outputs are `summary.ru.md`, `summary.en.md`, `summary.json` and `measurements.csv`.
+Rates are five-repeat medians; both bidir directions are retained separately and
+their sum appears in the table. CPU mean is the median of means, CPU p95 the
+maximum of five p95 values; RAM shows minimum DUT free memory and maximum sampled
+container memory. Unavailable write counters remain unknown, and echo gaps are
+not labeled exact outage times. DUT allocation and offered load are explicit;
+no hardware recommendation profile is generated.
+
+Only selected numeric fields, fixed scenario names and input/source/image hashes
+are copied into the summary. Private backing-disk paths, configuration contents
+and arbitrary raw-report fields are excluded. Actual content and the scope of
+conclusions still require review before publication.
+
 ## Tests
 
 ```sh
