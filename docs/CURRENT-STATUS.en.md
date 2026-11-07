@@ -69,8 +69,11 @@ These observations concern the virtual lab, not physical ARM/ARM64 capacity.
 
 ## Still pending
 
-- The 150-measurement, five-stage comparison is prepared; fresh TCP/UDP and CPS
-  calibration is running ahead of it. Comparison success is not yet claimed.
+- Fresh calibration passed: 15 TCP/UDP measurements and three long CPS cases,
+  with independently verified cleanup. The full five-stage, 150-measurement
+  comparison started on **7 November at 02:51 UTC**, including DUT preparation.
+  The initial baseline is running; success of the whole comparison is not yet
+  claimed. Each measurement includes 120 seconds warmup and 60 seconds measurement.
 - Physical ARM/ARM64 capacity is unproven; cross-compilation does not replace
   hardware acceptance. There are no automatic hardware recommendations.
 - Candidate 0.3.0 is not a published release. Previous Releases and their reports
