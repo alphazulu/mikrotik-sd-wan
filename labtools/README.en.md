@@ -223,3 +223,22 @@ sudo env PYTHONPATH=. python3 namespace_tap_integration.py \
 This privileged check relays frames between two namespace TAPs and verifies
 three ICMP replies and cleanup. It is a transport fixture check, not a DUT
 capacity or SD-WAN failover measurement.
+
+## CPU Profiler frame analysis
+
+`cpu_profile.summarize_profile(record)` processes a saved `/tool/profile` API
+reply with `.section`, `name` and `usage` fields. The format was verified on
+RouterOS 7.24.5. Records require `pass=true`, `raw`, `started_monotonic` and
+`finished_monotonic`. Initial total-only frames are skipped until classifier
+data arrive; later idle frames are retained. An absent active classifier is zero
+within a complete frame. Unknown/invalid numbers, missing frames and incomplete
+records are rejected. The function returns per-classifier mean/p95/max and the
+number of frames used. It validates the format; measurement provenance and
+profiler perturbation require separate verification.
+
+`/system/resource` CPU, profiler classifiers and whole-QEMU CPU use different
+accounting. They cannot be added or substituted. From the repository root:
+
+```sh
+python3 -m unittest discover -s labtools/tests -p test_cpu_profile.py -v
+```
