@@ -65,6 +65,14 @@ def rule_specs(config):
         specs.append(('web-reply-'+str(index),dict(chain='forward',action='accept',**{'in-interface':BRIDGE,'out-interface':interface,'src-address':guest,'dst-address-list':CLIENTS,'protocol':'tcp','src-port':str(cfg['port']),'connection-state':'established'})))
     return specs
 
+def nat_rule_specs(config):
+    cfg=telemetry(config)
+    if not cfg['enabled']:return []
+    _,_,guest=addresses(config)
+    # Keep the client address visible to the web server's own source ACL,
+    # including when an existing broad masquerade rule covers the LAN.
+    return [('web-no-srcnat',dict(chain='srcnat',action='accept',**{'out-interface':BRIDGE,'src-address-list':CLIENTS,'dst-address':guest,'protocol':'tcp','dst-port':str(cfg['port'])}))]
+
 def provision_sources(router,config):
     for row in router.call('ip/firewall/address-list'):
         if row.get('comment','').startswith(PREFIX) and row.get('list')==CLIENTS:router.call('ip/firewall/address-list/'+row['.id'],method='DELETE')
@@ -96,3 +104,12 @@ def check_ready(router,config,actual,entrypoint,token_path):
         if wan and accepts and max(wan)>=min(accepts):raise ValueError('Web WAN drops must precede LAN accepts')
         unmanaged=[positions[r['.id']] for r in all_rules if r.get('chain')=='forward' and r.get('disabled')!='true' and r.get('dynamic')!='true' and not r.get('comment','').startswith('sdwan-container:')]
         if unmanaged and max(drops)>=min(unmanaged):raise ValueError('Container isolation must precede existing forward rules')
+    all_nat=router.call('ip/firewall/nat');nat=[r for r in all_nat if r.get('comment','').startswith(PREFIX)];nat_specs=nat_rule_specs(config)
+    if len(nat)!=len(nat_specs):raise ValueError('Prepared web source NAT bypass differs')
+    for tag,fields in nat_specs:
+        matches=[r for r in nat if r.get('comment')=='sdwan-container:'+tag]
+        if len(matches)!=1 or matches[0].get('disabled')=='true' or any(str(matches[0].get(k,''))!=str(v) for k,v in fields.items()):raise ValueError('Prepared web source NAT bypass scope differs')
+    if nat_specs:
+        positions={r['.id']:i for i,r in enumerate(all_nat)}
+        foreign=[positions[r['.id']] for r in all_nat if r.get('chain')=='srcnat' and r.get('disabled')!='true' and not r.get('comment','').startswith(('sdwan-container:','sdwan:v1:'))]
+        if foreign and max(positions[r['.id']] for r in nat)>=min(foreign):raise ValueError('Web source NAT bypass must precede existing source NAT')

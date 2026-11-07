@@ -3,15 +3,15 @@ import copy
 from datetime import datetime,timezone
 import ipaddress
 import json
-from .wan import inferred_kind,adopted_dynamic_route
+from .wan import inferred_kind,adopted_dynamic_route,interface_route
 from .lte import apn_binding,profile_names
 
 FIELDS={
  'interface':'name,type,running,disabled,comment,default-name,mac-address',
  'ip/address':'.id,address,network,interface,actual-interface,disabled,dynamic,invalid',
- 'ip/route':'.id,dst-address,gateway,immediate-gw,routing-table,distance,comment,disabled,dynamic,active,static,dhcp,modem,vrf-interface',
+ 'ip/route':'.id,dst-address,gateway,immediate-gw,routing-table,distance,comment,disabled,dynamic,active,static,dhcp,modem,vpn,vrf-interface',
  'routing/rule':'.id,src-address,dst-address,table,action,disabled,comment',
- 'ip/dhcp-client':'.id,interface,status,address,gateway,disabled,add-default-route,default-route-tables',
+ 'ip/dhcp-client':'.id,interface,status,address,gateway,disabled,dynamic,add-default-route,default-route-tables',
  'interface/pppoe-client':'.id,name,interface,disabled,running,add-default-route',
  'interface/lte':'.id,name,disabled,running,apn-profiles,apn-profile',
  'interface/lte/apn':'.id,name,add-default-route,default-route-distance,ip-type,passthrough-interface,use-peer-dns,use-network-apn',
@@ -19,7 +19,7 @@ FIELDS={
  'interface/list/member':'interface,list,disabled',
  'ip/firewall/nat':'.id,chain,action,out-interface,out-interface-list,disabled',
  'ip/firewall/filter':'.id,chain,action,disabled,dynamic',
- 'ip/firewall/mangle':'.id,chain,action,new-routing-mark,disabled,comment',
+ 'ip/firewall/mangle':'.id,chain,action,new-routing-mark,new-connection-mark,connection-mark,src-address,dst-address,src-address-list,dst-address-list,in-interface,out-interface,protocol,src-port,dst-port,passthrough,jump-target,route-dst,disabled,comment',
  'ip/firewall/raw':'.id,chain,action,disabled',
 }
 
@@ -34,9 +34,11 @@ def discover(router,progress=None):
     """Never invokes a mutation and never requests PPPoE passwords or user lists."""
     inventory={'captured_utc':datetime.now(timezone.utc).isoformat(),'warnings':[],'unreadable_paths':[]}
     for key,path in [('identity','system/identity'),('resource','system/resource')]:
-        value=rows(router.call(path+'/print',{'.proplist':'name' if key=='identity' else 'version,board-name,architecture-name,uptime'},'POST'))
+        value=rows(router.call(path+'/print',{'.proplist':'name' if key=='identity' else 'version,board-name,architecture-name,platform,cpu,cpu-count,cpu-frequency,cpu-load,total-memory,free-memory,total-hdd-space,free-hdd-space,uptime'},'POST'))
         if not value:raise ValueError('Router returned no '+key)
         inventory[key]=value[0]
+    from .platform_support import collect as collect_platform
+    inventory['platform_support']=collect_platform(router)
     for path,fields in FIELDS.items():
         if progress:progress(path)
         try:inventory[path]=rows(router.call(path+'/print',{'.proplist':fields},'POST'))
@@ -53,6 +55,17 @@ def discover(router,progress=None):
             inventory['active_config']=validate(json.loads(contents))
     except (RuntimeError,ValueError,KeyError) as e:
         inventory['active_config_error']=str(e);inventory['warnings'].append('Cannot import active SD-WAN configuration: '+str(e))
+    from .vpn_egress import inventory as vpn_inventory
+    try:
+        inventory['vpn_interfaces']=vpn_inventory(router)
+        inventory['warnings'].extend(v['interface']+': '+v['unsupported_reason'] for v in inventory['vpn_interfaces'] if v.get('unsupported_reason'))
+    except (RuntimeError,ValueError,KeyError,TypeError) as error:
+        inventory['vpn_interfaces']=[];inventory['warnings'].append('VPN inventory unavailable: '+str(error))
+    from .address_lists import snapshot
+    try:
+        lists=snapshot(router);inventory['address_list_names']=sorted(lists) if lists is not None else []
+        if lists is None:inventory['warnings'].append('Address List inventory exceeds bounded API budget or is unavailable; enter its name manually.')
+    except (RuntimeError,ValueError,KeyError,TypeError):inventory['address_list_names']=[]
     inventory['candidates']=candidates(inventory)
     return inventory
 
@@ -124,7 +137,9 @@ def candidates(inventory):
         name=iface['name'];addresses=[];networks=[];dynamic=False
         kind_error=''
         try:kind=inferred_kind(name,inventory.get('ip/dhcp-client',[]),inventory.get('interface/pppoe-client',[]),inventory.get('interface/lte',[]))
-        except ValueError as error:kind='static';kind_error=str(error)
+        except ValueError as error:
+            kind='lte' if any(row.get('name')==name for row in inventory.get('interface/lte',[])) else 'static'
+            kind_error=str(error)
         if known.get(name,{}).get('kind')=='dhcp' and any(row.get('interface')==name for row in inventory.get('ip/dhcp-client',[])):kind='dhcp'
         apn_profile=''
         if kind=='lte':
@@ -133,7 +148,9 @@ def candidates(inventory):
             if len(profiles)==1:apn_profile=profiles[0]
             if len(profiles)!=1:kind_error='LTE требует ровно один APN профиль'
             if 'interface/lte/apn' in inventory.get('unreadable_paths',[]):kind_error='Нет доступа к APN профилям LTE'
-        elif iface.get('type','').lower()=='lte':kind_error='Не удалось прочитать параметры native LTE; переподключитесь с правами чтения LTE/APN'
+        elif iface.get('type','').lower()=='lte' and not kind_error:
+            details=next((warning for warning in inventory.get('warnings',[]) if warning.startswith('interface/lte:')),'Меню /interface/lte не вернуло запись этого интерфейса.')
+            kind_error='Не удалось получить сведения LTE: '+details+' Проверьте доступность меню LTE и права пользователя API.'
         peers=[]
         for a in inventory.get('ip/address',[]):
             if a.get('interface')!=name or truth(a.get('disabled')) or truth(a.get('invalid')):continue
@@ -167,6 +184,9 @@ def candidates(inventory):
         if kind=='pppoe':gateways=list(dict.fromkeys(peers+gateways))
         if kind=='lte':gateways=[name]
         k=known.get(name,{})
+        if k.get('kind')=='vpn' or any(v['interface']==name for v in inventory.get('vpn_interfaces',[])):
+            kind='vpn'
+            kind_error='Добавьте VPN отдельно: «VPN по Address List» на шаге 3; общая Internet-политика остаётся на физических WAN.'
         reason=[]
         if k:reason.append('текущий SD-WAN')
         if name in wanlist:reason.append('список WAN')
@@ -180,25 +200,30 @@ def candidates(inventory):
           'kind':kind,'kind_error':kind_error,'apn_profile':apn_profile,'addresses':addresses,'networks':[str(net) for net in networks],'gateways':gateways,'address':(k.get('address') if kind=='static' else '') or (addresses[0] if len(addresses)==1 else ''),
           'gateway':(k.get('gateway') if kind=='static' else '') or (gateways[0] if len(gateways)==1 else ''),'name':k.get('name',''),
           'priority':next((i+1 for p in active.get('policies',[]) if not p.get('source') for i,w in enumerate(p['wans']) if w==k.get('name')),min(distances,default=255)),
-          'suggested':bool(k or name in wanlist or gateways or kind in ('dhcp','pppoe','lte')),'bridge':members.get(name,''),
+          'suggested':not (k.get('kind')=='vpn' or any(v['interface']==name for v in inventory.get('vpn_interfaces',[]))) and bool(k or name in wanlist or gateways or kind in ('dhcp','pppoe','lte')),'bridge':members.get(name,''),
           'dynamic':dynamic or name in dhcp or name in ppp or kind=='lte','reason':'; '.join(reason),'comment':iface.get('comment','')})
     return result
 
 
-def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None):
+def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None,allow_foreign_mangle=False):
     """Generate from explicit user-selected interfaces; never guess a missing gateway."""
     from .config import validate
     unknown=set(inventory.get('unreadable_paths',[])) & {'interface/pppoe-client','ip/firewall/filter','ip/firewall/mangle','ip/firewall/raw'}
     if unknown:raise ValueError('Недостаточно данных для проверки конфликтов. Разрешите чтение и подключитесь заново: '+', '.join(sorted(unknown)))
     if inventory.get('active_config_error') and any(r.get('comment','').startswith('sdwan:') for r in inventory.get('ip/route',[])):raise ValueError('Не удалось прочитать действующий SD-WAN. Исправьте права/формат перед созданием новой конфигурации.')
     selected=validate_wan_choices(inventory,choices)
-    active=inventory.get('active_config');base=copy.deepcopy(active) if active else {
+    active=inventory.get('active_config')
+    if active:
+        from .vpn_egress import canonical
+        active=canonical(active)
+    base=copy.deepcopy(active) if active else {
       'schema_version':1,'revision':'discovered','health':{'interval_seconds':5,'timeout_ms':1000,'packet_count':20,'packet_interval_ms':50,'quorum':2,'fail_windows':3,'recover_windows':6,'hold_down_seconds':60,'stale_seconds':20},
       'sla_profiles':{'default':{'rtt_ms':150,'jitter_ms':30,'loss_percent':2},'voice':{'rtt_ms':80,'jitter_ms':15,'loss_percent':1}},
       'wans':[],'local_networks':[],'policies':[],'takeover_route_comments':[],'takeover_rule':{'src-address':'','table':''}}
     by_interface={x['interface']:x for x in inventory['candidates']};old={w['interface']:w for w in (active or {}).get('wans',[])}
     wans=[];used=set();wan_networks=[]
-    reserved={old[x['interface']]['name'] for x in selected if x['interface'] in old}
+    retained_vpns=copy.deepcopy([w for w in (active or {}).get('wans',[]) if w.get('kind')=='vpn']) if keep_policies else []
+    reserved={old[x['interface']]['name'] for x in selected if x['interface'] in old}|{w['name'] for w in retained_vpns}
     for index,choice in enumerate(selected,1):
         name=choice['interface'];candidate=by_interface.get(name)
         ip=choice['address'];gw=choice['gateway'];kind=choice['kind']
@@ -226,19 +251,27 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
         if not w.get('probes') or not w.get('icmp_target'):raise ValueError('Задайте ICMP-цель и контрольные TCP/HTTP/DNS цели на шаге 2.')
         wans.append(w)
     order=[w['name'] for w in wans];selected_ifaces={w['interface'] for w in wans}
+    physical_names=set(order)
+    for w in retained_vpns:
+        if not set(w['underlays'])<=physical_names:raise ValueError('VPN '+w['name']+' использует исключённый физический WAN; включите его либо измените underlays VPN.')
+    wans.extend(retained_vpns);selected_ifaces.update(w['interface'] for w in retained_vpns)
     base['wans']=wans
+    if not retained_vpns:base.pop('vpn_egress',None)
     defaults=next((copy.deepcopy(p) for p in base['policies'] if not p.get('source')),{'name':'default','source':'','table':'main','profile':'default','mode':'prefer','allow_degraded':False})
-    defaults.update(wans=order,mode='prefer')
+    if retained_vpns and any(name in {w['name'] for w in retained_vpns} for name in defaults.get('wans',[])):
+        if not set(defaults['wans'])<={w['name'] for w in wans}:raise ValueError('Общая политика использует исключённый WAN; исправьте её порядок перед генерацией.')
+    else:defaults.update(wans=order,mode='prefer')
     policies=[defaults]
     if keep_policies and active:
         for p in active['policies']:
             if not p['source']:continue
-            if not set(p['wans'])<=set(order):raise ValueError(f'Политика {p["name"]} использует исключённый WAN. Снимите «Сохранить политики клиентов» либо включите все её WAN.')
+            if not set(p['wans'])<={w['name'] for w in wans}:raise ValueError(f'Политика {p["name"]} использует исключённый WAN. Снимите «Сохранить политики клиентов» либо включите все её WAN.')
             policies.append(copy.deepcopy(p))
     base['policies']=policies
     networks=[]
+    vpn_ifaces={v['interface'] for v in inventory.get('vpn_interfaces',[])}|{w['interface'] for w in (active or {}).get('wans',[]) if w.get('kind')=='vpn'}
     for a in inventory['ip/address']:
-        if a.get('interface') in selected_ifaces or truth(a.get('disabled')) or truth(a.get('invalid')):continue
+        if a.get('interface') in selected_ifaces|vpn_ifaces or truth(a.get('disabled')) or truth(a.get('invalid')):continue
         try:
             net=ipaddress.IPv4Interface(a['address']).network
             if not net.is_loopback and str(net) not in networks:networks.append(str(net))
@@ -246,12 +279,20 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
     base['local_networks']=networks
     actual_routes={r['.id']:r for r in inventory['ip/route']}
     takeovers=[copy.deepcopy(s) for s in base.get('takeover_routes',[]) if s['.id'] in actual_routes and all(actual_routes[s['.id']].get(k,'main' if k=='routing-table' else '')==s[k] for k in ('gateway','dst-address','routing-table'))]
+    inventory['unselected_vpn_defaults']=any(r.get('dst-address') in ('0.0.0.0/0','0.0.0.0/1','128.0.0.0/1') and r.get('routing-table','main')=='main' and not truth(r.get('disabled')) and any(interface_route(r,iface) for iface in vpn_ifaces) and not any(interface_route(r,w['interface']) for w in retained_vpns) for r in inventory['ip/route'])
     gateways={gateway for choice in selected for gateway in by_interface[choice['interface']]['gateways'] if gateway_ip(gateway)}
     gateways.update(w['gateway'] for w in wans if w.get('kind','static')=='static')
     for r in inventory['ip/route']:
         if r.get('dst-address')!='0.0.0.0/0' or r.get('routing-table','main')!='main' or r.get('comment','').startswith('sdwan:'):continue
+        if any(interface_route(r,iface) for iface in vpn_ifaces) and not any(interface_route(r,w['interface']) for w in retained_vpns):
+            inventory['unselected_vpn_defaults']=True
+            continue # safe draft only; preflight still rejects unadopted routes
         if truth(r.get('dynamic')):
             if not truth(r.get('disabled')) and not adopted_dynamic_route(r,wans):raise ValueError('Активный динамический default route не принадлежит выбранному DHCP/PPPoE/LTE WAN.')
+            continue
+        if any(interface_route(r,w['interface']) for w in retained_vpns):
+            selector={'.id':r['.id'],'gateway':r.get('gateway',''),'dst-address':'0.0.0.0/0','routing-table':'main'}
+            takeovers=[x for x in takeovers if x['.id']!=r['.id']];takeovers.append(selector)
             continue
         resolved=r.get('immediate-gw','').split(',')
         matching_resolved=bool(resolved[0]) and all(any(entry==w['gateway']+'%'+w['interface'] for w in wans if w.get('kind','static')=='static') for entry in resolved)
@@ -268,7 +309,7 @@ def generate(inventory,choices,*,keep_policies=True,probes=None,icmp_target=None
     if fasttrack:base['disable_fasttrack']=fasttrack
     else:base.pop('disable_fasttrack',None)
     marked=[m for m in inventory.get('ip/firewall/mangle',[]) if m.get('action') in ('mark-routing','mark-connection','route') and not truth(m.get('disabled')) and not m.get('comment','').startswith('sdwan:v1:')]
-    if marked:raise ValueError('Обнаружены сторонние активные mangle mark-routing/mark-connection/route. Нужна явная согласованная схема политик перед генерацией.')
+    if marked and not allow_foreign_mangle:raise ValueError('Обнаружены сторонние активные mangle mark-routing/mark-connection/route. Для подготовки черновика используйте мастер; перед установкой требуется миграция правил.')
     if any(r.get('action')=='notrack' and not truth(r.get('disabled')) for r in inventory.get('ip/firewall/raw',[])):raise ValueError('Активные RAW notrack несовместимы с маркировкой соединений SD-WAN.')
     base['revision']='wizard-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     return validate(base)

@@ -5,12 +5,12 @@ Native execution lives in sdwan-links.rsc.
 """
 import ipaddress
 
-KINDS=('static','dhcp','pppoe','lte')
+KINDS=('static','dhcp','pppoe','lte','vpn')
 
 
 def addressing_kind(wan):
     kind=wan.get('kind','static')
-    if kind not in KINDS:raise ValueError('WAN kind must be static, dhcp, pppoe or lte')
+    if kind not in KINDS:raise ValueError('WAN kind must be static, dhcp, pppoe, lte or vpn')
     if kind=='static':
         for field in ('address','gateway'):
             value=wan.get(field)
@@ -33,11 +33,23 @@ def inferred_kind(interface,dhcp_clients,pppoe_clients,lte_interfaces=()):
     dhcp=[row for row in dhcp_clients if row.get('interface')==interface and enabled(row)]
     ppp=[row for row in pppoe_clients if row.get('name')==interface]
     lte=[row for row in lte_interfaces if row.get('name')==interface]
-    if len(lte)>1 or (lte and (dhcp or ppp)):raise ValueError('Ambiguous native LTE addressing on '+interface)
+    # RNDIS/HiLink is still a native LTE interface. RouterOS creates its own
+    # read-only DHCP client; it is not a competing user-managed WAN client.
+    if len(lte)>1 or (lte and (ppp or len(dhcp)>1 or any(row.get('dynamic') not in (True,'true','yes','1') for row in dhcp))):raise ValueError('Ambiguous native LTE addressing on '+interface)
     if lte:return 'lte'
     if len(dhcp)>1 or len(ppp)>1:raise ValueError('Multiple address clients on interface '+interface)
     if dhcp and ppp:raise ValueError('Both DHCP and PPPoE configured on logical interface '+interface)
     return 'pppoe' if ppp else ('dhcp' if dhcp else 'static')
+
+
+def interface_route(route,iface):
+    """Public route metadata binds a next hop to a logical interface."""
+    if route.get('vrf-interface')==iface:return True
+    for field in ('gateway','immediate-gw'):
+        for value in str(route.get(field,'')).split(','):
+            value=value.split('@')[0]
+            if value==iface or value.endswith('%'+iface):return True
+    return False
 
 
 def adopted_dynamic_route(route,wans):
@@ -48,7 +60,9 @@ def adopted_dynamic_route(route,wans):
         iface=wan['interface'];kind=wan.get('kind','static')
         if kind=='dhcp' and yes(route.get('dhcp')) and route.get('vrf-interface')==iface:return True
         if kind=='pppoe' and route.get('gateway','').split('@')[0]==iface:return True
+        if kind=='vpn' and yes(route.get('vpn')) and interface_route(route,iface):return True
         if kind=='lte' and yes(route.get('modem')):
             gw=route.get('gateway','').split('@')[0]
             if gw==iface or gw.rsplit('%',1)[-1]==iface or route.get('vrf-interface')==iface:return True
+        if kind=='lte' and yes(route.get('dhcp')) and route.get('vrf-interface')==iface:return True
     return False

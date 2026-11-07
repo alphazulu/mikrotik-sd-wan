@@ -8,7 +8,7 @@ from sdwan.discovery import FIELDS
 class LTEAPNTests(unittest.TestCase):
     def setUp(self):
         self.radios=[{'name':'lte1','apn-profiles':'default'}]
-        self.apns=[{'.id':'*1','name':'default','add-default-route':'true','default-route-distance':'2','ip-type':'ipv4','password':'never-export-this','user':'private-user'}]
+        self.apns=[{'.id':'*1','name':'default','add-default-route':'true','default-route-distance':'2','use-peer-dns':'false','ip-type':'ipv4','password':'never-export-this','user':'private-user'}]
     def binding(self,**kwargs):return apn_binding('lte1',self.radios,self.apns,**kwargs)
     def test_uses_apn_metadata_without_credentials_or_mutation(self):
         before=copy.deepcopy(self.apns);out=self.binding()
@@ -24,6 +24,11 @@ class LTEAPNTests(unittest.TestCase):
     def test_native_boolean_automatic_route_setting(self):
         self.apns[0]['add-default-route']=False
         self.assertIs(self.binding()['add_default_route'],False)
+    def test_peer_dns_requires_explicit_preparation_without_mutating_apn(self):
+        for value in (True,'true','yes',None):
+            self.apns[0]['use-peer-dns']=value;before=copy.deepcopy(self.apns)
+            with self.assertRaisesRegex(ValueError,'configure router DNS explicitly'):self.binding()
+            self.assertEqual(before,self.apns)
     def test_duplicate_apn_name_rejected(self):
         self.apns*=2
         with self.assertRaisesRegex(ValueError,'ambiguous'):self.binding()

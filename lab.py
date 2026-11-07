@@ -192,6 +192,16 @@ def node_command(name, accel):
         for i in (1, 2, 3):
             nic(f'wan{i}', f'socket,connect=127.0.0.1:{22100 + i}', i + 1)
         nic('lan', 'socket,connect=127.0.0.1:23110', 5)
+    if name == 'edge' and os.environ.get('LTE_RNDIS_EMU') == '1':
+        # Emulator must print ready before QEMU starts; existing lifecycle stays
+        # unchanged. Import lazily so other nodes have no emulator dependency.
+        emulator_root = str(ROOT / 'lte-rndis-emu')
+        sys.path.insert(0, emulator_root)
+        try:
+            from lte_rndis_emu.emulator import qemu_args
+            args.extend(qemu_args())
+        finally:
+            sys.path.remove(emulator_root)
     return args
 
 

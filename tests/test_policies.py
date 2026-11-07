@@ -45,8 +45,8 @@ class PolicyTests(unittest.TestCase):
     def test_default_cannot_be_repurposed(self):self.c['policies'][0]['protocol']='tcp';self.bad()
     def test_selected_wan_not_ingress(self):self.c['policies'][-1]['in_interface']='ether2';self.bad()
     def test_plan_has_exact_guard_and_group_lists(self):
-        o=objects(validate(self.c));a=o[('ip/firewall/mangle','sdwan:v1:classify:sip:wan2')];b=o[('ip/firewall/mangle','sdwan:v1:guard:sip')]
-        for key in ('src-address','src-address-list','dst-address-list','in-interface','protocol','dst-port'):self.assertEqual(a[key],b[key])
+        o=objects(validate(self.c));a=o[('ip/firewall/mangle','sdwan:v1:policy-jump:sip')];b=o[('ip/firewall/mangle','sdwan:v1:guard:sip')]
+        self.assertEqual(a['jump-target'],b['chain']);self.assertEqual(a['src-address-list'],'sdwan-group-phones');self.assertEqual(a['dst-address-list'],'sdwan-group-services');self.assertEqual(a['protocol'],'udp');self.assertEqual(a['dst-port'],'5060,10000-20000')
         self.assertIn(('ip/route','sdwan:v1:policy-blackhole:sip'),o);self.assertNotIn(('routing/rule','sdwan:v1:client:sip'),o)
         self.assertIn(('ip/firewall/address-list','sdwan:v1:group:phones:0'),o)
     def test_signature_ignores_default_json_position(self):

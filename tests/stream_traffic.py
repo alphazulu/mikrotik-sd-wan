@@ -11,7 +11,7 @@ class StreamTraffic:
 
     def connections(self):return self.router.call('ip/firewall/connection')
 
-    def stream(self,source,wan,port,policy=None):
+    def stream(self,source,wan,port,policy=None,destination="203.0.113.200"):
         stop=self.stop
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self,*args):pass
@@ -24,7 +24,7 @@ class StreamTraffic:
             server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);server.daemon_threads=True
             self.servers[port]=server;threading.Thread(target=server.serve_forever,daemon=True).start()
         name=f'dynamic-stream-{port}-{time.monotonic_ns()}'
-        row=self.add('client','system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://203.0.113.200:{port}/" src-address={source} keep-result=no }}','policy':'read,write,policy,test'})
+        row=self.add('client','system/script',{'name':name,'source':f':execute {{ /tool/fetch url="http://{destination}:{port}/" src-address={source} output=none }}','policy':'read,write,policy,test'})
         lab.api('client','system/script/run',{'number':row},'POST')
         policy=policy or ('strict103' if source=='192.168.50.103' else 'client'+source.rsplit('.',1)[1])
         end=time.monotonic()+25
@@ -32,10 +32,10 @@ class StreamTraffic:
             for j in lab.api('client','system/script/job'):
                 if '/script:'+name+'/:execute:' in j.get('trace',''):self.tasks[name]=j['.id']
             for c in self.connections():
-                if c.get('src-address')==source and c.get('dst-address')=='203.0.113.200' and c.get('dst-port')==str(port) and c.get('connection-mark')==f'sdwan-out-{policy}:{wan}' and c.get('seen-reply')=='true':
+                if c.get('src-address')==source and c.get('dst-address')==destination and c.get('dst-port')==str(port) and c.get('connection-mark')==f'sdwan-out-{policy}:{wan}' and c.get('seen-reply')=='true':
                     self.tasks[c['.id']]=self.tasks.get(name);return c
             time.sleep(.2)
-        raise AssertionError({'source':source,'wan':wan,'port':port,'flows':[c for c in self.connections() if c.get('dst-address')=='203.0.113.200']})
+        raise AssertionError({'source':source,'wan':wan,'port':port,'flows':[c for c in self.connections() if c.get('dst-address')==destination]})
 
     def assert_sessions(self,absent=(),retained=()):
         end=time.monotonic()+3

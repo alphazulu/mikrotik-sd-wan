@@ -12,6 +12,7 @@ import struct
 import subprocess
 import tarfile
 import tomllib
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
@@ -90,6 +91,9 @@ def main() -> None:
     parser.add_argument('--architectures', nargs='+', choices=TARGETS, default=list(TARGETS))
     parser.add_argument('--profiles',nargs='+',choices=['base','web'],default=['base','web'])
     args = parser.parse_args()
+    sys.path.insert(0,str(ROOT/'tools'))
+    from container_checks import ensure_coverage
+    coverage=ensure_coverage()
     env = os.environ.copy()
     for key,path in {'RUSTUP_HOME':'runtime/toolchains/rustup','CARGO_HOME':'runtime/toolchains/cargo',
                      'CARGO_TARGET_DIR':'runtime/container-build','RUSTC':'runtime/toolchains/cargo/bin/rustc'}.items():env.setdefault(key,str(ROOT/path))
@@ -110,7 +114,7 @@ def main() -> None:
         static_elf(binary, machine)
         architecture = 'arm' if variant else key
         name='sdwan-controller'+('-web' if profile=='web' else '')
-        reports.append(image(binary, architecture, variant, output/f'{name}-{key}.tar',profile))
+        reports.append(dict(image(binary, architecture, variant, output/f'{name}-{key}.tar',profile),unit_coverage_source_sha256=coverage['source_sha256']))
         context=output/(('web-' if profile=='web' else '')+key)
         context.mkdir(exist_ok=True)
         temporary=context/(name+'.tmp')

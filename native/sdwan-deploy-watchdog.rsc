@@ -1,4 +1,4 @@
-:if ([/system/script/job/print count-only where script="sdwan-deploy-watchdog"] > 1) do={ :return }
+:if ([/system/script/job/print count-only where script="sdwan-deploy-watchdog"] > 1) do={ :return "" }
 :local dir ""
 :if ([:len [/file/find where name="flash"]] > 0) do={ :set dir "flash/" }
 :local link [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=($dir . "sdwan-deploy-current.json")] contents]]
@@ -23,7 +23,7 @@
 :local phase ($s->"phase")
 :if (($phase = "committed") || ($phase = "rolled-back") || ($phase = "preparation-failed") || ($phase = "recovery-failed")) do={
     /system/scheduler/disable [/system/scheduler/find where name="sdwan-deploy-worker" or name="sdwan-deploy-watchdog"]
-    :return
+    :return ""
 }
 :if ($phase = "restore-reboot") do={
     :if ([:tonsec [/system/resource/get uptime]] < ($s->"restore_ticks")) do={
@@ -34,7 +34,7 @@
         /system/scheduler/disable [/system/scheduler/find where name="sdwan-deploy-worker" or name="sdwan-deploy-watchdog"]
         :log warning "SDWAN deploy full configuration and package restored"
     }
-    :return
+    :return ""
 }
 :local reason ""
 :if ([:tonsec [/system/resource/get uptime]] < ($s->"started_ticks")) do={ :set reason "router restarted before deployment confirmation" }
@@ -44,6 +44,7 @@
 :if ([:len $abort] > 0) do={ :local a [:deserialize from=json options=json.no-string-conversion value=[/file/get $abort contents]]; :if (($a->"token") = ($s->"token")) do={ :set reason "deployment aborted by configuration client" } }
 :local ready false
 :local selected "none"
+:local explicitlyClosed false
 :if (($phase = "checking") || ($phase = "await-confirm")) do={
     :if (($s->"operation") = "rollback") do={ :set ready ([:len [/system/scheduler/find where name="sdwan-controller"]] = 0) } else={
         :global sdwanStatusJSON
@@ -53,6 +54,7 @@
             :if ((($status->"revision") = ($s->"revision")) && ([:typeof ($status->"states")] = "array") && ([:typeof ($status->"uptime_seconds")] = "num") && (($now - ($status->"uptime_seconds")) <= 5)) do={
                 :set ready true
                 :set selected (($status->"selected")->($s->"default_policy"))
+                :if ((($s->"allow_no_default") = true) && (($status->"default_admission_closed") = true)) do={ :set explicitlyClosed true }
             }
         }
     }
@@ -78,7 +80,7 @@
         /system/scheduler/disable [/system/scheduler/find where name="sdwan-deploy-watchdog"]
         :log error "SDWAN deploy native recovery failed; inspect recovery journal"
     }
-    :return
+    :return ""
 }
 :if ($phase = "prepared") do={
     :local id [/file/find where name=($dir . "sdwan-deploy-arm.json")]
@@ -90,14 +92,14 @@
             /system/scheduler/enable [/system/scheduler/find where name="sdwan-deploy-worker"]
         }
     }
-    :return
+    :return ""
 }
 :if ($ready) do={
     :if ($phase = "checking") do={ :set ($s->"phase") "await-confirm"; $save path=$path value=$s }
     :local ack [/file/find where name=($dir . "sdwan-deploy-ack.json")]
     :if ([:len $ack] > 0) do={
         :local a [:deserialize from=json options=json.no-string-conversion value=[/file/get $ack contents]]
-        :if ((($a->"token") = ($s->"token")) && ((($s->"operation") = "rollback") || (([:typeof $selected] = "str") && ($selected != "none")))) do={
+        :if ((($a->"token") = ($s->"token")) && ((($s->"operation") = "rollback") || (([:typeof $selected] = "str") && ($selected != "none")) || $explicitlyClosed)) do={
             :set ($s->"phase") "committed"
             :set ($s->"committed_at") $now
             $save path=$path value=$s

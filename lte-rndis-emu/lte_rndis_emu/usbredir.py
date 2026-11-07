@@ -140,8 +140,11 @@ class Codec:
         return packets
 
 
-def bulk_header(endpoint: int, status: int, data: bytes, caps: int) -> bytes:
-    length = len(data)
+def bulk_header(endpoint: int, status: int, data: bytes, caps: int, *, transferred: int | None = None) -> bytes:
+    # OUT completions carry the actual transferred length without repeating data.
+    length = len(data) if transferred is None else transferred
+    if not 0 <= length <= 0xFFFFFFFF:
+        raise ProtocolError("bulk transfer length is out of range")
     low = length & 0xFFFF
     high = (length >> 16) & 0xFFFF
     if caps & CAP_32BIT_BULK:
@@ -204,6 +207,7 @@ class Session:
         self._send(blob)
 
     def _handle(self, typ: int, ident: int, payload: bytes) -> None:
+        log.debug("usbredir rx type=%d id=%d size=%d", typ, ident, len(payload))
         if typ == HELLO:
             if not self.announced:
                 self.announced = True
@@ -272,7 +276,6 @@ class Session:
         )
         if not caps & CAP_CONNECT_DEVICE_VERSION:
             connect = connect[:8]
-        self._emit(self.codec.pack(DEVICE_CONNECT, 0, connect))
         numbers = bytearray(32)
         classes = bytearray(32)
         subclasses = bytearray(32)
@@ -305,6 +308,9 @@ class Session:
         if caps & CAP_EP_INFO_MAX_PACKET:
             ep += struct.pack("<32H", *sizes)
         self._emit(self.codec.pack(EP_INFO, 0, ep))
+        # QEMU applies its device filter immediately on DEVICE_CONNECT; it
+        # must already know interface classes and endpoint topology.
+        self._emit(self.codec.pack(DEVICE_CONNECT, 0, connect))
 
     def _config_status(self, ident: int, requested: int | None) -> None:
         if requested is None:
@@ -316,8 +322,9 @@ class Session:
         self._emit(self.codec.pack(CONFIGURATION_STATUS, ident, bytes((status, current))))
 
     def _control(self, ident: int, payload: bytes) -> None:
-        _endpoint, request, reqtype, _status, value, index, data = parse_control(payload)
+        endpoint, request, reqtype, _status, value, index, data = parse_control(payload)
         wlen = struct.unpack_from("<H", payload, 8)[0]
+        log.debug("control type=%02x request=%02x value=%04x index=%d length=%d", reqtype, request, value, index, wlen)
         try:
             status, reply = self.device.control(reqtype, request, value, index, data, wlen)
         except Exception:
@@ -325,7 +332,7 @@ class Session:
             status, reply = ST_STALL, b""
         if status != ST_SUCCESS:
             reply = b""
-        header = struct.pack("<BBBBHHH", 0, request, reqtype, status, value, index, len(reply))
+        header = struct.pack("<BBBBHHH", endpoint, request, reqtype, status, value, index, len(reply) if reqtype & 0x80 else wlen)
         self._emit(self.codec.pack(CONTROL, ident, header + reply))
         self._flush_notify()
 
@@ -344,7 +351,7 @@ class Session:
             self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, status, blob, self.codec.negotiated)))
             return
         self.device.push_out(endpoint, data)
-        self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, ST_SUCCESS, b"", self.codec.negotiated)))
+        self._emit(self.codec.pack(BULK, ident, bulk_header(endpoint, ST_SUCCESS, b"", self.codec.negotiated, transferred=len(data))))
         self._flush_pending()
         self._flush_notify()
 
