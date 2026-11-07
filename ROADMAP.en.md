@@ -17,13 +17,17 @@ The items below describe capabilities and next steps, not a release readiness cl
 - Optional RAM statistics and web, two image profiles for three architectures.
 - CI, mandatory container coverage and exact CI-image catalog validation.
 
+## Verified for the current candidate
+
+- Uninterrupted 48 hours at `57708b6`: 24 hours RSC and 24 hours container, no failures.
+- Independent configuration/file, OSPF/route and resource restoration.
+- Consistent 64 RU/EN pairs; links and public materials checked.
+
 ## Before completing this release
 
-1. Finish long acceptance of the exact candidate: RSC, then container.
-2. Independently verify restoration, configurations, OSPF and resource cleanup.
-3. Execute the prepared 150-measurement comparison on an available lab.
-4. Normalize documentation into equivalent RU/EN versions and verify links.
-5. Audit public source/assets and prepare the release after the required checks.
+1. Execute the prepared 150-measurement comparison with fresh calibration.
+2. Record results/limits and audit the final source/assets.
+3. Prepare the release after its checks and verify image downloads.
 
 Short runs and old reports do not replace these gates. Hardware recommendations
 must not be filled with unverified extrapolations from virtual measurements.

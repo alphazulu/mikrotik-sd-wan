@@ -11,8 +11,9 @@ installation.
 ## Project status
 
 This branch develops candidate **0.3.0**. The web interface, VPN WANs and branch
-overlay are implemented and have passed targeted checks. Long acceptance of the
-current candidate is incomplete; release 0.3.0 has not been published. The
+overlay are implemented and have passed targeted checks. Uninterrupted 48-hour
+RSC/container acceptance passed; the performance comparison remains incomplete.
+Release 0.3.0 has not been published. The
 image catalog contains its future URLs, so automatic downloads can return HTTP
 404 until publication.
 

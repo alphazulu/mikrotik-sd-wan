@@ -2,13 +2,14 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-Snapshot dated **4 November 2026**, after the fresh long run started. The native cold-start correction is tested at
+Snapshot dated **7 November 2026**, after verifying completed 48-hour acceptance. The native cold-start correction is tested at
 `4015285b6a4ad651ef3be3cfe55765c14c804868`. Scenario preparation is strengthened in
 `57708b6a5c1aa50e860ee9a16cc018f0ba3fec62`; its executable controller, container
 and SDK code is unchanged from `4015285`. The preceding long run was bound to
 `37a68a943d16ef597da48fabda217e5e61e5226e`. The public edition may have another
 commit because it includes the RU/EN documentation. The actual execution commits
-are recorded below. Long acceptance has not passed.
+are recorded below. Uninterrupted long acceptance passed; the performance
+comparison and release remain incomplete.
 
 ## Confirmed
 
@@ -24,6 +25,7 @@ are recorded below. Long acceptance has not passed.
 | Cold-start NAT | At `4015285`: six WireGuard/PPP/DNS cases with empty/existing NAT tables; the previous code failed all six |
 | VPN cold start | At `4015285`: three real WireGuard, fresh SLA and both OSPF adjacency recovery checks; independent restoration passed |
 | Cold DNS/DoH | Both strengthened scenarios passed at `57708b6`, including real VPN TCP with main closed, the no-leak guard, recovery and independent restoration |
+| Uninterrupted acceptance | 172,800 seconds at `57708b6`: 24 hours RSC and 24 hours container, 5,621 samples without failures; independent restoration passed |
 
 After the initial native acceptance, commits `959495c` and `37a68a9` changed packaging/catalog
 metadata rather than executable logic. Equivalence is recorded explicitly; a
@@ -39,15 +41,36 @@ Historical public checks at `37a68a9`:
 [external tools](https://github.com/alphazulu/mikrotik-sd-wan/actions/runs/40857122807).
 Raw local reports remain private because they can contain lab-specific settings.
 
+## Completed 48-hour acceptance
+
+Measurements at `57708b6` ran from **4 November 12:34 UTC** to **6 November
+12:34 UTC**, followed by restoration and independent verification. The result is
+`passed`, `pass=true`, 172,800 seconds and 5,621 samples: 2,818 RSC and 2,803
+container, with no failures. The plan allocates 24 hours each to RSC and container;
+snapshot counts depend on check duration and the backend transition. Earlier
+failed or interrupted hours are not included.
+
+Independent checks verified the original three configurations/native files,
+eight Full OSPF adjacencies, active routes to remote networks and healthy overlay
+paths. The container is stopped, temporary rules removed, process exited and
+locks released. Frozen source and parent disks remained unchanged. A source-bound
+completion attestation was created on the original host for the comparison gate.
+
+Final report SHA256:
+`a46bd64bb24bf611d1b71d9c7e17a2ca60540c4bf8490a10a215a1a3aa6c0334`.
+Raw reports remain private. Execution used the CI image `4e3cf126` and covered
+source `7af650e6` identified above.
+
+Under this workload, container RSS was 610,304–704,512 bytes (596–688 KiB), with
+maximum container memory of 864,256 bytes (844 KiB). This scenario reached
+12 history points; it is not a maximum-history capacity test. Process I/O counters
+were unavailable, so this report does not establish zero flash writes.
+These observations concern the virtual lab, not physical ARM/ARM64 capacity.
+
 ## Still pending
 
-- One fresh 48-hour run (24 hours RSC, then 24 hours container) started measuring
-  at **2026-11-04 12:34 UTC**, execution source `57708b6`. DNS/DoH, forced switching
-  and their independent restorations passed before it started. Initial native
-  samples contain no failures; this is not a long PASS. The complete uninterrupted
-  run and final independent restoration remain required. Earlier failed and
-  power-interrupted hours are not counted.
-- The prepared 150-measurement comparison has not executed.
+- The 150-measurement, five-stage comparison is prepared; fresh TCP/UDP and CPS
+  calibration is running ahead of it. Comparison success is not yet claimed.
 - Physical ARM/ARM64 capacity is unproven; cross-compilation does not replace
   hardware acceptance. There are no automatic hardware recommendations.
 - Candidate 0.3.0 is not a published release. Previous Releases and their reports

@@ -8,8 +8,9 @@ The original 48-hour controller soak, frozen at
 wrapper. Its process has exited; both locks are free. Independent checks confirm
 restoration of all three configurations/native files, healthy overlay and full
 OSPF neighbors, stopped container and removal of temporary soak rules/forwarding.
-The exact failure cause remains unproven. No completed48-hour acceptance is claimed.
-The current replacement soak and release gates are recorded in
+The exact failure cause remains unproven. That old run is not accepted. The new
+run at `57708b6` completed 48 hours without failures; its result, independent
+restoration and current release gates are recorded in
 [current status](../docs/CURRENT-STATUS.en.md). The observations below cover external tools and isolated functional candidates,
 not physical router capacity. Earlier checkpoint counts are retained as history;
 the latest validation is listed at the end.
