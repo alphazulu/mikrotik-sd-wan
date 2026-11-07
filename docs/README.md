@@ -53,6 +53,7 @@
 - [Порядок запуска проверок](TESTING.md)
 - [Длительная приёмка](NETWORK-SOAK.md)
 - [Методика сравнения производительности](PERFORMANCE-PLAN.md)
+- [Разбор CPU и приоритет оптимизации](CPU-ATTRIBUTION.md)
 - [150 измерений: результаты и ограничения](PERFORMANCE-COMPARISON.md)
 - [Внешние генераторы и наблюдатели](../labtools/README.md)
 - [Изолированный x86 DUT](../labtools/DUT-ADAPTER.md)

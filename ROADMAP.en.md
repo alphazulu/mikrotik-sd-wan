@@ -32,6 +32,12 @@ The items below describe capabilities and next steps, not a release readiness cl
 Short runs and old reports do not replace these gates. Hardware recommendations
 must not be filled with unverified extrapolations from virtual measurements.
 
+## CPU attribution after 0.3.0
+
+14 diagnostic windows are complete; [findings and limits](docs/CPU-ATTRIBUTION.en.md).
+The next prototype targets the common native cycle while preserving SLAs.
+Executable controller code is unchanged so far.
+
 ## Subsequent iterations
 
 - Physical ARM/ARM64, real LTE modems and hardware load testing.

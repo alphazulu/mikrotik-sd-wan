@@ -242,3 +242,5 @@ accounting. They cannot be added or substituted. From the repository root:
 ```sh
 python3 -m unittest discover -s labtools/tests -p test_cpu_profile.py -v
 ```
+
+[Completed CPU attribution: 14 diagnostic windows](../docs/CPU-ATTRIBUTION.en.md).

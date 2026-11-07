@@ -239,3 +239,5 @@ CPU `/system/resource`, категории профилировщика и CPU �
 ```sh
 python3 -m unittest discover -s labtools/tests -p test_cpu_profile.py -v
 ```
+
+[Завершённый разбор CPU: 14 диагностических окон](../docs/CPU-ATTRIBUTION.md).
