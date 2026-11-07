@@ -172,7 +172,7 @@ passes DHCP (2), PPPoE (2), outer-UDP retirement (4) and lifecycle/complete-pack
 rollback (6). The unit suite now has 273 tests including observer safety and path-alias checks.
 Linux passes all tests; Windows skips the five POSIX-only observer cases.
 Those counts describe that historical stage. Current CI is recorded separately;
-final long acceptance and release remain pending: [current status](CURRENT-STATUS.en.md).
+completed long acceptance and release results: [current status](CURRENT-STATUS.en.md).
 
 Shared TCP acceptance now binds full original/reply tuples and policy marks,
 requires increasing counters and a single live HTTP request, and checks retired

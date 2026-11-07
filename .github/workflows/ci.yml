@@ -119,12 +119,14 @@ jobs:
         with:
           name: scratch-images
           path: release
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          path: publisher
       - name: Verify and publish this tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          cd release
-          sha256sum -c SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes SHA256SUMS build-report.json sdwan-controller-amd64.tar.gz sdwan-controller-arm64.tar.gz sdwan-controller-armv5.tar.gz sdwan-controller-web-amd64.tar.gz sdwan-controller-web-arm64.tar.gz sdwan-controller-web-armv5.tar.gz
+          python3 publisher/tools/publish_release.py --directory release --repository "$GH_REPO" --tag "$RELEASE_TAG"

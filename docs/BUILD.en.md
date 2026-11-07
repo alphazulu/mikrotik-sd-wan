@@ -5,7 +5,7 @@
 Published archives are available in [GitHub Releases](https://github.com/alphazulu/mikrotik-sd-wan/releases).
 They are Docker-save tar/gzip archives for RouterOS import, not CHR disk images.
 Download CHR and the RouterOS `container` package separately from MikroTik.
-Candidate 0.3.0 is not a published release yet; see [current status](CURRENT-STATUS.en.md).
+Release 0.3.0 is published; see [current status](CURRENT-STATUS.en.md).
 
 ## Pinned SDK
 
@@ -91,3 +91,11 @@ Run Rust tests with `--features web` for the web profile. Windows CI also checks
 HTML/CSS/JS are embedded in the executable. `build-report.json` records profile/version.
 
 [Container installation, API and limits](CONTAINER.en.md).
+
+## Repeated tag publication
+
+CI uses `tools/publish_release.py`. If a release exists, it downloads all eight
+files and verifies names, sizes and SHA256, preserving its notes and assets.
+A mismatch, incomplete draft or lookup error stops the step. A missing release
+is created only for the exact existing tag with verified archives; concurrent
+publication also requires verification of the downloaded bytes.

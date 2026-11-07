@@ -63,8 +63,9 @@ Container preparation chooses base/web and amd64/armv5/arm64 using architecture
 and telemetry settings. `config/container-images.json` pins archive SHA256/size,
 image ID and exact covered-source digest. A verified local `dist/container` archive
 is used first; otherwise the fixed release HTTPS URL is downloaded. **Release
-0.3.0 is not published yet**, so automatic GitHub download can return 404. There is
-no silent fallback to 0.2.0 or arbitrary latest. Acceptance used exact CI archives.
+0.3.0 is published**: all six public URLs were downloaded and verified by SHA256.
+There is no silent fallback to 0.2.0 or arbitrary latest. Acceptance used the same
+exact CI archives.
 
 Transfer uses Fetch and a temporary configurator HTTP endpoint serving one archive
 at a random URL to a restricted source, without directory listing. Native API
