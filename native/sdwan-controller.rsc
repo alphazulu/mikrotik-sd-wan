@@ -316,6 +316,30 @@
         }
         :set ($sdwanWanDown->$wn) $down
     }
+    # Fresh per-cycle snapshots, after dynamic WAN reconciliation. Never keep
+    # object IDs across ticks: replacement, deletion and duplicates stay visible.
+    :local indexManaged do={
+        :local indexed [:toarray ""]
+        :local seen [:toarray ""]
+        :foreach row in=$rows do={
+            :local tag ($row->"comment")
+            :if (($seen->$tag) = true) do={
+                :set ($indexed->$tag) false
+            } else={
+                :set ($indexed->$tag) $row
+                :set ($seen->$tag) true
+            }
+        }
+        :return $indexed
+    }
+    :local policyRoutes [$indexManaged rows=[/ip/route/print as-value where comment~"^sdwan:v1:route:"]]
+    :local policyClassifiers [$indexManaged rows=[/ip/firewall/mangle/print as-value where comment~"^sdwan:v1:classify:"]]
+    :local requireManaged do={
+        :local row ($indexed->$tag)
+        :if ([:typeof $row] != "array") do={ :error ("missing or duplicate " . $label) }
+        :if (([:typeof ($row->"disabled")] != "bool") || ([:len [:tostr ($row->".id")]] = 0)) do={ :error ("runtime state unavailable " . $label) }
+        :return $row
+    }
     :local defaultAdmissionClosed false
     :foreach policy in=($cfg->"policies") do={
         :if (($policy->"source") = "") do={
@@ -366,27 +390,24 @@
         :set ($policyReport->$pn) $decision
         # Enable the chosen path before disabling the old path. Distances are distinct.
         :if ($selected != "none") do={
-            :local rid [/ip/route/find where comment=("sdwan:v1:route:" . $pn . ":" . $selected)]
-            :if ([:len $rid] != 1) do={ :error ("missing or duplicate route " . $pn . "/" . $selected) }
-            :if ([/ip/route/get $rid disabled]) do={ /ip/route/enable $rid }
+            :local row [$requireManaged indexed=$policyRoutes tag=("sdwan:v1:route:" . $pn . ":" . $selected) label=("route " . $pn . "/" . $selected)]
+            :if ($row->"disabled") do={ /ip/route/enable ($row->".id") }
         }
         :foreach wn in=($policy->"wans") do={
             :if ($wn != $selected) do={
-                :local rid [/ip/route/find where comment=("sdwan:v1:route:" . $pn . ":" . $wn)]
-                :if ([:len $rid] != 1) do={ :error ("missing or duplicate route " . $pn . "/" . $wn) }
-                :if (![/ip/route/get $rid disabled]) do={ /ip/route/disable $rid }
+                :local row [$requireManaged indexed=$policyRoutes tag=("sdwan:v1:route:" . $pn . ":" . $wn) label=("route " . $pn . "/" . $wn)]
+                :if (!($row->"disabled")) do={ /ip/route/disable ($row->".id") }
             }
         }
         # Disable old classifiers before activating the selected WAN. Per-policy
         # guards prevent an unselected strict/client policy falling into default.
         :foreach wn in=($policy->"wans") do={
-            :local id [/ip/firewall/mangle/find where comment=("sdwan:v1:classify:" . $pn . ":" . $wn)]
-            :if ([:len $id] != 1) do={ :error ("missing or duplicate classifier " . $pn . "/" . $wn) }
-            :if (($wn != $selected) && (![/ip/firewall/mangle/get $id disabled])) do={ /ip/firewall/mangle/disable $id }
+            :local row [$requireManaged indexed=$policyClassifiers tag=("sdwan:v1:classify:" . $pn . ":" . $wn) label=("classifier " . $pn . "/" . $wn)]
+            :if (($wn != $selected) && (!($row->"disabled"))) do={ /ip/firewall/mangle/disable ($row->".id") }
         }
         :if ($selected != "none") do={
-            :local id [/ip/firewall/mangle/find where comment=("sdwan:v1:classify:" . $pn . ":" . $selected)]
-            :if ([/ip/firewall/mangle/get $id disabled]) do={ /ip/firewall/mangle/enable $id }
+            :local row [$requireManaged indexed=$policyClassifiers tag=("sdwan:v1:classify:" . $pn . ":" . $selected) label=("classifier " . $pn . "/" . $selected)]
+            :if ($row->"disabled") do={ /ip/firewall/mangle/enable ($row->".id") }
         }
         :if (($sdwanSelected->$pn) != $selected) do={
             :set ($sdwanCleanupUntil->$pn) ($now + 3)
