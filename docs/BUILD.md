@@ -4,6 +4,8 @@
 
 Готовые архивы находятся в [GitHub Releases](https://github.com/alphazulu/mikrotik-sd-wan/releases). Это Docker-save tar/gzip, пригодные для импорта в RouterOS; не образ диска CHR. Исходный CHR и пакет `container` загружаются у MikroTik отдельно.
 
+Выпуск 0.3.0 опубликован; [текущее состояние проверок](CURRENT-STATUS.md).
+
 ## Закреплённый SDK
 
 Сборка проверена на Linux x86_64 с Rust **1.99.1**, musl target libraries и встроенным `rust-lld`. Скрипт использует SDK в локальном `runtime/toolchains`, не меняя системный PATH. Из корня чистой копии:
@@ -76,3 +78,11 @@ RUSTUP_HOME="$PWD/runtime/toolchains/rustup" CARGO_HOME="$PWD/runtime/toolchains
 HTML/CSS/JS встроены в бинарник. `build-report.json` фиксирует profile/version.
 
 Установка контейнера, устройство API и ограничения: [CONTAINER.md](CONTAINER.md).
+
+## Повторная публикация тега
+
+CI использует `tools/publish_release.py`: если выпуск уже существует, скачивает
+все восемь файлов и проверяет имена, размеры и SHA256. Описание и файлы выпуска
+сохраняются. Несовпадение, неполный draft или ошибка чтения останавливают шаг.
+При отсутствии выпуска создаётся только точный существующий тег с проверенными
+архивами; конкурентная публикация также требует проверки скачанных байтов.

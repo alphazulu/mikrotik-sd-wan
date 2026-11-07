@@ -23,11 +23,11 @@ The items below describe capabilities and next steps, not a release readiness cl
 - Independent configuration/file, OSPF/route and resource restoration.
 - Consistent 65 RU/EN pairs; links and public materials checked.
 
-## Before completing this release
+## Acceptance of 0.3.0
 
 1. The 150/150 comparison with fresh calibration is complete; [results](docs/PERFORMANCE-COMPARISON.en.md).
-2. Record results/limits and audit the final source/assets.
-3. Prepare the release after its checks and verify image downloads.
+2. Results, limits and the final source/asset audit are recorded.
+3. Release v0.3.0 is published; all six public image URLs were downloaded and verified by SHA256.
 
 Short runs and old reports do not replace these gates. Hardware recommendations
 must not be filled with unverified extrapolations from virtual measurements.
