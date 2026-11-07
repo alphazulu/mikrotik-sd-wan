@@ -55,6 +55,7 @@
 - [Методика сравнения производительности](PERFORMANCE-PLAN.md)
 - [Разбор CPU и приоритет оптимизации](CPU-ATTRIBUTION.md)
 - [150 измерений: результаты и ограничения](PERFORMANCE-COMPARISON.md)
+- [Оптимизация нативного цикла: результаты и границы](NATIVE-CYCLE-OPTIMIZATION.md)
 - [Внешние генераторы и наблюдатели](../labtools/README.md)
 - [Изолированный x86 DUT](../labtools/DUT-ADAPTER.md)
 - [Обзор USB LTE-эмулятора](../lte-rndis-emu/README.md)

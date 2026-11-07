@@ -21,6 +21,10 @@ with the exact catalog version and SHA256; other versions are not substitutes.
 reports and the [roadmap](ROADMAP.en.md). A short passing check does not establish
 completed long acceptance or physical hardware capacity.
 
+`main` after v0.3.0 adds [native-cycle optimization](docs/NATIVE-CYCLE-OPTIMIZATION.en.md): 88.76% →
+68.62% mean CPU at a fixed virtual-lab load. New RSC code has its own bounded checks; earlier long
+acceptance belongs to the original release.
+
 ## Features
 
 - IPv4 WANs: static interfaces, DHCP-client, PPPoE, LTE with an existing APN,
