@@ -1,0 +1,2175 @@
+{
+  "schema_version": 1,
+  "pass": true,
+  "scope": "virtual CPU attribution; not capacity/failover acceptance",
+  "conditions": {
+    "routeros": "7.24.5",
+    "license_level": 6,
+    "DUT_vCPU": 1,
+    "DUT_memory_MiB": 1024,
+    "CPS": 1000,
+    "warmup_seconds": 120,
+    "measure_seconds": 30,
+    "profile_seconds": 20,
+    "repeats": 2,
+    "conntrack_mode": "auto",
+    "NAT_bypass_also_deactivates_conntrack": true,
+    "tracking_confirmation_scope": "subsequent same-fixture functional check; no repeated CPU windows"
+  },
+  "provenance": {
+    "execution_commit": "57708b6a5c1aa50e860ee9a16cc018f0ba3fec62",
+    "report_sha256": "8399dbe8fc0688fd9100b8438efdab9a781488f6a57a25b6354cb6626e53f309",
+    "reused_baseline_report_sha256": "5d22ebcd42fd55873192640769e0e2c7a4dd5665dc51fe93235e80a018adcbd9",
+    "original_setup_failure_retained": true,
+    "new_measurements": 13,
+    "reused_measurements": 1,
+    "tracking_confirmation_report_sha256": "2ac1092d3ad6268970c56f0d22f6ffb562aa1861dcf8cd8fa84f664302886475"
+  },
+  "measurements": [
+    {
+      "scenario": "baseline-nat",
+      "repeat": 0,
+      "resource_cpu_percent": 50.2,
+      "resource_cpu_during_profile_percent": 52.5,
+      "profile_cpu_percent": 42.666666666666664,
+      "qemu_host_cpu_percent": 175.75413220365166,
+      "generator_cpu_p95_max_percent": 14.905665100539299,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": true,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 37.77777777777778,
+          "p95_percent": 47.5,
+          "max_percent": 47.5
+        },
+        "firewall": {
+          "mean_percent": 3.111111111111111,
+          "p95_percent": 9.0,
+          "max_percent": 9.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "logging": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "networking": {
+          "mean_percent": 1.3055555555555556,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "radvd": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 42.666666666666664,
+          "p95_percent": 54.5,
+          "max_percent": 54.5
+        }
+      }
+    },
+    {
+      "scenario": "rsc-full",
+      "repeat": 0,
+      "resource_cpu_percent": 89,
+      "resource_cpu_during_profile_percent": 89.4,
+      "profile_cpu_percent": 86.16666666666667,
+      "qemu_host_cpu_percent": 177.19923720136705,
+      "generator_cpu_p95_max_percent": 14.904094539261912,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 31.333333333333332,
+          "p95_percent": 38.5,
+          "max_percent": 38.5
+        },
+        "ethernet": {
+          "mean_percent": 34.44444444444444,
+          "p95_percent": 43.5,
+          "max_percent": 43.5
+        },
+        "fileman": {
+          "mean_percent": 0.5555555555555556,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "firewall": {
+          "mean_percent": 3.888888888888889,
+          "p95_percent": 6.5,
+          "max_percent": 6.5
+        },
+        "firewall-mgmt": {
+          "mean_percent": 0.19444444444444445,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "interface-mgmt": {
+          "mean_percent": 1.4166666666666667,
+          "p95_percent": 3.0,
+          "max_percent": 3.0
+        },
+        "ipc": {
+          "mean_percent": 2.111111111111111,
+          "p95_percent": 4.0,
+          "max_percent": 4.0
+        },
+        "kernel": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "logging": {
+          "mean_percent": 0.4722222222222222,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "netwatch": {
+          "mean_percent": 0.6111111111111112,
+          "p95_percent": 2.5,
+          "max_percent": 2.5
+        },
+        "networking": {
+          "mean_percent": 1.4722222222222223,
+          "p95_percent": 2.5,
+          "max_percent": 2.5
+        },
+        "profiling": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.25,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "routing": {
+          "mean_percent": 9.305555555555555,
+          "p95_percent": 11.5,
+          "max_percent": 11.5
+        },
+        "total": {
+          "mean_percent": 86.16666666666667,
+          "p95_percent": 89.5,
+          "max_percent": 89.5
+        }
+      }
+    },
+    {
+      "scenario": "scheduler-paused",
+      "repeat": 0,
+      "resource_cpu_percent": 62.833333333333336,
+      "resource_cpu_during_profile_percent": 65.05,
+      "profile_cpu_percent": 43.638888888888886,
+      "qemu_host_cpu_percent": 177.33632618193687,
+      "generator_cpu_p95_max_percent": 14.90429875510194,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 999.966667,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.19444444444444445,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "container": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 37.30555555555556,
+          "p95_percent": 48.0,
+          "max_percent": 48.0
+        },
+        "firewall": {
+          "mean_percent": 3.8333333333333335,
+          "p95_percent": 7.0,
+          "max_percent": 7.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "netwatch": {
+          "mean_percent": 0.3888888888888889,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "networking": {
+          "mean_percent": 1.4166666666666667,
+          "p95_percent": 4.0,
+          "max_percent": 4.0
+        },
+        "profiling": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "radvd": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.1388888888888889,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "total": {
+          "mean_percent": 43.638888888888886,
+          "p95_percent": 57.5,
+          "max_percent": 57.5
+        }
+      }
+    },
+    {
+      "scenario": "probes-paused",
+      "repeat": 0,
+      "resource_cpu_percent": 53.5,
+      "resource_cpu_during_profile_percent": 54.5,
+      "profile_cpu_percent": 40.27777777777778,
+      "qemu_host_cpu_percent": 176.63371429201695,
+      "generator_cpu_p95_max_percent": 14.904744522095529,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.033333,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 34.388888888888886,
+          "p95_percent": 42.0,
+          "max_percent": 42.0
+        },
+        "firewall": {
+          "mean_percent": 3.6666666666666665,
+          "p95_percent": 7.0,
+          "max_percent": 7.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.25,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "ipc": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.5,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "networking": {
+          "mean_percent": 0.9166666666666666,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "profiling": {
+          "mean_percent": 0.3055555555555556,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 40.27777777777778,
+          "p95_percent": 48.5,
+          "max_percent": 48.5
+        }
+      }
+    },
+    {
+      "scenario": "mangle-bypass",
+      "repeat": 0,
+      "resource_cpu_percent": 56.96666666666667,
+      "resource_cpu_during_profile_percent": 56.55,
+      "profile_cpu_percent": 49.111111111111114,
+      "qemu_host_cpu_percent": 175.93814055464227,
+      "generator_cpu_p95_max_percent": 14.902768819687228,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "btest": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "console": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "ethernet": {
+          "mean_percent": 38.888888888888886,
+          "p95_percent": 50.0,
+          "max_percent": 50.0
+        },
+        "firewall": {
+          "mean_percent": 4.138888888888889,
+          "p95_percent": 8.0,
+          "max_percent": 8.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 1.7222222222222223,
+          "p95_percent": 3.0,
+          "max_percent": 3.0
+        },
+        "networking": {
+          "mean_percent": 1.5277777777777777,
+          "p95_percent": 2.5,
+          "max_percent": 2.5
+        },
+        "profiling": {
+          "mean_percent": 2.361111111111111,
+          "p95_percent": 3.5,
+          "max_percent": 3.5
+        },
+        "radvd": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.16666666666666666,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 49.111111111111114,
+          "p95_percent": 62.0,
+          "max_percent": 62.0
+        }
+      }
+    },
+    {
+      "scenario": "nat-bypass",
+      "repeat": 0,
+      "resource_cpu_percent": 46.03333333333333,
+      "resource_cpu_during_profile_percent": 49.95,
+      "profile_cpu_percent": 34.361111111111114,
+      "qemu_host_cpu_percent": 169.10767114861,
+      "generator_cpu_p95_max_percent": 14.902794735032579,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 999.966667,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "container": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 33.25,
+          "p95_percent": 48.0,
+          "max_percent": 48.0
+        },
+        "firewall": {
+          "mean_percent": 0.3333333333333333,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.3055555555555556,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "networking": {
+          "mean_percent": 0.16666666666666666,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "profiling": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 34.361111111111114,
+          "p95_percent": 49.5,
+          "max_percent": 49.5
+        }
+      }
+    },
+    {
+      "scenario": "observer-paused",
+      "repeat": 0,
+      "resource_cpu_percent": null,
+      "resource_cpu_during_profile_percent": null,
+      "profile_cpu_percent": 38.666666666666664,
+      "qemu_host_cpu_percent": 176.7235295047196,
+      "generator_cpu_p95_max_percent": 14.90457516784045,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 34.25,
+          "p95_percent": 41.0,
+          "max_percent": 41.0
+        },
+        "firewall": {
+          "mean_percent": 3.1944444444444446,
+          "p95_percent": 7.0,
+          "max_percent": 7.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "jiffies": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "networking": {
+          "mean_percent": 1.0,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "total": {
+          "mean_percent": 38.666666666666664,
+          "p95_percent": 44.0,
+          "max_percent": 44.0
+        }
+      }
+    },
+    {
+      "scenario": "observer-paused",
+      "repeat": 1,
+      "resource_cpu_percent": null,
+      "resource_cpu_during_profile_percent": null,
+      "profile_cpu_percent": 47.80555555555556,
+      "qemu_host_cpu_percent": 176.27275513996003,
+      "generator_cpu_p95_max_percent": 14.90370188924199,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "ethernet": {
+          "mean_percent": 41.333333333333336,
+          "p95_percent": 52.0,
+          "max_percent": 52.0
+        },
+        "firewall": {
+          "mean_percent": 4.777777777777778,
+          "p95_percent": 7.5,
+          "max_percent": 7.5
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "networking": {
+          "mean_percent": 1.5277777777777777,
+          "p95_percent": 3.5,
+          "max_percent": 3.5
+        },
+        "profiling": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 47.80555555555556,
+          "p95_percent": 61.0,
+          "max_percent": 61.0
+        }
+      }
+    },
+    {
+      "scenario": "nat-bypass",
+      "repeat": 1,
+      "resource_cpu_percent": 56.266666666666666,
+      "resource_cpu_during_profile_percent": 57.1,
+      "profile_cpu_percent": 36.75,
+      "qemu_host_cpu_percent": 167.57259320532035,
+      "generator_cpu_p95_max_percent": 14.904406933752131,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.16666666666666666,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "container": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 35.30555555555556,
+          "p95_percent": 51.5,
+          "max_percent": 51.5
+        },
+        "firewall": {
+          "mean_percent": 0.2222222222222222,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.4722222222222222,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "networking": {
+          "mean_percent": 0.2777777777777778,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "radvd": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 36.75,
+          "p95_percent": 52.5,
+          "max_percent": 52.5
+        }
+      }
+    },
+    {
+      "scenario": "mangle-bypass",
+      "repeat": 1,
+      "resource_cpu_percent": 53.2,
+      "resource_cpu_during_profile_percent": 53.95,
+      "profile_cpu_percent": 43.416666666666664,
+      "qemu_host_cpu_percent": 175.44290717094344,
+      "generator_cpu_p95_max_percent": 14.904027895132348,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "dns": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 37.27777777777778,
+          "p95_percent": 47.5,
+          "max_percent": 47.5
+        },
+        "firewall": {
+          "mean_percent": 4.027777777777778,
+          "p95_percent": 8.0,
+          "max_percent": 8.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.1111111111111111,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "networking": {
+          "mean_percent": 1.7222222222222223,
+          "p95_percent": 3.0,
+          "max_percent": 3.0
+        },
+        "profiling": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 43.416666666666664,
+          "p95_percent": 52.5,
+          "max_percent": 52.5
+        }
+      }
+    },
+    {
+      "scenario": "probes-paused",
+      "repeat": 1,
+      "resource_cpu_percent": 56.93333333333333,
+      "resource_cpu_during_profile_percent": 54.55,
+      "profile_cpu_percent": 55.416666666666664,
+      "qemu_host_cpu_percent": 176.55469995008062,
+      "generator_cpu_p95_max_percent": 14.905130481076933,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 999.966667,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.2777777777777778,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "container": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 44.72222222222222,
+          "p95_percent": 54.0,
+          "max_percent": 54.0
+        },
+        "firewall": {
+          "mean_percent": 7.416666666666667,
+          "p95_percent": 12.0,
+          "max_percent": 12.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "networking": {
+          "mean_percent": 2.6666666666666665,
+          "p95_percent": 4.5,
+          "max_percent": 4.5
+        },
+        "profiling": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 55.416666666666664,
+          "p95_percent": 64.0,
+          "max_percent": 64.0
+        }
+      }
+    },
+    {
+      "scenario": "scheduler-paused",
+      "repeat": 1,
+      "resource_cpu_percent": 59.6,
+      "resource_cpu_during_profile_percent": 61.45,
+      "profile_cpu_percent": 45.19444444444444,
+      "qemu_host_cpu_percent": 175.37731778595347,
+      "generator_cpu_p95_max_percent": 14.903262028218995,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.033333,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.1388888888888889,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 37.583333333333336,
+          "p95_percent": 45.5,
+          "max_percent": 45.5
+        },
+        "firewall": {
+          "mean_percent": 4.638888888888889,
+          "p95_percent": 11.0,
+          "max_percent": 11.0
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "kernel": {
+          "mean_percent": 0.19444444444444445,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "netwatch": {
+          "mean_percent": 0.5833333333333334,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "networking": {
+          "mean_percent": 1.7777777777777777,
+          "p95_percent": 4.0,
+          "max_percent": 4.0
+        },
+        "profiling": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.1388888888888889,
+          "p95_percent": 1.0,
+          "max_percent": 1.0
+        },
+        "total": {
+          "mean_percent": 45.19444444444444,
+          "p95_percent": 58.5,
+          "max_percent": 58.5
+        }
+      }
+    },
+    {
+      "scenario": "rsc-full",
+      "repeat": 1,
+      "resource_cpu_percent": 89.56666666666666,
+      "resource_cpu_during_profile_percent": 90.15789473684211,
+      "profile_cpu_percent": 85.83333333333333,
+      "qemu_host_cpu_percent": 175.83720635802248,
+      "generator_cpu_p95_max_percent": 14.903071613416529,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 33.94444444444444,
+          "p95_percent": 39.0,
+          "max_percent": 39.0
+        },
+        "ethernet": {
+          "mean_percent": 32.0,
+          "p95_percent": 38.0,
+          "max_percent": 38.0
+        },
+        "fileman": {
+          "mean_percent": 0.7222222222222222,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "firewall": {
+          "mean_percent": 3.25,
+          "p95_percent": 6.5,
+          "max_percent": 6.5
+        },
+        "firewall-mgmt": {
+          "mean_percent": 0.4166666666666667,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "interface-mgmt": {
+          "mean_percent": 1.75,
+          "p95_percent": 3.0,
+          "max_percent": 3.0
+        },
+        "ipc": {
+          "mean_percent": 2.3333333333333335,
+          "p95_percent": 5.0,
+          "max_percent": 5.0
+        },
+        "kernel": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "logging": {
+          "mean_percent": 0.5555555555555556,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "netwatch": {
+          "mean_percent": 0.4166666666666667,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "networking": {
+          "mean_percent": 1.1388888888888888,
+          "p95_percent": 2.5,
+          "max_percent": 2.5
+        },
+        "profiling": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.3055555555555556,
+          "p95_percent": 1.5,
+          "max_percent": 1.5
+        },
+        "routing": {
+          "mean_percent": 8.86111111111111,
+          "p95_percent": 12.0,
+          "max_percent": 12.0
+        },
+        "total": {
+          "mean_percent": 85.83333333333333,
+          "p95_percent": 96.0,
+          "max_percent": 96.0
+        }
+      }
+    },
+    {
+      "scenario": "baseline-nat",
+      "repeat": 1,
+      "resource_cpu_percent": 54.266666666666666,
+      "resource_cpu_during_profile_percent": 55.55,
+      "profile_cpu_percent": 38.916666666666664,
+      "qemu_host_cpu_percent": 172.04004767470278,
+      "generator_cpu_p95_max_percent": 14.90419057371211,
+      "host_steal_p95_percent": 0.0,
+      "successful_cps": 1000.0,
+      "reused_original_baseline": false,
+      "profile_frames": 18,
+      "profile_classifiers": {
+        "console": {
+          "mean_percent": 0.16666666666666666,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "container": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ethernet": {
+          "mean_percent": 34.77777777777778,
+          "p95_percent": 41.0,
+          "max_percent": 41.0
+        },
+        "firewall": {
+          "mean_percent": 2.7222222222222223,
+          "p95_percent": 4.5,
+          "max_percent": 4.5
+        },
+        "interface-mgmt": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "ipc": {
+          "mean_percent": 0.027777777777777776,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "kernel": {
+          "mean_percent": 0.05555555555555555,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "neighbor-discovery": {
+          "mean_percent": 0.0,
+          "p95_percent": 0.0,
+          "max_percent": 0.0
+        },
+        "networking": {
+          "mean_percent": 1.0,
+          "p95_percent": 2.0,
+          "max_percent": 2.0
+        },
+        "resource-mgmt": {
+          "mean_percent": 0.08333333333333333,
+          "p95_percent": 0.5,
+          "max_percent": 0.5
+        },
+        "total": {
+          "mean_percent": 38.916666666666664,
+          "p95_percent": 46.0,
+          "max_percent": 46.0
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "scenario": "baseline-nat",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 52.233333333333334,
+        "min": 50.2,
+        "max": 54.266666666666666,
+        "values": [
+          50.2,
+          54.266666666666666
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 40.791666666666664,
+        "min": 38.916666666666664,
+        "max": 42.666666666666664,
+        "values": [
+          42.666666666666664,
+          38.916666666666664
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 173.89708993917722,
+        "min": 172.04004767470278,
+        "max": 175.75413220365166,
+        "values": [
+          175.75413220365166,
+          172.04004767470278
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 0.1111111111111111,
+          "min": 0.05555555555555555,
+          "max": 0.16666666666666666,
+          "values": [
+            0.05555555555555555,
+            0.16666666666666666
+          ]
+        },
+        "container": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0,
+            0.027777777777777776
+          ]
+        },
+        "ethernet": {
+          "mean": 36.27777777777778,
+          "min": 34.77777777777778,
+          "max": 37.77777777777778,
+          "values": [
+            37.77777777777778,
+            34.77777777777778
+          ]
+        },
+        "firewall": {
+          "mean": 2.916666666666667,
+          "min": 2.7222222222222223,
+          "max": 3.111111111111111,
+          "values": [
+            3.111111111111111,
+            2.7222222222222223
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.05555555555555555,
+          "min": 0.05555555555555555,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.05555555555555555
+          ]
+        },
+        "ipc": {
+          "mean": 0.06944444444444445,
+          "min": 0.027777777777777776,
+          "max": 0.1111111111111111,
+          "values": [
+            0.1111111111111111,
+            0.027777777777777776
+          ]
+        },
+        "kernel": {
+          "mean": 0.06944444444444445,
+          "min": 0.05555555555555555,
+          "max": 0.08333333333333333,
+          "values": [
+            0.08333333333333333,
+            0.05555555555555555
+          ]
+        },
+        "logging": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "neighbor-discovery": {
+          "mean": 0.013888888888888888,
+          "min": 0.0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0.0
+          ]
+        },
+        "networking": {
+          "mean": 1.1527777777777777,
+          "min": 1.0,
+          "max": 1.3055555555555556,
+          "values": [
+            1.3055555555555556,
+            1.0
+          ]
+        },
+        "radvd": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.08333333333333333,
+          "min": 0.08333333333333333,
+          "max": 0.08333333333333333,
+          "values": [
+            0.08333333333333333,
+            0.08333333333333333
+          ]
+        },
+        "total": {
+          "mean": 40.791666666666664,
+          "min": 38.916666666666664,
+          "max": 42.666666666666664,
+          "values": [
+            42.666666666666664,
+            38.916666666666664
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "rsc-full",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 89.28333333333333,
+        "min": 89,
+        "max": 89.56666666666666,
+        "values": [
+          89,
+          89.56666666666666
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 86.0,
+        "min": 85.83333333333333,
+        "max": 86.16666666666667,
+        "values": [
+          86.16666666666667,
+          85.83333333333333
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 176.51822177969478,
+        "min": 175.83720635802248,
+        "max": 177.19923720136705,
+        "values": [
+          177.19923720136705,
+          175.83720635802248
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 32.638888888888886,
+          "min": 31.333333333333332,
+          "max": 33.94444444444444,
+          "values": [
+            31.333333333333332,
+            33.94444444444444
+          ]
+        },
+        "ethernet": {
+          "mean": 33.22222222222222,
+          "min": 32.0,
+          "max": 34.44444444444444,
+          "values": [
+            34.44444444444444,
+            32.0
+          ]
+        },
+        "fileman": {
+          "mean": 0.6388888888888888,
+          "min": 0.5555555555555556,
+          "max": 0.7222222222222222,
+          "values": [
+            0.5555555555555556,
+            0.7222222222222222
+          ]
+        },
+        "firewall": {
+          "mean": 3.5694444444444446,
+          "min": 3.25,
+          "max": 3.888888888888889,
+          "values": [
+            3.888888888888889,
+            3.25
+          ]
+        },
+        "firewall-mgmt": {
+          "mean": 0.3055555555555556,
+          "min": 0.19444444444444445,
+          "max": 0.4166666666666667,
+          "values": [
+            0.19444444444444445,
+            0.4166666666666667
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 1.5833333333333335,
+          "min": 1.4166666666666667,
+          "max": 1.75,
+          "values": [
+            1.4166666666666667,
+            1.75
+          ]
+        },
+        "ipc": {
+          "mean": 2.2222222222222223,
+          "min": 2.111111111111111,
+          "max": 2.3333333333333335,
+          "values": [
+            2.111111111111111,
+            2.3333333333333335
+          ]
+        },
+        "kernel": {
+          "mean": 0.05555555555555555,
+          "min": 0.05555555555555555,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.05555555555555555
+          ]
+        },
+        "logging": {
+          "mean": 0.5138888888888888,
+          "min": 0.4722222222222222,
+          "max": 0.5555555555555556,
+          "values": [
+            0.4722222222222222,
+            0.5555555555555556
+          ]
+        },
+        "neighbor-discovery": {
+          "mean": 0.027777777777777776,
+          "min": 0.027777777777777776,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0.027777777777777776
+          ]
+        },
+        "netwatch": {
+          "mean": 0.513888888888889,
+          "min": 0.4166666666666667,
+          "max": 0.6111111111111112,
+          "values": [
+            0.6111111111111112,
+            0.4166666666666667
+          ]
+        },
+        "networking": {
+          "mean": 1.3055555555555556,
+          "min": 1.1388888888888888,
+          "max": 1.4722222222222223,
+          "values": [
+            1.4722222222222223,
+            1.1388888888888888
+          ]
+        },
+        "profiling": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.027777777777777776,
+            0.05555555555555555
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.2777777777777778,
+          "min": 0.25,
+          "max": 0.3055555555555556,
+          "values": [
+            0.25,
+            0.3055555555555556
+          ]
+        },
+        "routing": {
+          "mean": 9.083333333333332,
+          "min": 8.86111111111111,
+          "max": 9.305555555555555,
+          "values": [
+            9.305555555555555,
+            8.86111111111111
+          ]
+        },
+        "total": {
+          "mean": 86.0,
+          "min": 85.83333333333333,
+          "max": 86.16666666666667,
+          "values": [
+            86.16666666666667,
+            85.83333333333333
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "scheduler-paused",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 61.21666666666667,
+        "min": 59.6,
+        "max": 62.833333333333336,
+        "values": [
+          62.833333333333336,
+          59.6
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 44.416666666666664,
+        "min": 43.638888888888886,
+        "max": 45.19444444444444,
+        "values": [
+          43.638888888888886,
+          45.19444444444444
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 176.35682198394517,
+        "min": 175.37731778595347,
+        "max": 177.33632618193687,
+        "values": [
+          177.33632618193687,
+          175.37731778595347
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 0.16666666666666669,
+          "min": 0.1388888888888889,
+          "max": 0.19444444444444445,
+          "values": [
+            0.19444444444444445,
+            0.1388888888888889
+          ]
+        },
+        "container": {
+          "mean": 0.027777777777777776,
+          "min": 0,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0
+          ]
+        },
+        "ethernet": {
+          "mean": 37.44444444444444,
+          "min": 37.30555555555556,
+          "max": 37.583333333333336,
+          "values": [
+            37.30555555555556,
+            37.583333333333336
+          ]
+        },
+        "firewall": {
+          "mean": 4.236111111111112,
+          "min": 3.8333333333333335,
+          "max": 4.638888888888889,
+          "values": [
+            3.8333333333333335,
+            4.638888888888889
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.027777777777777776
+          ]
+        },
+        "ipc": {
+          "mean": 0.08333333333333333,
+          "min": 0.05555555555555555,
+          "max": 0.1111111111111111,
+          "values": [
+            0.1111111111111111,
+            0.05555555555555555
+          ]
+        },
+        "kernel": {
+          "mean": 0.125,
+          "min": 0.05555555555555555,
+          "max": 0.19444444444444445,
+          "values": [
+            0.05555555555555555,
+            0.19444444444444445
+          ]
+        },
+        "neighbor-discovery": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0,
+            0.027777777777777776
+          ]
+        },
+        "netwatch": {
+          "mean": 0.48611111111111116,
+          "min": 0.3888888888888889,
+          "max": 0.5833333333333334,
+          "values": [
+            0.3888888888888889,
+            0.5833333333333334
+          ]
+        },
+        "networking": {
+          "mean": 1.5972222222222223,
+          "min": 1.4166666666666667,
+          "max": 1.7777777777777777,
+          "values": [
+            1.4166666666666667,
+            1.7777777777777777
+          ]
+        },
+        "profiling": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.027777777777777776
+          ]
+        },
+        "radvd": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.1388888888888889,
+          "min": 0.1388888888888889,
+          "max": 0.1388888888888889,
+          "values": [
+            0.1388888888888889,
+            0.1388888888888889
+          ]
+        },
+        "total": {
+          "mean": 44.416666666666664,
+          "min": 43.638888888888886,
+          "max": 45.19444444444444,
+          "values": [
+            43.638888888888886,
+            45.19444444444444
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "probes-paused",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 55.21666666666667,
+        "min": 53.5,
+        "max": 56.93333333333333,
+        "values": [
+          53.5,
+          56.93333333333333
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 47.84722222222222,
+        "min": 40.27777777777778,
+        "max": 55.416666666666664,
+        "values": [
+          40.27777777777778,
+          55.416666666666664
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 176.59420712104878,
+        "min": 176.55469995008062,
+        "max": 176.63371429201695,
+        "values": [
+          176.63371429201695,
+          176.55469995008062
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 0.18055555555555555,
+          "min": 0.08333333333333333,
+          "max": 0.2777777777777778,
+          "values": [
+            0.08333333333333333,
+            0.2777777777777778
+          ]
+        },
+        "container": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0,
+            0.027777777777777776
+          ]
+        },
+        "ethernet": {
+          "mean": 39.55555555555556,
+          "min": 34.388888888888886,
+          "max": 44.72222222222222,
+          "values": [
+            34.388888888888886,
+            44.72222222222222
+          ]
+        },
+        "firewall": {
+          "mean": 5.541666666666667,
+          "min": 3.6666666666666665,
+          "max": 7.416666666666667,
+          "values": [
+            3.6666666666666665,
+            7.416666666666667
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.16666666666666666,
+          "min": 0.08333333333333333,
+          "max": 0.25,
+          "values": [
+            0.25,
+            0.08333333333333333
+          ]
+        },
+        "ipc": {
+          "mean": 0.08333333333333333,
+          "min": 0.05555555555555555,
+          "max": 0.1111111111111111,
+          "values": [
+            0.1111111111111111,
+            0.05555555555555555
+          ]
+        },
+        "kernel": {
+          "mean": 0.2916666666666667,
+          "min": 0.08333333333333333,
+          "max": 0.5,
+          "values": [
+            0.5,
+            0.08333333333333333
+          ]
+        },
+        "networking": {
+          "mean": 1.7916666666666665,
+          "min": 0.9166666666666666,
+          "max": 2.6666666666666665,
+          "values": [
+            0.9166666666666666,
+            2.6666666666666665
+          ]
+        },
+        "profiling": {
+          "mean": 0.18055555555555558,
+          "min": 0.05555555555555555,
+          "max": 0.3055555555555556,
+          "values": [
+            0.3055555555555556,
+            0.05555555555555555
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.027777777777777776
+          ]
+        },
+        "total": {
+          "mean": 47.84722222222222,
+          "min": 40.27777777777778,
+          "max": 55.416666666666664,
+          "values": [
+            40.27777777777778,
+            55.416666666666664
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "mangle-bypass",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 55.083333333333336,
+        "min": 53.2,
+        "max": 56.96666666666667,
+        "values": [
+          56.96666666666667,
+          53.2
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 46.263888888888886,
+        "min": 43.416666666666664,
+        "max": 49.111111111111114,
+        "values": [
+          49.111111111111114,
+          43.416666666666664
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 175.69052386279287,
+        "min": 175.44290717094344,
+        "max": 175.93814055464227,
+        "values": [
+          175.93814055464227,
+          175.44290717094344
+        ]
+      },
+      "classifiers": {
+        "btest": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "console": {
+          "mean": 0.1111111111111111,
+          "min": 0.1111111111111111,
+          "max": 0.1111111111111111,
+          "values": [
+            0.1111111111111111,
+            0.1111111111111111
+          ]
+        },
+        "dns": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0,
+            0.027777777777777776
+          ]
+        },
+        "ethernet": {
+          "mean": 38.08333333333333,
+          "min": 37.27777777777778,
+          "max": 38.888888888888886,
+          "values": [
+            38.888888888888886,
+            37.27777777777778
+          ]
+        },
+        "firewall": {
+          "mean": 4.083333333333334,
+          "min": 4.027777777777778,
+          "max": 4.138888888888889,
+          "values": [
+            4.138888888888889,
+            4.027777777777778
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.027777777777777776
+          ]
+        },
+        "ipc": {
+          "mean": 0.05555555555555555,
+          "min": 0.05555555555555555,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.05555555555555555
+          ]
+        },
+        "kernel": {
+          "mean": 0.9166666666666667,
+          "min": 0.1111111111111111,
+          "max": 1.7222222222222223,
+          "values": [
+            1.7222222222222223,
+            0.1111111111111111
+          ]
+        },
+        "networking": {
+          "mean": 1.625,
+          "min": 1.5277777777777777,
+          "max": 1.7222222222222223,
+          "values": [
+            1.5277777777777777,
+            1.7222222222222223
+          ]
+        },
+        "profiling": {
+          "mean": 1.1944444444444444,
+          "min": 0.027777777777777776,
+          "max": 2.361111111111111,
+          "values": [
+            2.361111111111111,
+            0.027777777777777776
+          ]
+        },
+        "radvd": {
+          "mean": 0.027777777777777776,
+          "min": 0,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.09722222222222221,
+          "min": 0.027777777777777776,
+          "max": 0.16666666666666666,
+          "values": [
+            0.16666666666666666,
+            0.027777777777777776
+          ]
+        },
+        "total": {
+          "mean": 46.263888888888886,
+          "min": 43.416666666666664,
+          "max": 49.111111111111114,
+          "values": [
+            49.111111111111114,
+            43.416666666666664
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "nat-bypass",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": 51.15,
+        "min": 46.03333333333333,
+        "max": 56.266666666666666,
+        "values": [
+          46.03333333333333,
+          56.266666666666666
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 35.55555555555556,
+        "min": 34.361111111111114,
+        "max": 36.75,
+        "values": [
+          34.361111111111114,
+          36.75
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 168.34013217696517,
+        "min": 167.57259320532035,
+        "max": 169.10767114861,
+        "values": [
+          169.10767114861,
+          167.57259320532035
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 0.1111111111111111,
+          "min": 0.05555555555555555,
+          "max": 0.16666666666666666,
+          "values": [
+            0.05555555555555555,
+            0.16666666666666666
+          ]
+        },
+        "container": {
+          "mean": 0.027777777777777776,
+          "min": 0.027777777777777776,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0.027777777777777776
+          ]
+        },
+        "ethernet": {
+          "mean": 34.27777777777778,
+          "min": 33.25,
+          "max": 35.30555555555556,
+          "values": [
+            33.25,
+            35.30555555555556
+          ]
+        },
+        "firewall": {
+          "mean": 0.2777777777777778,
+          "min": 0.2222222222222222,
+          "max": 0.3333333333333333,
+          "values": [
+            0.3333333333333333,
+            0.2222222222222222
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.06944444444444445,
+          "min": 0.05555555555555555,
+          "max": 0.08333333333333333,
+          "values": [
+            0.05555555555555555,
+            0.08333333333333333
+          ]
+        },
+        "ipc": {
+          "mean": 0.05555555555555555,
+          "min": 0.05555555555555555,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0.05555555555555555
+          ]
+        },
+        "kernel": {
+          "mean": 0.3888888888888889,
+          "min": 0.3055555555555556,
+          "max": 0.4722222222222222,
+          "values": [
+            0.3055555555555556,
+            0.4722222222222222
+          ]
+        },
+        "networking": {
+          "mean": 0.2222222222222222,
+          "min": 0.16666666666666666,
+          "max": 0.2777777777777778,
+          "values": [
+            0.16666666666666666,
+            0.2777777777777778
+          ]
+        },
+        "profiling": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "radvd": {
+          "mean": 0.027777777777777776,
+          "min": 0,
+          "max": 0.05555555555555555,
+          "values": [
+            0,
+            0.05555555555555555
+          ]
+        },
+        "resource-mgmt": {
+          "mean": 0.08333333333333333,
+          "min": 0.08333333333333333,
+          "max": 0.08333333333333333,
+          "values": [
+            0.08333333333333333,
+            0.08333333333333333
+          ]
+        },
+        "total": {
+          "mean": 35.55555555555556,
+          "min": 34.361111111111114,
+          "max": 36.75,
+          "values": [
+            34.361111111111114,
+            36.75
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "observer-paused",
+      "samples": 2,
+      "resource_cpu_percent": {
+        "mean": null,
+        "min": null,
+        "max": null,
+        "values": [
+          null,
+          null
+        ]
+      },
+      "profile_cpu_percent": {
+        "mean": 43.236111111111114,
+        "min": 38.666666666666664,
+        "max": 47.80555555555556,
+        "values": [
+          38.666666666666664,
+          47.80555555555556
+        ]
+      },
+      "qemu_host_cpu_percent": {
+        "mean": 176.49814232233982,
+        "min": 176.27275513996003,
+        "max": 176.7235295047196,
+        "values": [
+          176.7235295047196,
+          176.27275513996003
+        ]
+      },
+      "classifiers": {
+        "console": {
+          "mean": 0.041666666666666664,
+          "min": 0,
+          "max": 0.08333333333333333,
+          "values": [
+            0.08333333333333333,
+            0
+          ]
+        },
+        "ethernet": {
+          "mean": 37.79166666666667,
+          "min": 34.25,
+          "max": 41.333333333333336,
+          "values": [
+            34.25,
+            41.333333333333336
+          ]
+        },
+        "firewall": {
+          "mean": 3.986111111111111,
+          "min": 3.1944444444444446,
+          "max": 4.777777777777778,
+          "values": [
+            3.1944444444444446,
+            4.777777777777778
+          ]
+        },
+        "interface-mgmt": {
+          "mean": 0.041666666666666664,
+          "min": 0.027777777777777776,
+          "max": 0.05555555555555555,
+          "values": [
+            0.027777777777777776,
+            0.05555555555555555
+          ]
+        },
+        "ipc": {
+          "mean": 0.027777777777777776,
+          "min": 0,
+          "max": 0.05555555555555555,
+          "values": [
+            0.05555555555555555,
+            0
+          ]
+        },
+        "jiffies": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "kernel": {
+          "mean": 0.041666666666666664,
+          "min": 0,
+          "max": 0.08333333333333333,
+          "values": [
+            0,
+            0.08333333333333333
+          ]
+        },
+        "neighbor-discovery": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0.027777777777777776,
+            0
+          ]
+        },
+        "networking": {
+          "mean": 1.2638888888888888,
+          "min": 1.0,
+          "max": 1.5277777777777777,
+          "values": [
+            1.0,
+            1.5277777777777777
+          ]
+        },
+        "profiling": {
+          "mean": 0.013888888888888888,
+          "min": 0,
+          "max": 0.027777777777777776,
+          "values": [
+            0,
+            0.027777777777777776
+          ]
+        },
+        "total": {
+          "mean": 43.236111111111114,
+          "min": 38.666666666666664,
+          "max": 47.80555555555556,
+          "values": [
+            38.666666666666664,
+            47.80555555555556
+          ]
+        }
+      }
+    }
+  ],
+  "conditional_differences": [
+    {
+      "component": "controller",
+      "enabled": "rsc-full",
+      "paused": "scheduler-paused",
+      "metric": "resource_cpu_percent",
+      "mean_difference_points": 28.066666666666663,
+      "observed_min_points": 26.166666666666664,
+      "observed_max_points": 29.96666666666666,
+      "paired_differences_points": [
+        26.166666666666664,
+        29.96666666666666
+      ]
+    },
+    {
+      "component": "probes",
+      "enabled": "scheduler-paused",
+      "paused": "probes-paused",
+      "metric": "resource_cpu_percent",
+      "mean_difference_points": 6.0000000000000036,
+      "observed_min_points": 2.6666666666666714,
+      "observed_max_points": 9.333333333333336,
+      "paired_differences_points": [
+        9.333333333333336,
+        2.6666666666666714
+      ]
+    },
+    {
+      "component": "mangle_policy_routing",
+      "enabled": "probes-paused",
+      "paused": "mangle-bypass",
+      "metric": "resource_cpu_percent",
+      "mean_difference_points": 0.1333333333333293,
+      "observed_min_points": -3.4666666666666686,
+      "observed_max_points": 3.733333333333327,
+      "paired_differences_points": [
+        -3.4666666666666686,
+        3.733333333333327
+      ]
+    },
+    {
+      "component": "NAT_and_auto_conntrack",
+      "enabled": "mangle-bypass",
+      "paused": "nat-bypass",
+      "metric": "resource_cpu_percent",
+      "mean_difference_points": 3.933333333333337,
+      "observed_min_points": -3.066666666666663,
+      "observed_max_points": 10.933333333333337,
+      "paired_differences_points": [
+        10.933333333333337,
+        -3.066666666666663
+      ]
+    },
+    {
+      "component": "resource_observer_profile_metric",
+      "enabled": "probes-paused",
+      "paused": "observer-paused",
+      "metric": "profile_cpu_percent",
+      "mean_difference_points": 4.611111111111111,
+      "observed_min_points": 1.6111111111111143,
+      "observed_max_points": 7.611111111111107,
+      "paired_differences_points": [
+        1.6111111111111143,
+        7.611111111111107
+      ]
+    },
+    {
+      "component": "resource_observer_host_QEMU_metric",
+      "enabled": "probes-paused",
+      "paused": "observer-paused",
+      "metric": "qemu_host_cpu_percent",
+      "mean_difference_points": 0.09606479870896578,
+      "observed_min_points": -0.08981521270266057,
+      "observed_max_points": 0.28194481012059214,
+      "paired_differences_points": [
+        -0.08981521270266057,
+        0.28194481012059214
+      ]
+    }
+  ],
+  "baseline_resource_CPU_drift_points": 4.066666666666663,
+  "capacity_validated": false
+}

@@ -53,6 +53,7 @@ Each guide has a language switch; the links below follow the selected language.
 - [Test execution order](TESTING.en.md)
 - [Long acceptance](NETWORK-SOAK.en.md)
 - [Performance comparison methodology](PERFORMANCE-PLAN.en.md)
+- [CPU attribution and optimization priority](CPU-ATTRIBUTION.en.md)
 - [150 measurements: results and limits](PERFORMANCE-COMPARISON.en.md)
 - [External generators and observers](../labtools/README.en.md)
 - [Isolated x86 DUT](../labtools/DUT-ADAPTER.en.md)
