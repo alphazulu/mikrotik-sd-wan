@@ -5,9 +5,9 @@
 WAN selection combines source IPv4/subnet, groups, destinations, ingress
 interface/VLAN, protocol and ports. RouterOS handles SLA/switching; GUI edits
 declarative JSON and protected worker/watchdog installs it. Published-version
-results are [historical](POLICIES-VALIDATION.en.md). This branch adds source and
-destination Address Lists and common physical/VPN WANs; full branch acceptance
-is still running.
+results are [historical](POLICIES-VALIDATION.en.md). Source/destination Address Lists and shared physical/VPN WANs are part of
+v0.3.0. The later weighted extension has separate
+[checks and limits](WEIGHTED-WAN-VALIDATION.en.md).
 
 ## GUI setup
 
@@ -135,3 +135,7 @@ snapshot reports an unknown match.
 Each policy has one selector `jump` in `sdwan-pre`. Its `sdwan-p-<name>` target
 contains WAN classifiers and a terminal `drop` for unmarked flows, making policy
 order readable without repeating selectors on every WAN.
+
+Optional distribution of new connections across WANs, weights and affinity:
+[weighted WAN policies](WEIGHTED-WAN.en.md). IP/Address List selectors and their
+intersections remain conditions of the same policy.

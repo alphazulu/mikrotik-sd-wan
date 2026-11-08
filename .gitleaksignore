@@ -1,0 +1,7 @@
+# Verified SHA-256 source-file digests, not credentials. The JSON values match
+# the qualified files named by their keys. The generic-api-key rule matches
+# "api" in those paths. Restrict exceptions to these three original findings;
+# do not exempt the benchmark file or future commits from secret scanning.
+abbf0a8553bb6fb7e91571fe94d5e5237cd7f298:docs/benchmarks/weighted-wan-2026-11-08.json:generic-api-key:25
+abbf0a8553bb6fb7e91571fe94d5e5237cd7f298:docs/benchmarks/weighted-wan-2026-11-08.json:generic-api-key:35
+abbf0a8553bb6fb7e91571fe94d5e5237cd7f298:docs/benchmarks/weighted-wan-2026-11-08.json:generic-api-key:79

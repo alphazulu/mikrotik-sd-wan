@@ -1,0 +1,5 @@
+order,variant,CPU_mean_percent,CPS,router_samples,fresh_state_samples,free_memory_min_bytes,logical_write_sectors_delta
+1,ordered,79.06666666666666,1000.033333,30,29,821710848,264
+2,weighted,85.36666666666666,1000.033333,30,29,821092352,312
+3,weighted,84.23333333333333,1000.0,30,29,820789248,216
+4,ordered,79.16666666666667,1000.0,30,29,820224000,312

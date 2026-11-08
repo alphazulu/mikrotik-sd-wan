@@ -50,7 +50,7 @@ requests and transaction journals are excluded. Like any diagnostic export, it
 can still contain the operator's addresses and topology.
 
 Sources: `sdwan/diagnostics.py`, `sdwan/diagnostics_ui.py` and enriched status in
-`native/sdwan-controller.rsc`. The current standard bundle has JSON and 11 RSC
+`native/sdwan-controller.rsc`. The current standard bundle has JSON and 12 RSC
 files; `sdwan.py` defines its `FILES` list. Original milestone reports were stored
 in `runtime/policies-acceptance.json`, `runtime/policies-protection-acceptance.json`
 and `runtime/gui-policies-diagnostics-validation.json`.

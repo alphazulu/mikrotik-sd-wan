@@ -3,6 +3,7 @@ from pathlib import Path
 from sdwan.config import load,validate,objects
 from sdwan.vpn_egress import add_wan,canonical
 from sdwan.policies import match_flow,conflicts
+from sdwan.balance import admission_list
 ROOT=Path(__file__).resolve().parents[1]
 
 class UnifiedWANTests(unittest.TestCase):
@@ -29,8 +30,9 @@ class UnifiedWANTests(unittest.TestCase):
   c=self.config();c['vpn_egress']={'enabled':True,'masquerade':True,'allow_selected_forward':True};c['wans'][-1]['masquerade']=False;c['wans'][-1].pop('allow_selected_forward');before=copy.deepcopy(c);new=canonical(c);self.assertEqual(c,before);self.assertNotIn('vpn_egress',new);self.assertFalse(new['wans'][-1]['masquerade']);self.assertTrue(new['wans'][-1]['allow_selected_forward'])
  def test_selectors_live_only_at_jump_and_optional_nat_is_per_wan_for_all_kinds(self):
   c=self.policy(self.config(),source_list='Users',destination_list='Targets');c['wans'][0]['masquerade']=True;o=objects(validate(c));jump=o['ip/firewall/mangle','sdwan:v1:policy-jump:chosen'];self.assertEqual((jump['src-address-list'],jump['dst-address-list']),('Users','Targets'))
+  policy=next(p for p in c['policies'] if p['name']=='chosen')
   for wn in ('vpn1','wan2'):
-   rule=o['ip/firewall/mangle','sdwan:v1:classify:chosen:'+wn];self.assertEqual(rule['chain'],jump['jump-target']);self.assertNotIn('src-address-list',rule)
+   rule=o['ip/firewall/mangle','sdwan:v1:classify:chosen:'+wn];self.assertEqual(rule['chain'],jump['jump-target']);self.assertEqual(rule['src-address-list'],admission_list(policy,wn));self.assertNotEqual(rule['src-address-list'],'Users');self.assertNotIn('dst-address-list',rule)
   self.assertIn(('ip/firewall/nat','sdwan:v1:egress:chosen:vpn1'),o);self.assertIn(('ip/firewall/nat','sdwan:v1:egress:default:wan1'),o);self.assertFalse(any(menu=='ip/firewall/address-list' and row.get('list') in ('Users','Targets') for (menu,_),row in o.items()))
 
 if __name__=='__main__':unittest.main()

@@ -56,6 +56,8 @@ $sdwanStrictCancel
 /ip/firewall/nat/remove [/ip/firewall/nat/find where comment~"^sdwan:v1:((vpn|egress):|dns-bootstrap\$)"]
 /ip/firewall/filter/remove [/ip/firewall/filter/find where comment~"^sdwan:v1:((vpn|egress):|dns-bootstrap\$)"]
 /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment~"^sdwan:v1:"]
+# RAM admission entries have no static parent and must also leave on uninstall.
+/ip/firewall/address-list/remove [/ip/firewall/address-list/find where comment~"^sdwan:v1:admission:"]
 /ip/firewall/address-list/remove [/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"]
 :local managedQuery do={ :return [/ip/firewall/connection/find where connection-mark~"^sdwan-"] }
 :foreach id in=[$sdwanConntrackFind query=$managedQuery] do={

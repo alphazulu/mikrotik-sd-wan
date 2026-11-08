@@ -8,6 +8,14 @@ claim new API/GUI fields are implemented and does not change current long accept
 
 ## Separate measurements
 
+The owner has deferred statistics/web expansion in favor of core SD-WAN functionality.
+The design below is retained for a later return to this work.
+
+The current design scope is a normal container with `privileged=no`, a shared
+RouterOS API resource snapshot and existing process metrics. The owner has deferred
+privileged mode, further research, comparisons and experiments until a separate
+decision. This iteration does not depend on that work.
+
 | Group | Proposed metrics |
 |---|---|
 | Whole MikroTik | CPU, free/total RAM, uptime, sample time and freshness |

@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "measured_date_utc": "2026-11-08",
+  "scope": "bounded optional weighted WAN regression and typical two-WAN native cost, not 48-hour/hardware/max-capacity acceptance",
+  "routeros": "7.24.5",
+  "fixture": {
+    "platform": "virtual x86 L6",
+    "vcpus": 1,
+    "memory_mib": 1024,
+    "data_nic": "virtio",
+    "physical_wans": 3
+  },
+  "qualified_product_files_sha256": {
+    "configurator.py": "54f8cbfed2e9e8505ade6dc3fdb495696eda2ad55a0cf5605e924dd519131cfd",
+    "container-controller/.dockerignore": "0e44d327b9f86fa5789e65637fc5e20d220763cee0448251ec6a9138e2e9f985",
+    "container-controller/AGENTS.md": "a88ddaa01c22944604c2ad99359b167520c1c9b37c9f7334ed7989cefb34fc49",
+    "container-controller/Cargo.lock": "5bb0f6043401953ffff47e96a3e86cb6071d30e07a81049c35f23a8122a428b8",
+    "container-controller/Cargo.toml": "f2d483fe9a92a1b82b5b043210b9f3357198034be836e12ea2f3e0c956278a8e",
+    "container-controller/Dockerfile": "34e83572048dc84dc4a82af14d30242c2019f40eed114778c5f75c8a6e320eca",
+    "container-controller/Dockerfile.web": "9d48ba275b714efca09674dc3571ff88fa610b7b22fb6eddbaa578878fb80963",
+    "container-controller/README.en.md": "035f569f140b75926fb4dcc4202d55409d93c32cdbbb09a27e1104ad3c689b19",
+    "container-controller/README.md": "d4b56820e4f236a5d16d5c4eda3b79bc13f1e24649d647a68ec344d2607d04b8",
+    "container-controller/build.py": "c0d8ab530b7214780a60461fe0d54ce56fade5c58f8614a445caab459e10c2c3",
+    "container-controller/routeros/bridge.rsc": "7acdfe65900bcebd72f83c61bcf1b6a9c0fadc9bca004b06f2a6032335ef9043",
+    "container-controller/src/api.rs": "fba0e52b56565cdc06d01aec22a8a040f3ca16c62feee913a713bac8ba0fa609",
+    "container-controller/src/engine.rs": "d5ca0d97c77bc032db55a809f146ca197ccc386dbf520a9f202f02157b9f547d",
+    "container-controller/src/lib.rs": "8ee86ce8c77a300abf2a8c93142e804d7aca1b4762bbdc6b9eff19519a8168ca",
+    "container-controller/src/main.rs": "9239ae6e884841ac284784ed2dfb92261bf6eb7ec475d6331d04215e9b93d39b",
+    "container-controller/src/model.rs": "9782941c34d0630cfa33a31e2799c70906e0497635a5571cd57824e40c5776b9",
+    "container-controller/src/process.rs": "b41b8da219b1d8a82dc0ea21aa787375732a42a889ecf4ffc228bfa84e5ea6f0",
+    "container-controller/src/telemetry_config.rs": "5bf651022b8be003f22ba44b1e61fa9cf75fa6670685dd542d1f80dd9e17bce2",
+    "container-controller/src/web/http.rs": "7a3a6c4e1379ad00ecbe92dc589cfc22cf64aa0cd4df9b84bf2a3da20702913d",
+    "container-controller/src/web/mod.rs": "aa51cded4825465758b5faa9872c3c3f2f760c33c638ce2d36571ef01f3ad342",
+    "container-controller/src/web/state.rs": "1d271e2a4ca464c0658ca55767e1589759330960a4fa320489bba6beff829768",
+    "container-controller/tests/unit/api.rs": "ec7432caa732491fcaeda36b06dcbecfdfacdf9564bc92828be0785c6b3962dd",
+    "container-controller/tests/unit/engine.rs": "a6d967c419fe04479d659c08ae8d9be2587a6d4f3db416ff5562f8972554e97c",
+    "container-controller/tests/unit/entrypoint.rs": "f713aec177e4bef26d16b4f3f1daa4e96e4219121d6967b80f968deeda5f083b",
+    "container-controller/tests/unit/model.rs": "bb9b5987cfc0f662ee8cd2fb75ec5306303d7d9e82f82ae804ab0c0009b39fa0",
+    "container-controller/tests/unit/process.rs": "0bfc2357c8f2bf9e7771c9fd4a55a2a2a37e7c4ecce40e31933556cf7dc350c2",
+    "container-controller/tests/unit/support.rs": "0a296c63ae89a184c8e61e73be741768c00080437070367ea040d91d3a47eb20",
+    "container-controller/tests/unit/telemetry_config.rs": "ace5a241c5b519686e8d589df89003184cf7a3f33837626d8039e14e3c38fbc1",
+    "container-controller/tests/unit/web_app.cjs": "d56f9bc1f2cd073be88fc6f06398ae40c45ac4d81c856c4d06a9f39bea36d378",
+    "container-controller/tests/unit/web_http.rs": "6c81d313e06ef3ce3dd8d95f08eaf90960bd639c75f3aa0a9ca151f9dd8f3a48",
+    "container-controller/tests/unit/web_runtime.rs": "72a66d7d252c1e75857bd700a1c7daccd44af09072543da5ab86164ec5f591df",
+    "container-controller/tests/unit/web_state.rs": "e0730c7e1b80a4eac93c9e31146418b7616b1f25363988a3d2f2b1ea8ebbb56c",
+    "container-controller/web/app.js": "ae129f655f41a1329c493081ff1933ecf3985b1536347c0bd27447d84a79784c",
+    "container-controller/web/index.html": "d6f354de93f1c5b03afaba3c56f5bddfec0d740eb2024d83eff114405d1ce422",
+    "container-controller/web/style.css": "4f55bbc06e077995aa91f2c008641148266e2eafb12a45e9230cf5856e1b4321",
+    "native/sdwan-admission.rsc": "59eab80b46fa680a0b0158272c2cbd02784311e72ed75eca08fc95963e569803",
+    "native/sdwan-controller.rsc": "210437b13706cbe5311acc6f0a6a97fb8891ad7ad9b3a797d1d112186d5423c1",
+    "native/sdwan-dataplane.rsc": "87b9e8757ec9059ad8b84be63fd8f41142466a0121ed2978f24c8edcd6142d21",
+    "native/sdwan-deploy-watchdog.rsc": "30e681d7df91378a32ab58d996ca595ffab2e53d375969a927360b7322b9820d",
+    "native/sdwan-deploy-worker.rsc": "53478f120f85b9a0bb786c2f12e5d433e74e8e2169de7dc2852306ff8a23ae35",
+    "native/sdwan-deployment.rsc": "67156e6838f08cf085553b68c504f001a9c66cfb5ae98b1833cd06d5a9e50c39",
+    "native/sdwan-dns.rsc": "7cda619d4060cdb67d117f767ccf878da1c47fca5231640377880be5d4fbc4e9",
+    "native/sdwan-install.rsc": "1ef09838bc2bcf4bb2637d9b40994549d78e3547f8032d3a04f90ffca59ee030",
+    "native/sdwan-links.rsc": "8a7e0f26ead4f479bef1d65978f4bffe5c158c3462aaac87b50405dee9d2d2b1",
+    "native/sdwan-overlay.rsc": "5874824ab5945b057f54e0650172e7a447dfe03ac09a310b53834994cdd24972",
+    "native/sdwan-rollback.rsc": "eecbbb68849c41ed6d9c64081d52742116a30070680b6905a66c17f2fd4e6843",
+    "native/sdwan-vpn.rsc": "2c6b94e4cba903ef5d5980f096097e9bb6af49b9650ead5454556097f2ad2461",
+    "sdwan.py": "01587c9d4cc130e6f5e142e9a3ba6591667775f22a3e56e37641295fb5c32da6",
+    "sdwan/__init__.py": "b8476b7fae330797d7b990ee1aab445a3a4834de50076cc98a2afaa24b44fcf9",
+    "sdwan/address_lists.py": "e753ad967e7f547b8aa2d672f44679ab5410aefe165b6cad7761718c7d1cf80d",
+    "sdwan/balance.py": "0afad287e30f4464f209422fff0cc868603dbb4d718268cc2a9523e859bc27ee",
+    "sdwan/config.py": "505d47749b172e4e45060461606525bbc12fdd832c7ab1111926329576391619",
+    "sdwan/container_backend.py": "90537b2abfe6172b202b7c883b8ecd92c09baebe4650d79473d9e70428da5dc8",
+    "sdwan/container_config.py": "ed7980204720cb4768b6301bfe9923d2b25aed2aa23867ca90e7bee317ac64a1",
+    "sdwan/container_runtime.py": "394cd2c412d303a871e9fb55d2e42019b172e78aaccd36ed1b66fd47d22f8748",
+    "sdwan/container_telemetry.py": "09e97b31b18a32df500dc1065e8c53d1ef37706400f87e833fb2f43381558718",
+    "sdwan/dataplane.py": "57807a6cdeca3ba0a5317eb1767e3029dde6accec12170d24001f703e46612a0",
+    "sdwan/deployment.py": "29289337d6d0b5222d7e58a54cf44fd6d83a42eea2700ac983a95788c29a8350",
+    "sdwan/device_mode.py": "4dadc5a552e5368d9fc27217cd460e30b67007c23e7b329dfd13b90cf86e3424",
+    "sdwan/diagnostics.py": "b6530025c4b57822a6c129dd8296beafcdb2b1095498bc56e224a03f448f2876",
+    "sdwan/diagnostics_ui.py": "7e394fb6c01e168f4b19822d6270b62297127f27be43c2adf116e306049846de",
+    "sdwan/discovery.py": "793dff8ce386603296885f3ca202c0c92cadcf4f54010c1981f13d021fe840b3",
+    "sdwan/lte.py": "4082dbb5af1af6d9acc1baf24db4360b450d51e88276b05d6482d57439c68cc5",
+    "sdwan/maintenance.py": "c88c8a402c3ac5246c5515a522e102e1a526f480949c5f7f46515521ca22d902",
+    "sdwan/migration.py": "afcca5c2772d8019e0ea8ef0e9742c33827c265638f12b648813d1bf04eaf4e0",
+    "sdwan/native_api.py": "d224e1daf31bc443afb228ff1d4fa4079bda90e10350ae9412a3db44cb860c28",
+    "sdwan/overlay.py": "dfb46770cd1a2ce660f9860f6451621ad87bb604c716ab01f262d360984af3c7",
+    "sdwan/overlay_project.py": "046df8feccecf684768864decca2bcb42ed1cfcbccb6e097ac2fae5acb5058da",
+    "sdwan/overlay_runtime.py": "5b225987180b480f9f42dcf0a98cf107d47fd0248695d6bf81fb154bfe7c100d",
+    "sdwan/platform_support.py": "773b51d3125de95800b046a6a971d982a66f959baad0c8b16eb3588da46d5de6",
+    "sdwan/policies.py": "74f8630061cee1f3002d30d25e2033c7d047b98f2cd5b11dc0bcda4660b6d6c4",
+    "sdwan/policy_editor.py": "1da8ebb65333fa2f08e82dbb5adfeb12f9b5fce06a8ddb759c89a255b29b8039",
+    "sdwan/probes.py": "78e37b9343204e1fab25be0538279055fe4f87c69416d3965a4262fb575a640a",
+    "sdwan/provisioning.py": "65db5516f7b2c589dd9ee667052a32831bb0931e4f8adf3862fd7c3a1d76bbbf",
+    "sdwan/router.py": "ef2c5c6f8e9f767a8ab7ee5d53a948381ac9e2ce309a909ada3a47f200ace857",
+    "sdwan/vpn_egress.py": "11a86aaa3fb6576d7c28ce21439b05732dee10d31429f822a21e4860d1c4fbc0",
+    "sdwan/wan.py": "7c42190e8ff1e5ac2b1bfcddfd16c6f5cac7114714ac69626a3ec9f5b1482baa",
+    "sdwan/wizard_ui.py": "72b4fe34e35dc2cfe8dc413a795b9f58da1c9ed0daa2a49a25683fccca805ec4"
+  },
+  "controller_sha256": "210437b13706cbe5311acc6f0a6a97fb8891ad7ad9b3a797d1d112186d5423c1",
+  "container_source_sha256": "0772c14a13574b95c77faef9347bdaeb09e34afb835c73ec19aa0e11ca60db9d",
+  "container_images_changed": false,
+  "sdk_unit_tests": 414,
+  "external_tool_unit_tests": 88,
+  "gui_balance_checks": 7,
+  "native_helper_cases_each_platform": 40,
+  "helper_scope": "all25 nonempty subsets of2/3/4members,10invalidpolicies,5admission cases; four real WAN traffic not tested",
+  "two_wan_smoke": {
+    "weights": [
+      3,
+      1,
+      0
+    ],
+    "tcp_connections": 400,
+    "tcp_counts": [
+      294,
+      106,
+      0
+    ],
+    "udp_connections": 160,
+    "udp_counts": [
+      120,
+      40,
+      0
+    ],
+    "echo_errors": 0
+  },
+  "three_wan_smoke": {
+    "weights": [
+      3,
+      2,
+      1
+    ],
+    "tcp_counts": [
+      61,
+      39,
+      20
+    ],
+    "udp_counts": [
+      57,
+      41,
+      22
+    ],
+    "WAN1_failed_remaining_weights": [
+      2,
+      1
+    ],
+    "remaining_tcp_counts": [
+      0,
+      61,
+      19
+    ],
+    "remaining_udp_counts": [
+      0,
+      58,
+      22
+    ],
+    "echo_errors": 0
+  },
+  "dhcp_recovery_observations": {
+    "unfrozen_first_primary_observed_seconds": 0.084744561,
+    "frozen_first_primary_observed_seconds": 0.09033611,
+    "flows_each": 30,
+    "all_echoes_and_primary_source": true,
+    "instant_cutover_claim": false
+  },
+  "resource_protocol": {
+    "order": [
+      "ordered",
+      "weighted",
+      "weighted",
+      "ordered"
+    ],
+    "fresh_tcp_connections_per_second": 1000,
+    "source_addresses": 128,
+    "warmup_seconds": 10,
+    "measured_seconds": 30,
+    "attempts_per_window_including_warmup": 40000,
+    "completed_each_window": 40000,
+    "weighted_policy": "default",
+    "weighted_ratio": [
+      3,
+      1,
+      0
+    ]
+  },
+  "resource_windows": [
+    {
+      "order": 1,
+      "variant": "ordered",
+      "CPU_mean_percent": 79.06666666666666,
+      "CPS": 1000.033333,
+      "router_samples": 30,
+      "fresh_state_samples": 29,
+      "free_memory_min_bytes": 821710848,
+      "logical_write_sectors_delta": 264
+    },
+    {
+      "order": 2,
+      "variant": "weighted",
+      "CPU_mean_percent": 85.36666666666666,
+      "CPS": 1000.033333,
+      "router_samples": 30,
+      "fresh_state_samples": 29,
+      "free_memory_min_bytes": 821092352,
+      "logical_write_sectors_delta": 312
+    },
+    {
+      "order": 3,
+      "variant": "weighted",
+      "CPU_mean_percent": 84.23333333333333,
+      "CPS": 1000.0,
+      "router_samples": 30,
+      "fresh_state_samples": 29,
+      "free_memory_min_bytes": 820789248,
+      "logical_write_sectors_delta": 216
+    },
+    {
+      "order": 4,
+      "variant": "ordered",
+      "CPU_mean_percent": 79.16666666666667,
+      "CPS": 1000.0,
+      "router_samples": 30,
+      "fresh_state_samples": 29,
+      "free_memory_min_bytes": 820224000,
+      "logical_write_sectors_delta": 312
+    }
+  ],
+  "ordered_cpu_mean_percent": 79.11666666666667,
+  "weighted_cpu_mean_percent": 84.8,
+  "overhead_percentage_points": 5.683333333333323,
+  "steady_web": {
+    "requests": 21,
+    "cycles": 7,
+    "errors": 0
+  },
+  "known_limits": [
+    "explicit WAN kind configuration change resets shared SLA warmup and can interrupt other WAN sessions",
+    "protected reconfiguration can briefly interrupt web polls",
+    "API selected/flags are not forwarding acknowledgements",
+    "new code has not repeated original48h/150run acceptance",
+    "no physical ARM/ARM64/LTE or maximum-rule-budget performance qualification"
+  ],
+  "production_router_accessed": false,
+  "independent_recomputation": true,
+  "private_exports_images_credentials_published": false,
+  "matched_unbalanced_old_vs_RAM_admission": {
+    "windows": [
+      {
+        "order": 1,
+        "variant": "old-e1",
+        "CPU_mean_percent": 78.93333333333334,
+        "CPS": 1000.0,
+        "router_samples": 30,
+        "fresh_state_samples": 29,
+        "completed_including_warmup": 40000,
+        "actual_controller_SHA256": "17fb403b00efdca338322441529d6dc6475a1a000dab8009b812e8957fa43764"
+      },
+      {
+        "order": 2,
+        "variant": "RAM-admission",
+        "CPU_mean_percent": 76.96551724137932,
+        "CPS": 1000.0,
+        "router_samples": 29,
+        "fresh_state_samples": 29,
+        "completed_including_warmup": 40000,
+        "actual_controller_SHA256": "210437b13706cbe5311acc6f0a6a97fb8891ad7ad9b3a797d1d112186d5423c1"
+      },
+      {
+        "order": 3,
+        "variant": "RAM-admission",
+        "CPU_mean_percent": 79.55172413793103,
+        "CPS": 1000.033333,
+        "router_samples": 29,
+        "fresh_state_samples": 29,
+        "completed_including_warmup": 40000,
+        "actual_controller_SHA256": "210437b13706cbe5311acc6f0a6a97fb8891ad7ad9b3a797d1d112186d5423c1"
+      },
+      {
+        "order": 4,
+        "variant": "old-e1",
+        "CPU_mean_percent": 76.9,
+        "CPS": 1000.033333,
+        "router_samples": 30,
+        "fresh_state_samples": 29,
+        "completed_including_warmup": 40000,
+        "actual_controller_SHA256": "17fb403b00efdca338322441529d6dc6475a1a000dab8009b812e8957fa43764"
+      }
+    ],
+    "old_CPU_mean_percent": 77.91666666666667,
+    "RAM_CPU_mean_percent": 78.25862068965517,
+    "difference_percentage_points": 0.34195402298850297,
+    "paired_differences_percentage_points": [
+      -1.9678160919540204,
+      2.6517241379310263
+    ],
+    "scope": "separate matched experiment, both unbalanced, same1000CPS/10s warmup/30s measured, 40000 successful client/server echoes perwindow"
+  }
+}

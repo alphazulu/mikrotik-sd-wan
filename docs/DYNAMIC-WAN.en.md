@@ -30,7 +30,7 @@ and NAT must already exist; the wizard does not create clients or read passwords
 
 API discovery shows dynamic IP/gateway read-only, never copying them into JSON.
 An enabled client can be selected without a current lease/session. Current
-standard export contains JSON and 11 RSC files, including `sdwan-links.rsc`.
+standard export contains JSON and 12 RSC files, including `sdwan-links.rsc`.
 
 ## RouterOS execution
 

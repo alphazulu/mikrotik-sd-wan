@@ -3,7 +3,7 @@
 [Русский](DATAPLANE.md) | English
 
 RouterOS manages routes, marks and conntrack removal. GUI prepares/deploys only.
-The standard bundle contains `sdwan-config.json`, eight core RSC files and three
+The standard bundle contains `sdwan-config.json`, nine core RSC files and three
 deployment RSC files. Installer imports `sdwan-dataplane.rsc` after creating FIB tables.
 
 ## Marks and routing
@@ -29,7 +29,8 @@ Router-local addresses and `local_networks` bypass outbound WAN selection first.
 Incoming WAN packets do not get a routing mark back to that WAN: after connection
 marking they continue ordinary INPUT/DNAT/reply delivery.
 
-Controller enables only selected-WAN classifiers. If none assigns a connection
+Classifiers remain compiled and enabled. One owned dynamic RAM Address List
+entry admits the selected WAN or a weighted subset. If none assigns a connection
 mark, the policy chain's terminal `drop` rejects matching unmarked traffic rather
 than falling through to default. Strict has no backup. Permanent WAN tables also
 have blackhole default distance254, preventing main bypass when next hop is unavailable.
@@ -55,17 +56,19 @@ the device must be able to resolve probe names.
 
 When a policy changes from WAN A to B or `none`, controller:
 
-1. Reconciles routes and the new-connection classifier.
+1. Reconciles routes and RAM admission for new connections.
 2. Removes exact previous `sdwan-out-<policy>:<wan-A>` entries.
 3. Also removes `sdwan-router-<wan-A>` when default changes.
 4. Publishes reason, old/new WAN and removal count.
 
-Return to primary does the same. Another client retaining WAN2 keeps its sessions.
+An ordered policy also retires its old-WAN sessions on return to primary.
+A weighted policy preserves marks of healthy admitted members when a member
+returns. Another client retaining WAN2 keeps its sessions.
 There is no global `/ip firewall connection remove [find]`.
 
 For three seconds after selection change, exact client marks of unselected WANs
 are additionally retired, covering packets already processing at the switch.
-Selected marks and other policies are excluded.
+Admitted member marks, eligible draining marks and other policies are excluded.
 
 Confirmed WAN down removes its ingress/router-originated marks. A voice-only SLA
 degradation does not remove inbound sessions on a reachable WAN. Healthy WANs and
@@ -100,9 +103,9 @@ automatic cleanup is scoped to owned marks. Assigning a mark does not rewrite
 existing NAT binding. Seamless migration of active unmarked/FastTracked sessions
 is not implemented.
 
-PCC/weights and QoS remain planned. L3/L4 selectors and optional branch overlay
-are implemented, without DPI or full weighted balancing. See
-[current candidate acceptance](CURRENT-STATUS.en.md).
+Optional [weighted PCC policies](WEIGHTED-WAN.en.md) use this same marking engine.
+L3/L4 selectors and branch overlay remain available; QoS and DPI are future work.
+See [current candidate acceptance](CURRENT-STATUS.en.md).
 
 LTE uses current dynamic IPv4 and interface gateway for raw-IP or internal lease
 gateway for RNDIS. APN controls automatic default; internal DHCP is not edited.
@@ -131,3 +134,6 @@ guard closes the flow, preserving first-match semantics.
 [Mangle reference](https://manual.mikrotik.com/docs/cli-reference/ip/firewall/mangle/)
 describes jump-target/return. Actual CHR 7.24.5 checked IP/both Address Lists,
 physical/VPN backup, return and independent TCP sessions.
+
+The weighted extension is under separate laboratory qualification; historical
+reports do not establish acceptance for its new admission mechanism.

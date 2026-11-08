@@ -26,7 +26,7 @@
 :local path ($dir . "sdwan-txn-" . $token . ".json")
 :local previous [:toarray ""]
 :local index 0
-:foreach base in={"sdwan-config.json";"sdwan-active.json";"sdwan-backup.json";"sdwan-controller.rsc";"sdwan-install.rsc";"sdwan-rollback.rsc";"sdwan-dataplane.rsc";"sdwan-links.rsc";"sdwan-overlay.rsc";"sdwan-vpn.rsc";"sdwan-dns.rsc"} do={
+:foreach base in={"sdwan-config.json";"sdwan-active.json";"sdwan-backup.json";"sdwan-controller.rsc";"sdwan-install.rsc";"sdwan-rollback.rsc";"sdwan-dataplane.rsc";"sdwan-links.rsc";"sdwan-admission.rsc";"sdwan-overlay.rsc";"sdwan-vpn.rsc";"sdwan-dns.rsc"} do={
     :local objectNames [:toarray ($dir . $base)]
     :if ($dir != "") do={ :set objectNames ($objectNames,$base) }
     :foreach objectName in=$objectNames do={

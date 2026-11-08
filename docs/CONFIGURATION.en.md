@@ -3,7 +3,7 @@
 [Русский](CONFIGURATION.md) | English
 
 One JSON describes WANs, SLAs, policies and backend. The standard bundle contains
-11 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
+12 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
 initial interface, NAT or baseline firewall setup.
 
 ## Top level
@@ -97,6 +97,9 @@ Groups, destination, L3 interface, protocol, ports, priorities and intersections
 Unchanged reapply retains flows. Changing classifier/groups/order reclassifies
 owned outbound connections. WAN changes remove affected owned conntrack entries;
 incoming WAN traffic and probes have separate exemptions.
+
+Optional WAN weights and connection affinity: [weighted policies](WEIGHTED-WAN.en.md).
+The `balance` field preserves priority ordering of existing policies.
 
 ## Examples and validation
 

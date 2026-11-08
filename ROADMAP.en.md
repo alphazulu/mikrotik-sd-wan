@@ -41,11 +41,22 @@ New RSC code has not repeated the original 48-hour or 150-run acceptance.
 
 ## Subsequent iterations
 
+The owner prioritizes core SD-WAN functionality. Statistics/web expansion is deferred;
+all privileged work remains deferred too. The container retains `privileged=no`.
+
+Optional weighted WAN policies are implemented and passed separate bounded
+qualification: actual two/three-WAN forwarding, affinity, failure/drain/reserve,
+selectors, container fallback, DHCP, protected lifecycle and resource windows.
+[Configuration](docs/WEIGHTED-WAN.en.md) · [Evidence and limits](docs/WEIGHTED-WAN-VALIDATION.en.md).
+API flags remain configuration observations; the guide records DHCP convergence,
+explicit WAN-kind edit disruption and transient web polling during reconfiguration.
+
+Remaining directions:
+
 - Physical ARM/ARM64, real LTE modems and hardware load testing.
 - Reproducible migration of existing OSPF/VPN and third-party marks.
-- Clear whole-router resource statistics separate from container process metrics.
 - IPv6 and dual-stack SLAs.
-- PCC/weighted balancing, QoS and bandwidth management.
+- QoS and bandwidth management.
 - FQDN sets and application classification beyond existing L3/L4 selectors.
 - Further branch overlay and multi-node management work.
 
