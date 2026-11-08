@@ -43,7 +43,7 @@ Both jobs receive explicit required permissions; `dont-require-permissions` is n
 3. Bootstrap archives previous JSON/RSC, registers worker/watchdog and creates
    encrypted `sdwan-before-<token>.backup`. The client verifies watchdog heartbeat
    before uploading the new network package.
-4. Upload/read back new JSON and eight core RSC files. Send the arm token only
+4. Upload/read back new JSON and nine core RSC files. Send the arm token only
    after verification. Watchdog launches the worker with a separate scheduler.
 5. Worker imports the installer locally. Caught errors fail the transaction.
    Watchdog checks fresh status, revision and the new controller's heartbeat.
@@ -73,7 +73,7 @@ RouterOS failure are outside this recovery guarantee.
 
 SDK archives previous bootstrap/worker/watchdog before overwriting them, then adds
 verified archives to the prepared journal's previous manifest before payload/arm.
-Recovery restores eight core RSC files, three deployment RSC files and staging/
+Recovery restores nine core RSC files, three deployment RSC files and staging/
 active/baseline JSON; previously absent files are removed. Current recovery jobs
 remain the recovery mechanism; journal and backup support diagnosis. The binary
 snapshot is taken after registering those jobs and before network changes.
@@ -102,8 +102,8 @@ that operation is restored.
 
 ## Export and manual maintenance
 
-The standard bundle contains 12 files: JSON plus 11 RSC files (controller,
-dataplane, links, overlay, vpn, dns, install, rollback, deployment, deploy-worker,
+The standard bundle contains 13 files: JSON plus 12 RSC files (controller,
+dataplane, links, admission, overlay, vpn, dns, install, rollback, deployment, deploy-worker,
 deploy-watchdog). `sdwan.py` defines `FILES`. Use GUI/CLI for protected deployment:
 they archive **before** overwriting the old package and send confirmation.
 

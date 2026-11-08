@@ -2,6 +2,7 @@
 
 
 from .policies import ordered
+from .balance import admission_list, classifier, groups, pool_list
 
 
 def objects(c):
@@ -36,8 +37,19 @@ def objects(c):
             result[('ip/route','sdwan:v1:policy-blackhole:'+p['name'])]={'dst-address':'0.0.0.0/0','routing-table':p['table'],'blackhole':'true','distance':'254'}
         chain='sdwan-p-'+p['name']
         add('policy-jump:'+p['name'],'sdwan-pre','jump',**selectors,**{'connection-mark':'no-mark','connection-state':'established,related,new','jump-target':chain})
+        if 'balance' in p:
+            target='sdwan-b-'+p['name']
+            add('pcc-jump:'+p['name'],chain,'jump',**{'connection-mark':'no-mark','jump-target':target})
+            for group in groups(p):
+                for slot,wan in enumerate(group['slots']):
+                    add(f'pcc:{p["name"]}:{group["mask"]}:{slot}',target,'mark-connection',**{
+                        'connection-state':'established,related,new','connection-mark':'no-mark',
+                        'src-address-list':pool_list(p,group['mask']),
+                        'per-connection-classifier':f'{classifier(p)}:{len(group["slots"])}/{slot}',
+                        'new-connection-mark':'sdwan-out-'+p['name']+':'+wan,'passthrough':'true'})
+            add('pcc-return:'+p['name'],target,'return')
         for name in p['wans']:
-            add('classify:'+p['name']+':'+name,chain,'mark-connection',**{'connection-state':'established,related,new','connection-mark':'no-mark','new-connection-mark':'sdwan-out-'+p['name']+':'+name,'passthrough':'true'})
+            add('classify:'+p['name']+':'+name,chain,'mark-connection',**{'connection-state':'established,related,new','connection-mark':'no-mark','src-address-list':admission_list(p,name),'new-connection-mark':'sdwan-out-'+p['name']+':'+name,'passthrough':'true'})
         add('guard:'+p['name'],chain,'drop',**{'connection-mark':'no-mark'})
         from .vpn_egress import wan_flag
         for name in p['wans']:

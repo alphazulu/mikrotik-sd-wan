@@ -84,7 +84,7 @@ python3 sdwan.py rollback
 
 `sdwan-backup.json` отдельно хранит baseline-флаги принятых под управление routes/FastTrack и rp-filter. Кнопка «Откат к исходному» восстанавливает именно этот baseline. Аварийное восстановление неудачной установки возвращает полный снимок непосредственно перед ней.
 
-Имена файлов `sdwan-*`, prefix `sdwan:v1:`, имена таблиц и script/scheduler проекта зарезервированы. Не запускайте два установщика параллельно. Стандартный экспорт содержит JSON и 11 RSC; ручной import обходит защиту, используйте штатный GUI/CLI.
+Имена файлов `sdwan-*`, prefix `sdwan:v1:`, имена таблиц и script/scheduler проекта зарезервированы. Не запускайте два установщика параллельно. Стандартный экспорт содержит JSON и 12 RSC; ручной import обходит защиту, используйте штатный GUI/CLI.
 
 ## Лабораторные контрольные цели
 
@@ -113,7 +113,7 @@ Unit-тесты проверяют опасные ошибки конфигур�
 
 ## Группы, приложения и диагностика
 
-Дополнительные policy selectors и top-level groups описаны в [POLICIES.md](POLICIES.md). Библиотека native links содержит ordering/match helpers и bounded RAM history; стандартный пакет — 11 RSC и JSON. Статус включает interface/APN, возраст проб, recovery/hold timers и причины выбора политик. [Диагностика GUI](DIAGNOSTICS.md) читает только свой status snapshot и active JSON; все решения остаются локальными.
+Дополнительные policy selectors и top-level groups описаны в [POLICIES.md](POLICIES.md). Библиотека native links содержит ordering/match helpers и bounded RAM history; стандартный пакет — 12 RSC и JSON. Статус включает interface/APN, возраст проб, recovery/hold timers и причины выбора политик. [Диагностика GUI](DIAGNOSTICS.md) читает только свой status snapshot и active JSON; все решения остаются локальными.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

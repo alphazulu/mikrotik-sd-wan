@@ -21,9 +21,12 @@ with the exact catalog version and SHA256; other versions are not substitutes.
 reports and the [roadmap](ROADMAP.en.md). A short passing check does not establish
 completed long acceptance or physical hardware capacity.
 
-`main` after v0.3.0 adds [native-cycle optimization](docs/NATIVE-CYCLE-OPTIMIZATION.en.md): 88.76% →
-68.62% mean CPU at a fixed virtual-lab load. New RSC code has its own bounded checks; earlier long
-acceptance belongs to the original release.
+`main` after v0.3.0 adds [optional weighted WAN policies](docs/WEIGHTED-WAN.en.md)
+with GUI configuration, shared SLAs and connection affinity. The separate
+[bounded validation](docs/WEIGHTED-WAN-VALIDATION.en.md) includes real two/three-WAN
+traffic, native/container fallback, upgrade/uninstall and resource cost. Earlier
+[native-cycle optimization](docs/NATIVE-CYCLE-OPTIMIZATION.en.md) and long acceptance
+have their own source and instrumentation; their CPU results are not reassigned.
 
 ## Features
 
@@ -34,6 +37,8 @@ acceptance belongs to the original release.
 - Shared WAN preference lists, including VPNs. Policy source and destination
   can each be an IP/subnet or MikroTik Address List and can be combined.
   Interface, protocol, ports, rule priority and `prefer`/`strict` modes are supported.
+- Optional weighted distribution of new connections; 2–4 positive members, ordered
+  zero-weight reserves and three affinity choices. A single flow stays on one WAN.
 - Connection marks and routing tables for symmetric WAN/DNAT replies, with
   selective removal of owned conntrack entries during switching.
 - `enabled`, `drain`, `down` maintenance modes and separate `jump` chains.

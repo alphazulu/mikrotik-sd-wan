@@ -29,6 +29,7 @@
 
 ## Маршрутизация и WAN
 
+- [Веса WAN и закрепление соединений](WEIGHTED-WAN.md)
 - [Маркировка, симметрия и conntrack](DATAPLANE.md)
 - [Static, DHCP-client и PPPoE](DYNAMIC-WAN.md)
 - [LTE и APN](LTE.md)
@@ -55,6 +56,7 @@
 - [Методика сравнения производительности](PERFORMANCE-PLAN.md)
 - [Разбор CPU и приоритет оптимизации](CPU-ATTRIBUTION.md)
 - [150 измерений: результаты и ограничения](PERFORMANCE-COMPARISON.md)
+- [Проверка весов и стоимость по ресурсам](WEIGHTED-WAN-VALIDATION.md)
 - [Оптимизация нативного цикла: результаты и границы](NATIVE-CYCLE-OPTIMIZATION.md)
 - [Внешние генераторы и наблюдатели](../labtools/README.md)
 - [Изолированный x86 DUT](../labtools/DUT-ADAPTER.md)

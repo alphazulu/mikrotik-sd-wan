@@ -23,8 +23,10 @@ from sdwan.diagnostics_ui import DiagnosticsPanel
 from sdwan.policies import ordered,conflicts
 from sdwan.probes import validate_probe,STRICT_FIELDS
 from sdwan.container_config import settings as container_settings,telemetry as telemetry_settings,addresses as container_addresses
+from sdwan.balance import validate_policy as validate_balance_policy
 
 BACKENDS={'Скрипт RouterOS':'routeros','Локальный контейнер Rust':'container'}
+BALANCE_HASHES={'Соединение (IP и порты)':'both-addresses-and-ports','Клиент и сервер':'both-addresses','Клиент':'src-address'}
 
 ROOT=Path(__file__).resolve().parent
 PROBE_FIELDS=[('name','Имя','text'),('type','Тип',['http-get','https-get','tcp-conn','dns']),('host','IP / DNS-имя','text'),('port','Порт (кроме DNS)','int'),('dns_server','DNS-сервер (для DNS)','text')]
@@ -45,6 +47,7 @@ class RecordDialog(tk.Toplevel):
             value.setdefault('kind','static');value.setdefault('admin_state','enabled')
         self.body=ttk.Frame(self,padding=12);self.body.pack(fill='both',expand=True)
         policy=any(key=='source_group' for key,_,_ in fields)
+        self.is_policy=policy
         if policy:
             pages=ttk.Notebook(self.body);pages.grid(row=0,columnspan=2,sticky='nsew')
             basic=ttk.Frame(pages,padding=8);selectors=ttk.Frame(pages,padding=8);pages.add(basic,text='Маршрут и приоритет');pages.add(selectors,text='Группа и приложение')
@@ -65,6 +68,23 @@ class RecordDialog(tk.Toplevel):
             else:widget=ttk.Entry(container,textvariable=var,width=42)
             widget.grid(row=row,column=1,sticky='ew',padx=4,pady=5)
             self.widgets[key]=widget
+        if policy:
+            balance=ttk.Frame(pages,padding=8);pages.add(balance,text='Балансировка')
+            initial=value.get('balance',{})
+            self.balance_enabled=tk.BooleanVar(value='balance' in value)
+            self.balance_hash=tk.StringVar(value=next((label for label,code in BALANCE_HASHES.items() if code==initial.get('classifier','both-addresses-and-ports')),next(iter(BALANCE_HASHES))))
+            self.balance_values={name:tk.StringVar(value=str(weight)) for name,weight in initial.get('weights',{}).items()}
+            ttk.Checkbutton(balance,text='Распределять новые соединения между WAN',variable=self.balance_enabled).pack(anchor='w',pady=5)
+            ttk.Label(balance,text='Закрепление трафика').pack(anchor='w')
+            self.balance_combo=ttk.Combobox(balance,textvariable=self.balance_hash,values=list(BALANCE_HASHES),state='readonly',width=36);self.balance_combo.pack(anchor='w',pady=5)
+            self.balance_grid=ttk.Frame(balance);self.balance_grid.pack(fill='x',pady=8)
+            ttk.Label(balance,text='Вес задаёт долю новых соединений, а не скорость одного скачивания. '
+                      'Укажите 2–4 канала с положительными весами; 0 — резерв, после основных каналов в списке. '
+                      'При отказе используются доступные каналы с подходящим SLA. '
+                      'Установленные соединения здоровых WAN сохраняются. Режим правила должен быть prefer.',wraplength=630).pack(anchor='w',pady=5)
+            self.balance_enabled.trace_add('write',self.balance_controls)
+            self.vars['wans'].trace_add('write',self.balance_wans_changed)
+            self.balance_wans_changed()
         if policy:ttk.Label(self.body,text='Все условия внутри правила соединяются И. Группы содержат IP/подсети. Порты: 80,443,10000-20000.\nПри пересечении правил задайте каждому явный приоритет. Пустой источник оставьте только общей политике.',wraplength=650).grid(row=1,columnspan=2,sticky='w',pady=8)
         self.probes=copy.deepcopy(value.get('probes',[]))
         if wan:
@@ -76,6 +96,20 @@ class RecordDialog(tk.Toplevel):
         ttk.Button(buttons,text='Отмена',command=self.destroy).pack(side='left',padx=4)
         ttk.Button(buttons,text='Сохранить',command=self.accept).pack(side='left',padx=4)
         self.grab_set();self.wait_window()
+    def balance_wans_changed(self,*args):
+        names=list(dict.fromkeys(x.strip() for x in self.vars['wans'].get().split(',') if x.strip()))
+        for child in self.balance_grid.winfo_children():child.destroy()
+        self.balance_spins=[]
+        if not names:ttk.Label(self.balance_grid,text='Сначала укажите WAN на вкладке «Маршрут и приоритет».').grid(row=0,columnspan=2,sticky='w')
+        for index,name in enumerate(names):
+            self.balance_values.setdefault(name,tk.StringVar(value='1'))
+            ttk.Label(self.balance_grid,text=name).grid(row=index,column=0,sticky='w',padx=(0,20),pady=3)
+            spin=ttk.Spinbox(self.balance_grid,from_=0,to=100,textvariable=self.balance_values[name],width=8);spin.grid(row=index,column=1,sticky='w',pady=3);self.balance_spins.append(spin)
+        self.balance_controls()
+    def balance_controls(self,*args):
+        enabled=self.balance_enabled.get()
+        self.balance_combo.configure(state='readonly' if enabled else 'disabled')
+        for spin in self.balance_spins:spin.configure(state='normal' if enabled else 'disabled')
     def addressing_changed(self,*args):
         dynamic=self.vars['kind'].get()!='static'
         lte=self.vars['kind'].get()=='lte'
@@ -101,6 +135,10 @@ class RecordDialog(tk.Toplevel):
                 elif kind=='jsontext':val=json.loads(val)
                 elif kind!='bool':val=val.strip()
                 d[key]=val
+            if self.is_policy and self.balance_enabled.get():
+                d['balance']={'classifier':BALANCE_HASHES[self.balance_hash.get()],
+                              'weights':{name:int(self.balance_values[name].get()) for name in d['wans']}}
+                validate_balance_policy(d)
             if self.wan:
                 d['probes']=self.probe_table.rows
                 if d['kind']!='static':d.pop('address',None);d.pop('gateway',None)
@@ -135,7 +173,14 @@ class Table(ttk.Frame):
     def refresh(self):
         if self.is_policy:self.rows=ordered({'policies':self.rows})
         self.tree.delete(*self.tree.get_children())
-        for i,row in enumerate(self.rows):self.tree.insert('',tk.END,iid=str(i),values=[', '.join(map(str,row.get(k,[]))) if isinstance(row.get(k),list) else row.get(k,'') for k,_,_ in self.fields])
+        for i,row in enumerate(self.rows):
+            values=[]
+            for key,_,_ in self.fields:
+                value=row.get(key,'')
+                if isinstance(value,list):value=', '.join(map(str,value))
+                if key=='mode' and row.get('balance'):value+=' + веса'
+                values.append(value)
+            self.tree.insert('',tk.END,iid=str(i),values=values)
     def add(self):
         d=RecordDialog(self,'Добавить',self.dialog_fields(),wan=self.wan)
         if d.result:self.rows.append(d.result);self.refresh()

@@ -9,6 +9,10 @@
 :global sdwanOrderPolicies
 :global sdwanApplyPolicyMatch
 :global sdwanPolicySignature
+:global sdwanAdmissionList
+:global sdwanBalanceSlots
+:global sdwanSetAdmission
+:if ([:typeof $sdwanSetAdmission] != "array") do={ /import file-name=($dir . "sdwan-admission.rsc") }
 :if ((($cfg->"overlay")->"enabled") = true) do={
     :global sdwanOverlayNetworks
     :set ($cfg->"local_networks") [$sdwanOverlayNetworks cfg=$cfg]
@@ -36,6 +40,7 @@
     :return $id
 }
 # Address list is confined to the SDWAN namespace.
+/ip/firewall/address-list/remove [/ip/firewall/address-list/find where comment~"^sdwan:v1:admission:"]
 :foreach id in=[/ip/firewall/address-list/find where dynamic=no and comment~"^sdwan:v1:"] do={ :if (!([/ip/firewall/address-list/get $id comment] ~ "^sdwan:v1:vpn:")) do={ /ip/firewall/address-list/remove $id } }
 :foreach network in=($cfg->"local_networks") do={ /ip/firewall/address-list/add list=sdwan-local address=$network comment=("sdwan:v1:local-address:" . $network) }
 # Local routing protocols and DHCP/broadcast control must survive even when
@@ -110,6 +115,34 @@
     /ip/firewall/mangle/set $jumpID action=jump jump-target=$policyChain connection-mark=no-mark connection-state=established,related,new disabled=no
     $sdwanApplyPolicyMatch rule=$jumpID policy=$p
     :set ($wanted->$jumpTag) true; :set order ($order,$jumpID)
+    :if ([:typeof ($p->"balance")] = "array") do={
+        :local chain ("sdwan-b-" . $pn)
+        :local tag ("sdwan:v1:pcc-jump:" . $pn)
+        /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
+        :local id [$ensure tag=$tag chain=$policyChain]
+        /ip/firewall/mangle/set $id action=jump jump-target=$chain connection-mark=no-mark disabled=no
+        :set ($wanted->$tag) true; :set order ($order,$id)
+        :local classifier (($p->"balance")->"classifier")
+        :if ([:typeof $classifier] != "str") do={ :set classifier "both-addresses-and-ports" }
+        :if (($classifier != "both-addresses-and-ports") && ($classifier != "both-addresses") && ($classifier != "src-address")) do={ :error "invalid PCC classifier" }
+        :for mask from=1 to=15 do={
+            :local slots [$sdwanBalanceSlots policy=$p mask=$mask]
+            :local index 0
+            :foreach wn in=$slots do={
+                :set tag ("sdwan:v1:pcc:" . $pn . ":" . $mask . ":" . $index)
+                /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
+                :set id [$ensure tag=$tag chain=$chain]
+                /ip/firewall/mangle/set $id action=mark-connection connection-state=established,related,new connection-mark=no-mark src-address-list=("sdwan-b-" . $pn . "-" . $mask) per-connection-classifier=($classifier . ":" . [:len $slots] . "/" . $index) new-connection-mark=("sdwan-out-" . $pn . ":" . $wn) passthrough=yes disabled=no
+                :set ($wanted->$tag) true; :set order ($order,$id)
+                :set index ($index + 1)
+            }
+        }
+        :set tag ("sdwan:v1:pcc-return:" . $pn)
+        /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
+        :set id [$ensure tag=$tag chain=$chain]
+        /ip/firewall/mangle/set $id action=return disabled=no
+        :set ($wanted->$tag) true; :set order ($order,$id)
+    }
     :foreach wn in=($p->"wans") do={
         :local mark ("sdwan-out-" . $pn . ":" . $wn)
         :set ($marks->$mark) true
@@ -117,7 +150,7 @@
         # Fresh selector objects cannot retain constraints from an earlier edit.
         /ip/firewall/mangle/remove [/ip/firewall/mangle/find where comment=$tag]
         :local id [$ensure tag=$tag chain=$policyChain]
-        /ip/firewall/mangle/set $id action=mark-connection connection-mark=no-mark connection-state=established,related,new new-connection-mark=$mark passthrough=yes disabled=yes
+        /ip/firewall/mangle/set $id action=mark-connection connection-mark=no-mark connection-state=established,related,new src-address-list=[$sdwanAdmissionList policy=$p wan=$wn] new-connection-mark=$mark passthrough=yes disabled=no
         :set ($wanted->$tag) true; :set order ($order,$id)
     }
     # Only matching unmarked flows reach this chain; its last rule fails closed.

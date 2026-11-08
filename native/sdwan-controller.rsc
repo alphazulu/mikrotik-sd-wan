@@ -22,6 +22,11 @@
 :global sdwanDNSLoaded
 :global sdwanReconcileWANs
 :global sdwanLinksLoaded
+:global sdwanAdmissionLoaded
+:global sdwanAdmissionList
+:global sdwanSetAdmission
+:global sdwanBalanceSlots
+:global sdwanAdmittedMarks
 :global sdwanLinkFingerprints
 :global sdwanLinkPending
 :global sdwanLinkWarming
@@ -43,13 +48,14 @@
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
     :local vpnEnabled false
     :foreach wan in=($cfg->"wans") do={ :if (($wan->"kind") = "vpn") do={ :set vpnEnabled true } }
-    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 8) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 9) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
     :if ($vpnEnabled) do={
         :global sdwanVPNLoaded
         :global sdwanVPNTick
         :if (($sdwanVPNLoaded != 2) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-vpn.rsc") }
     }
     :if ($sdwanDNSLoaded != 3) do={ /import file-name=($dir . "sdwan-dns.rsc") }
+    :if (([:typeof $sdwanSetAdmission] != "array") || ($sdwanAdmissionLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-admission.rsc") }
     :local health ($cfg->"health")
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
     :if ([:typeof $sdwanWanDown] != "array") do={ :set sdwanWanDown [:toarray ""] }
@@ -334,6 +340,10 @@
     }
     :local policyRoutes [$indexManaged rows=[/ip/route/print as-value where comment~"^sdwan:v1:route:"]]
     :local policyClassifiers [$indexManaged rows=[/ip/firewall/mangle/print as-value where comment~"^sdwan:v1:classify:"]]
+    :local policyPCC [$indexManaged rows=[/ip/firewall/mangle/print as-value where comment~"^sdwan:v1:pcc:"]]
+    :local policyAdmissions [$indexManaged rows=[/ip/firewall/address-list/print as-value where comment~"^sdwan:v1:admission:"]]
+    :if ([:typeof $sdwanAdmittedMarks] != "array") do={ :set sdwanAdmittedMarks [:toarray ""] }
+    :local admittedMarks [:toarray ""]
     :local requireManaged do={
         :local row ($indexed->$tag)
         :if ([:typeof $row] != "array") do={ :error ("missing or duplicate " . $label) }
@@ -356,16 +366,39 @@
                 :if (($selected = "none") && ((($maintenance->$wn)->"admit") = true) && (($sdwanState->(($policy->"profile") . "/" . $wn)) = "degraded")) do={ :set selected $wn }
             }
         }
-        # Retain only previously selected/retained marks, while the draining
+        :local balanced ([:typeof ($policy->"balance")] = "array")
+        :local poolMask 0
+        :local activeWANs [:toarray ""]
+        :if ($balanced && ($selected != "none")) do={
+            :local bit 1
+            :local quality ($sdwanState->(($policy->"profile") . "/" . $selected))
+            :foreach wn in=($policy->"wans") do={
+                :if (((($policy->"balance")->"weights")->$wn) > 0) do={
+                    :if (((($maintenance->$wn)->"admit") = true) && (($sdwanState->(($policy->"profile") . "/" . $wn)) = $quality)) do={
+                        :set poolMask ($poolMask + $bit); :set activeWANs ($activeWANs,$wn)
+                    }
+                    :set bit ($bit * 2)
+                }
+            }
+        }
+        :if (($poolMask = 0) && ($selected != "none")) do={ :set activeWANs ($activeWANs,$selected) }
+        :foreach wn in=$activeWANs do={ :set ($admittedMarks->("sdwan-out-" . $pn . ":" . $wn)) true }
+        :local membersChanged false
+        :foreach wn in=($policy->"wans") do={
+            :local mark ("sdwan-out-" . $pn . ":" . $wn)
+            :if ((($sdwanAdmittedMarks->$mark) = true) != (($admittedMarks->$mark) = true)) do={ :set membersChanged true }
+        }
+        :if ($membersChanged) do={ :set ($sdwanCleanupUntil->$pn) ($now + 3) }
+        # Retain only previously selected/admitted/retained marks, while the draining
         # path still meets this policy's SLA and its optional deadline.
         :foreach wn in=($policy->"wans") do={
             :local mark ("sdwan-out-" . $pn . ":" . $wn)
             :local mode ($maintenance->$wn)
             :local state ($sdwanState->(($policy->"profile") . "/" . $wn))
             :local eligible (($state = "healthy") || (($state = "degraded") && ($policy->"allow_degraded")))
-            :local retain ((($mode->"retain") = true) && $eligible && ((($sdwanSelected->$pn) = $wn) || (($sdwanDrainingMarks->$mark) = true)))
+            :local retain ((($mode->"retain") = true) && $eligible && ((($sdwanSelected->$pn) = $wn) || (($sdwanAdmittedMarks->$mark) = true) || (($sdwanDrainingMarks->$mark) = true)))
             :if ($retain) do={ :set ($retainedMarks->$mark) true } else={
-                :if (((($sdwanDrainingMarks->$mark) = true) && ($wn != $selected)) || (($mode->"effective") = "down")) do={
+                :if (((($sdwanDrainingMarks->$mark) = true) && (($admittedMarks->$mark) != true)) || (($mode->"effective") = "down")) do={
                     :local count [$purge mark=$mark]
                     :if (($policy->"source") = "") do={ :set count ($count + [$purge mark=("sdwan-router-" . $wn)]) }
                     :set sdwanConntrackRemoved ($sdwanConntrackRemoved + $count)
@@ -386,6 +419,11 @@
         :if ($selected = "none") do={ :set why "no eligible WAN within SLA; policy fails closed" } else={
             :if (($sdwanState->(($policy->"profile") . "/" . $selected)) = "degraded") do={ :set why "degraded fallback explicitly allowed" }
         }
+        :if ($balanced) do={
+            :set ($decision->"active_wans") $activeWANs
+            :set ($decision->"balance_mask") $poolMask
+            :if ($poolMask > 0) do={ :set why ("weighted PCC WANs " . [:tostr $activeWANs] . "; selected is the priority anchor") }
+        }
         :set ($decision->"selected") $selected; :set ($decision->"reason") $why
         :set ($policyReport->$pn) $decision
         # Enable the chosen path before disabling the old path. Distances are distinct.
@@ -399,21 +437,35 @@
                 :if (!($row->"disabled")) do={ /ip/route/disable ($row->".id") }
             }
         }
-        # Disable old classifiers before activating the selected WAN. Per-policy
-        # guards prevent an unselected strict/client policy falling into default.
+        # Classifiers stay compiled. A single RAM entry admits either one WAN
+        # or a precompiled weighted subset; existing marks bypass admission.
         :foreach wn in=($policy->"wans") do={
             :local row [$requireManaged indexed=$policyClassifiers tag=("sdwan:v1:classify:" . $pn . ":" . $wn) label=("classifier " . $pn . "/" . $wn)]
-            :if (($wn != $selected) && (!($row->"disabled"))) do={ /ip/firewall/mangle/disable ($row->".id") }
-        }
-        :if ($selected != "none") do={
-            :local row [$requireManaged indexed=$policyClassifiers tag=("sdwan:v1:classify:" . $pn . ":" . $selected) label=("classifier " . $pn . "/" . $selected)]
+            :if (($row->"src-address-list") != [$sdwanAdmissionList policy=$policy wan=$wn]) do={ :error ("classifier admission binding changed " . $pn . "/" . $wn) }
             :if ($row->"disabled") do={ /ip/firewall/mangle/enable ($row->".id") }
         }
+        :local admission ""
+        :if ($poolMask > 0) do={
+            :set admission ("sdwan-b-" . $pn . "-" . $poolMask)
+            :local slots [$sdwanBalanceSlots policy=$policy mask=$poolMask]
+            :local classifier (($policy->"balance")->"classifier")
+            :if ([:typeof $classifier] != "str") do={ :set classifier "both-addresses-and-ports" }
+            :local index 0
+            :foreach wn in=$slots do={
+                :local row [$requireManaged indexed=$policyPCC tag=("sdwan:v1:pcc:" . $pn . ":" . $poolMask . ":" . $index) label=("PCC " . $pn . "/" . $poolMask . "/" . $index)]
+                :if (($row->"disabled") || (($row->"src-address-list") != $admission) || (($row->"new-connection-mark") != ("sdwan-out-" . $pn . ":" . $wn)) || (($row->"per-connection-classifier") != ($classifier . ":" . [:len $slots] . "/" . $index))) do={ :error ("PCC admission binding changed " . $pn) }
+                :set index ($index + 1)
+            }
+        } else={
+            :if ($selected != "none") do={ :set admission [$sdwanAdmissionList policy=$policy wan=$selected] }
+        }
+        $sdwanSetAdmission indexed=$policyAdmissions policyName=$pn list=$admission
         :if (($sdwanSelected->$pn) != $selected) do={
             :set ($sdwanCleanupUntil->$pn) ($now + 3)
             :local previous ($sdwanSelected->$pn)
             :if (([:typeof $previous] = "str") && ($previous != "none") && (($retainedMarks->("sdwan-out-" . $pn . ":" . $previous)) != true)) do={
-                :local killMarks [:toarray ("sdwan-out-" . $pn . ":" . $previous)]
+                :local killMarks [:toarray ""]
+                :if (($admittedMarks->("sdwan-out-" . $pn . ":" . $previous)) != true) do={ :set killMarks ($killMarks,("sdwan-out-" . $pn . ":" . $previous)) }
                 :if (($policy->"source") = "") do={ :set killMarks ($killMarks,("sdwan-router-" . $previous)) }
                 :local count 0
                 :foreach mark in=$killMarks do={
@@ -444,7 +496,7 @@
         :if (([:typeof ($sdwanCleanupUntil->$pn)] = "num") && ($now <= ($sdwanCleanupUntil->$pn))) do={
             :local late 0
             :foreach wn in=($policy->"wans") do={
-                :if (($wn != $selected) && (($retainedMarks->("sdwan-out-" . $pn . ":" . $wn)) != true)) do={
+                :if ((($admittedMarks->("sdwan-out-" . $pn . ":" . $wn)) != true) && (($retainedMarks->("sdwan-out-" . $pn . ":" . $wn)) != true)) do={
                     :set late ($late + [$purge mark=("sdwan-out-" . $pn . ":" . $wn)])
                 }
             }
@@ -460,6 +512,7 @@
             }
         }
     }
+    :set sdwanAdmittedMarks $admittedMarks
     :set sdwanDrainingMarks $retainedMarks
     :local overlayReport [:toarray ""]
     :if ((($cfg->"overlay")->"enabled") = true) do={
@@ -491,6 +544,8 @@
     :set sdwanStatusJSON [:serialize to=json value=$output options=json.no-string-conversion]
     :set sdwanLastError ""
 } do={
+    # A partial or corrupt policy must not retain an old admission lease.
+    /ip/firewall/address-list/remove [/ip/firewall/address-list/find where comment~"^sdwan:v1:admission:"]
     :if ($sdwanLastError != $err) do={ :log error ("SDWAN controller error: " . $err) }
     :set sdwanLastError $err
     :local output [:toarray ""]

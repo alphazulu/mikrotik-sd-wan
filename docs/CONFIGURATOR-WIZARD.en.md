@@ -134,3 +134,11 @@ Runtime reports, credentials and device snapshots remain private.
 
 The wizard can prepare a draft/conflict list while preserving the installation
 block until old marking is migrated. [Workflow and local reports](MIGRATION.en.md).
+
+## Optional policy weights
+
+In the policy editor, open **Балансировка** to distribute new connections.
+Set integer weights, put zero-weight reserves after positive members and choose
+connection/address/client affinity. `prefer` remains the saved mode; the table
+adds a display hint for weights. Clearing the checkbox removes only `balance`.
+Without it, existing policies keep ordered selection. [Contract and example](WEIGHTED-WAN.en.md).

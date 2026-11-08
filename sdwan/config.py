@@ -98,13 +98,15 @@ def validate(c):
     need(isinstance(c['policies'],list) and 1<=len(c['policies'])<=64,'1..64 policies required')
     policies=c['policies']; sources=[]; pnames=set(); defaults=0
     for p in policies:
-        keys(p,('name','source','table','profile','mode','wans','allow_degraded')+EXTRA_FIELDS,'policy',('name','source','table','profile','mode','wans','allow_degraded'))
+        keys(p,('name','source','table','profile','mode','wans','allow_degraded','balance')+EXTRA_FIELDS,'policy',('name','source','table','profile','mode','wans','allow_degraded'))
         need(bool(IDENT.fullmatch(p['name'])) and p['name'] not in pnames, 'invalid/duplicate policy name'); pnames.add(p['name'])
         need(p['profile'] in profiles, 'unknown policy SLA profile')
         need(p['mode'] in ('prefer','strict'), 'supported policy modes: prefer, strict')
         need(type(p['allow_degraded']) is bool, 'allow_degraded must be boolean')
         need(p['wans'] and len(set(p['wans']))==len(p['wans']) and set(p['wans'])<=names, 'unknown/duplicate policy WAN')
         need(p['mode']!='strict' or len(p['wans'])==1, 'strict must select exactly one WAN')
+        from .balance import validate_policy
+        validate_policy(p)
         need(isinstance(p['source'],str),'policy source must be an IPv4 prefix or empty default')
         if p['source']=='':
             defaults+=1;need(p['table']=='main','default policy must use main')
@@ -114,6 +116,8 @@ def validate(c):
             need(p['table'].startswith('sdwan-') and bool(IDENT.fullmatch(p['table'])) and p['table'] not in tables,'policy table must be unique and start sdwan-')
             tables.add(p['table'])
     need(defaults==1,'exactly one default policy required')
+    from .balance import validate_budget
+    validate_budget(c)
     validate_selectors(c)
     for n in c['local_networks']:
         net=ipaddress.IPv4Network(n,strict=True);need(net.prefixlen>0,'local_networks cannot bypass the default route')

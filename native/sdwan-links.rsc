@@ -807,7 +807,9 @@
                     :foreach allowed in=($policy->"wans") do={
                         :if ($allowed = $wn) do={
                             /ip/route/disable [/ip/route/find where comment=("sdwan:v1:route:" . $pn . ":" . $wn)]
-                            /ip/firewall/mangle/disable [/ip/firewall/mangle/find where comment=("sdwan:v1:classify:" . $pn . ":" . $wn)]
+                            # Static classifiers stay compiled. Withdraw this
+                            # policy's RAM admission before changing its bindings.
+                            /ip/firewall/address-list/remove [/ip/firewall/address-list/find where comment=("sdwan:v1:admission:" . $pn)]
                             :set removed ($removed + [$purge mark=("sdwan-out-" . $pn . ":" . $wn)])
                         }
                     }
@@ -986,4 +988,4 @@
     :if ([:len $sdwanEvents] >= 100) do={ :set sdwanEvents [:pick $sdwanEvents ([:len $sdwanEvents] - 99) [:len $sdwanEvents]] }
     :set ($sdwanEvents->[:len $sdwanEvents]) $row
 }
-:global sdwanLinksLoaded 8
+:global sdwanLinksLoaded 9

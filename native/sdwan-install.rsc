@@ -15,7 +15,7 @@
 :local cfgJSON [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
 :local cfg [:deserialize from=json options=json.no-string-conversion value=$cfgJSON]
 :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
-:if (([:len [/file/find where name=($dir . "sdwan-dataplane.rsc")]] != 1) || ([:len [/file/find where name=($dir . "sdwan-links.rsc")]] != 1)) do={ :error "upload dataplane and links libraries before installation" }
+:if (([:len [/file/find where name=($dir . "sdwan-admission.rsc")]] != 1) || ([:len [/file/find where name=($dir . "sdwan-dataplane.rsc")]] != 1) || ([:len [/file/find where name=($dir . "sdwan-links.rsc")]] != 1)) do={ :error "upload dataplane and links libraries before installation" }
 :global sdwanResolveWANs
 :global sdwanDNSBootstrap
 :global sdwanLTEBinding

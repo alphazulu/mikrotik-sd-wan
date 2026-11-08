@@ -2,9 +2,9 @@ name: External lab tools
 
 on:
   push:
-    paths: ['labtools/**', 'lte-rndis-emu/**', '.github/workflows/lab-tools.yml']
+    paths: ['labtools/**', 'lte-rndis-emu/**', 'sdwan/**', 'sdwan.py', 'configurator.py', 'policy_gui.py', 'vpn_gui.py', 'overlay_gui.py', 'native/**', 'config/**', 'tests/native_*', '.github/workflows/lab-tools.yml']
   pull_request:
-    paths: ['labtools/**', 'lte-rndis-emu/**', '.github/workflows/lab-tools.yml']
+    paths: ['labtools/**', 'lte-rndis-emu/**', 'sdwan/**', 'sdwan.py', 'configurator.py', 'policy_gui.py', 'vpn_gui.py', 'overlay_gui.py', 'native/**', 'config/**', 'tests/native_*', '.github/workflows/lab-tools.yml']
   workflow_dispatch:
 
 permissions:

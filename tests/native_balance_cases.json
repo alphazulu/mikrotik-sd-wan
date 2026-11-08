@@ -1,0 +1,451 @@
+{
+  "valid": [
+    {
+      "policy": {
+        "name": "nativebalancetest",
+        "mode": "prefer",
+        "wans": [
+          "w1",
+          "w2"
+        ],
+        "balance": {
+          "weights": {
+            "w1": 3,
+            "w2": 1
+          }
+        }
+      },
+      "groups": [
+        {
+          "mask": 1,
+          "slots": [
+            "w1"
+          ]
+        },
+        {
+          "mask": 2,
+          "slots": [
+            "w2"
+          ]
+        },
+        {
+          "mask": 3,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w2"
+          ]
+        }
+      ]
+    },
+    {
+      "policy": {
+        "name": "nativebalancetest",
+        "mode": "prefer",
+        "wans": [
+          "w1",
+          "w2",
+          "w3"
+        ],
+        "balance": {
+          "weights": {
+            "w1": 15,
+            "w2": 10,
+            "w3": 5
+          }
+        }
+      },
+      "groups": [
+        {
+          "mask": 1,
+          "slots": [
+            "w1"
+          ]
+        },
+        {
+          "mask": 2,
+          "slots": [
+            "w2"
+          ]
+        },
+        {
+          "mask": 3,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2"
+          ]
+        },
+        {
+          "mask": 4,
+          "slots": [
+            "w3"
+          ]
+        },
+        {
+          "mask": 5,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w3"
+          ]
+        },
+        {
+          "mask": 6,
+          "slots": [
+            "w2",
+            "w2",
+            "w3"
+          ]
+        },
+        {
+          "mask": 7,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2",
+            "w3"
+          ]
+        }
+      ]
+    },
+    {
+      "policy": {
+        "name": "nativebalancetest",
+        "mode": "prefer",
+        "wans": [
+          "w1",
+          "w2",
+          "w3",
+          "w4"
+        ],
+        "balance": {
+          "weights": {
+            "w1": 12,
+            "w2": 8,
+            "w3": 6,
+            "w4": 4
+          }
+        }
+      },
+      "groups": [
+        {
+          "mask": 1,
+          "slots": [
+            "w1"
+          ]
+        },
+        {
+          "mask": 2,
+          "slots": [
+            "w2"
+          ]
+        },
+        {
+          "mask": 3,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2"
+          ]
+        },
+        {
+          "mask": 4,
+          "slots": [
+            "w3"
+          ]
+        },
+        {
+          "mask": 5,
+          "slots": [
+            "w1",
+            "w1",
+            "w3"
+          ]
+        },
+        {
+          "mask": 6,
+          "slots": [
+            "w2",
+            "w2",
+            "w2",
+            "w2",
+            "w3",
+            "w3",
+            "w3"
+          ]
+        },
+        {
+          "mask": 7,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2",
+            "w2",
+            "w2",
+            "w3",
+            "w3",
+            "w3"
+          ]
+        },
+        {
+          "mask": 8,
+          "slots": [
+            "w4"
+          ]
+        },
+        {
+          "mask": 9,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w4"
+          ]
+        },
+        {
+          "mask": 10,
+          "slots": [
+            "w2",
+            "w2",
+            "w4"
+          ]
+        },
+        {
+          "mask": 11,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2",
+            "w4"
+          ]
+        },
+        {
+          "mask": 12,
+          "slots": [
+            "w3",
+            "w3",
+            "w3",
+            "w4",
+            "w4"
+          ]
+        },
+        {
+          "mask": 13,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w3",
+            "w3",
+            "w3",
+            "w4",
+            "w4"
+          ]
+        },
+        {
+          "mask": 14,
+          "slots": [
+            "w2",
+            "w2",
+            "w2",
+            "w2",
+            "w3",
+            "w3",
+            "w3",
+            "w4",
+            "w4"
+          ]
+        },
+        {
+          "mask": 15,
+          "slots": [
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w1",
+            "w2",
+            "w2",
+            "w2",
+            "w2",
+            "w3",
+            "w3",
+            "w3",
+            "w4",
+            "w4"
+          ]
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "nativebalancetest",
+      "mode": "strict",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 3,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": true,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": -1,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 101,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 1.5,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": null,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 100,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 0,
+          "w2": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2",
+        "w3"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 1,
+          "w2": 0,
+          "w3": 1
+        }
+      }
+    },
+    {
+      "name": "nativebalancetest",
+      "mode": "prefer",
+      "wans": [
+        "w1",
+        "w2",
+        "w3",
+        "w4",
+        "w5"
+      ],
+      "balance": {
+        "weights": {
+          "w1": 1,
+          "w2": 1,
+          "w3": 1,
+          "w4": 1,
+          "w5": 1
+        }
+      }
+    }
+  ]
+}
