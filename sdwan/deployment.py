@@ -34,6 +34,19 @@ def check_permissions(router):
     except RuntimeError:pass  # Availability of the read-only menu varies by RouterOS.
 
 
+def _prepared_barrier(router, token, field, label, timeout=60):
+    """Only a native prepared/ready state permits the next upload phase."""
+    end=time.monotonic()+timeout
+    while True:
+        state=read_state(router,token)
+        if state.get('phase')!='prepared':
+            raise RuntimeError('Native '+label+' failed: '+str(state.get('phase'))+'; payload was not uploaded')
+        if state.get(field) is True:return state
+        if time.monotonic()>=end:
+            raise RuntimeError('Native '+label+' storage barrier did not complete; payload was not uploaded')
+        time.sleep(.3)
+
+
 def start(router,package,expected,*,revision='',default_policy='',operation='apply',timeout=120,allow_no_default=False):
     if type(allow_no_default) is not bool:raise ValueError('allow_no_default must be boolean')
     if not 30<=timeout<=600:raise ValueError('Deployment deadline must be 30..600 seconds')
@@ -43,10 +56,10 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
     # run. Preserve their PREVIOUS files first, including distinct flash/root
     # copies, so updating the recovery framework itself is reversible too.
     prefixes=list(dict.fromkeys((router.storage_prefix,'')))
-    names=[prefix+name for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc') for prefix in prefixes]
+    names=[prefix+name for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc','sdwan-recovery.rsc') for prefix in prefixes]
     files={row['name']:row['.id'] for row in router.file_records(names)}
     old_infrastructure={}
-    for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc'):
+    for name in ('sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc','sdwan-recovery.rsc'):
         for prefix in prefixes:
             original=prefix+name
             if original in files:
@@ -70,23 +83,29 @@ def start(router,package,expected,*,revision='',default_policy='',operation='app
             if router.read_file(archive)!=text:raise RuntimeError('Previous deployment framework archive verification failed')
         infrastructure_manifest[original]=archive
     router.upload('sdwan-deploy-request.json',json.dumps(request,separators=(',',':')))
-    for name in ('sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc'):
+    for name in ('sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc','sdwan-recovery.rsc'):
         router.upload(name,(Path(package)/name).read_text(encoding='utf-8'))
     bootstrap=Path(package)/'sdwan-deployment.rsc'
     router.upload(bootstrap.name,bootstrap.read_text(encoding='utf-8'))
     # Bootstrap only archives files/registers disabled worker and saves a backup.
     router.call('import',{'file-name':router.storage_prefix+bootstrap.name},'POST')
-    state=read_state(router,token)
-    if state.get('phase')!='prepared' or not state.get('backup_ready'):raise RuntimeError('Native encrypted backup preparation failed')
+    # The router owns this barrier; disconnecting the client cannot arm early.
+    state=_prepared_barrier(router,token,'backup_ready','encrypted backup')
     previous=state.get('previous')
     if not isinstance(previous,dict) or len(previous)<13 or any(router.storage_prefix+name not in previous for name in ('sdwan-admission.rsc','sdwan-config-state.rsc')):raise RuntimeError('Previous package archive manifest is incomplete; payload was not uploaded')
     # While prepared, the watchdog only reads this journal until our unique arm
     # token is uploaded. Extend and verify the manifest BEFORE any payload/arm.
     previous.update(infrastructure_manifest)
+    from .diagnostics import seconds
+    resource=router.call('system/resource')
+    if isinstance(resource,list):resource=resource[0]
+    state['manifest_written_at']=int(seconds(resource['uptime']))+1
+    state['manifest_ready']=False
     journal='sdwan-txn-'+token+'.json'
     router.upload(journal,json.dumps(state,separators=(',',':')))
     verified=read_state(router,token)
     if verified.get('phase')!='prepared' or verified.get('previous')!=previous:raise RuntimeError('Deployment framework recovery manifest was not sealed; payload was not uploaded')
+    state=_prepared_barrier(router,token,'manifest_ready','previous package archive')
     end=time.monotonic()+8
     while True:
         rows=router.call('system/script/environment/print',{'.proplist':'name,value','.query':['name=sdwanDeployHeartbeatJSON']},'POST')

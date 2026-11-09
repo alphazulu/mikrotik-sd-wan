@@ -25,7 +25,7 @@ stores binary configuration including sensitive values. Deployment uses a passwo
 version; `load` reboots and scripts need the explicit password. Dude/User Manager
 databases are not included. Arbitrary project files are archived separately.
 
-[Files](https://help.mikrotik.com/docs/spaces/ROS/pages/2555971/Files) requires persistent
+[Files](https://manual.mikrotik.com/docs/system-information-and-utilities/files/) requires persistent
 files under `flash` when that directory exists. Some devices delay writes up to
 40 seconds; sudden power loss can leave empty files. This implementation does
 not promise power-loss atomicity.
@@ -39,11 +39,11 @@ Both jobs receive explicit required permissions; `dont-require-permissions` is n
 1. Check identity, version, interfaces, conflicts, `read,write,policy,test,sensitive,reboot`
    permissions and absence of another unfinished deployment. Exit active Safe Mode first.
 2. Save a local `runtime/pre-native-*.json` diagnostic snapshot. Upload a uniquely
-   tokenized request and three helper RSC files; this stage does not change routing.
+   tokenized request and recovery framework RSC files; this stage does not change routing.
 3. Bootstrap archives previous JSON/RSC, registers worker/watchdog and creates
    encrypted `sdwan-before-<token>.backup`. The client verifies watchdog heartbeat
    before uploading the new network package.
-4. Upload/read back new JSON and nine core RSC files. Send the arm token only
+4. Upload/read back the new JSON and network package RSC files. Send the arm token only
    after verification. Watchdog launches the worker with a separate scheduler.
 5. Worker imports the installer locally. Caught errors fail the transaction.
    Watchdog checks fresh status, revision and the new controller's heartbeat.
@@ -53,10 +53,14 @@ Both jobs receive explicit required permissions; `dont-require-permissions` is n
 7. Watchdog commits the transaction and disables both helper schedulers.
    SD-WAN continues independently.
 
-Default confirmation deadline is 120 seconds from preparation. The Python CLI
-API permits 30–600 seconds for testing. Controller warmup and API reconnection
-must finish within that interval. If all WANs fail SLA, deployment is not
-automatically confirmed.
+The default transaction deadline is 120 seconds plus 135 seconds for three
+storage barriers: backup, full archive map and confirmed copy. The Python CLI
+API permits a 30–600 second base deadline for testing. Fresh API confirmation
+is requested after controller readiness and copy storage. If all WANs fail SLA,
+deployment is not automatically confirmed.
+
+See [power interruption recovery](POWER-LOSS-RECOVERY.en.md) for barrier ordering,
+the confirmed copy and current acceptance status.
 
 ## Emergency recovery
 
@@ -73,7 +77,7 @@ RouterOS failure are outside this recovery guarantee.
 
 SDK archives previous bootstrap/worker/watchdog before overwriting them, then adds
 verified archives to the prepared journal's previous manifest before payload/arm.
-Recovery restores nine core RSC files, three deployment RSC files and staging/
+Recovery restores network package RSC files, recovery framework files and staging/
 active/baseline JSON; previously absent files are removed. Current recovery jobs
 remain the recovery mechanism; journal and backup support diagnosis. The binary
 snapshot is taken after registering those jobs and before network changes.

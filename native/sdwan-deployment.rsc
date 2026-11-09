@@ -44,14 +44,13 @@
 :set ($state->"previous") $previous
 :set ($state->"phase") "prepared"
 :set ($state->"started_ticks") [:tonsec [/system/resource/get uptime]]
-:set ($state->"deadline") (([:tonsec [/system/resource/get uptime]] / 1000000000) + ($state->"timeout_seconds"))
+:set ($state->"deadline") (([:tonsec [/system/resource/get uptime]] / 1000000000) + ($state->"timeout_seconds") + 135)
 :set ($state->"backup_name") ($dir . "sdwan-before-" . $token)
 :set ($state->"backup_ready") false
 $write path=$path text=[:serialize to=json value=$state options=json.no-string-conversion]
 :local link [:toarray ""]
 :set ($link->"token") $token
 :set ($link->"path") $path
-$write path=$pointer text=[:serialize to=json value=$link options=json.no-string-conversion]
 
 :local workerSource [/file/get [/file/find where name=($dir . "sdwan-deploy-worker.rsc")] contents]
 
@@ -65,11 +64,27 @@ $write path=$pointer text=[:serialize to=json value=$link options=json.no-string
     :set id [/system/scheduler/find where name=$objectName]
     :if ([:len $id] = 0) do={ /system/scheduler/add name=$objectName interval=1s start-time=startup on-event=("/system/script/run " . $objectName) policy=read,write,policy,test,sensitive,reboot disabled=yes } else={ /system/scheduler/set $id interval=1s start-time=startup on-event=("/system/script/run " . $objectName) policy=read,write,policy,test,sensitive,reboot disabled=yes }
 }
+# Register the one-shot boot entry before publishing a pending pointer. It
+# also recovers a cut between pointer publication and enabling the interval
+# watchdog, including preparation before an encrypted backup exists.
+:local startup [/system/scheduler/find where name="sdwan-deploy-startup"]
+:if ([:len $startup] > 0) do={
+    :if (([:len $startup] != 1) || ([/system/scheduler/get $startup comment] != "sdwan:v1:deployment-startup")) do={ :error "deployment startup name collision" }
+    /system/scheduler/set $startup start-time=startup interval=0s on-event="/system/script/run sdwan-deploy-watchdog" policy=read,write,policy,test,sensitive,reboot disabled=no
+} else={
+    /system/scheduler/add name=sdwan-deploy-startup start-time=startup interval=0s on-event="/system/script/run sdwan-deploy-watchdog" policy=read,write,policy,test,sensitive,reboot comment="sdwan:v1:deployment-startup"
+}
+$write path=$pointer text=[:serialize to=json value=$link options=json.no-string-conversion]
+# This marker is deliberately dynamic: its absence proves a new boot even if
+# the new uptime has already exceeded the transaction's initial uptime.
+/ip/firewall/address-list/remove [/ip/firewall/address-list/find where list="sdwan-deployment-boot" and comment~"^sdwan:v1:deployment:"]
+/ip/firewall/address-list/add list=sdwan-deployment-boot address=127.0.0.1 dynamic=yes comment=("sdwan:v1:deployment:" . $token)
 /system/scheduler/enable [/system/scheduler/find where name="sdwan-deploy-watchdog"]
 :onerror backupError in={
     /system/backup/save name=($state->"backup_name") password=($state->"password") encryption=aes-sha256 dont-encrypt=no
     :if ([:len [/file/find where name=(($state->"backup_name") . ".backup")]] != 1) do={ :error "encrypted backup was not created" }
-    :set ($state->"backup_ready") true
+    :set ($state->"backup_written_at") ([:tonsec [/system/resource/get uptime]] / 1000000000)
+    :set ($state->"backup_bytes") [/file/get [/file/find where name=(($state->"backup_name") . ".backup")] size]
     $write path=$path text=[:serialize to=json value=$state options=json.no-string-conversion]
 } do={
     :set ($state->"phase") "preparation-failed"
@@ -78,4 +93,4 @@ $write path=$pointer text=[:serialize to=json value=$link options=json.no-string
     /system/scheduler/disable [/system/scheduler/find where name="sdwan-deploy-watchdog"]
     :error $backupError
 }
-:log info "SDWAN deploy encrypted backup prepared; waiting for payload and arm token"
+:log info "SDWAN deploy encrypted backup written; waiting for storage barrier before payload and arm token"

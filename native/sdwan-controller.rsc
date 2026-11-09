@@ -47,6 +47,13 @@
 :global sdwanOverlayTick
 :global sdwanVPNTransport
 :onerror err in={
+    :global sdwanRecoveryChecked
+    :global sdwanRecoveryLoaded
+    :global sdwanRecoveryGuard
+    :if ($sdwanRecoveryChecked != true) do={
+        :if ($sdwanRecoveryLoaded != 1) do={ /import file-name=($dir . "sdwan-recovery.rsc") }
+        :set sdwanRecoveryChecked [$sdwanRecoveryGuard dir=$dir]
+    }
     :local raw [/file/get [/file/find where name=($dir . "sdwan-active.json")] contents]
     :local cfg [:deserialize from=json options=json.no-string-conversion value=$raw]
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }

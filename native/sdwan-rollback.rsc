@@ -66,6 +66,7 @@ $sdwanStrictCancel
 /routing/rule/remove [/routing/rule/find where comment~"^sdwan:v1:"]
 /ip/route/remove [/ip/route/find where comment~"^sdwan:v1:"]
 /tool/netwatch/remove [/tool/netwatch/find where comment~"^sdwan:v1:"]
+/system/scheduler/remove [/system/scheduler/find where name="sdwan-deploy-startup" and comment="sdwan:v1:deployment-startup"]
 /system/scheduler/remove [/system/scheduler/find where name="sdwan-controller"]
 /system/script/remove [/system/script/find where name="sdwan-controller"]
 :local cfg [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]]

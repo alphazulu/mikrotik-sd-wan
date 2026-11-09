@@ -258,7 +258,8 @@ $sdwanValidatePolicyLists cfg=$cfg
     :local rules [:toarray ""]
     :if (($oldrule->"src-address") != "") do={ :foreach id in=[/routing/rule/find where src-address=($oldrule->"src-address") and table=($oldrule->"table")] do={ :set ($rules->[:tostr $id]) [/routing/rule/get $id disabled] } }
     :set ($backup->"rules") $rules
-    /file/add name=($dir . "sdwan-backup.json") type=file contents=[:serialize to=json value=$backup options=json.no-string-conversion]
+    /file/add name=($dir . "sdwan-backup.json") type=file
+    /file/set [/file/find where name=($dir . "sdwan-backup.json")] contents=[:serialize to=json value=$backup options=json.no-string-conversion]
 }
 # Exact selectors let the configurator adopt uncommented routes without renaming them.
 :local backup [/file/get [/file/find where name=($dir . "sdwan-backup.json")] contents]
@@ -510,9 +511,15 @@ $sdwanValidatePolicyLists cfg=$cfg
 :if ($vpnManaged) do={ $sdwanVPNInstall cfg=$cfg; :local resolved [$sdwanVPNTick cfg=$cfg]; :if ($vpnEnabled) do={ $sdwanVPNOrder cfg=$cfg } }
 :local dnsBootstrap [$sdwanDNSBootstrap cfg=$cfg force=true]
 # Promote the complete, reconciled configuration. Editing the staging JSON alone is inert.
-:local raw [/file/get [/file/find where name=($dir . "sdwan-config.json")] contents]
+:local raw $cfgJSON
 :local active [/file/find where name=($dir . "sdwan-active.json")]
-:if ([:len $active] = 0) do={ /file/add name=($dir . "sdwan-active.json") type=file contents=$raw } else={ /file/set $active contents=$raw }
+# RouterOS 7.24.5 x86 can retain an empty newly-created file after an abrupt
+# restart when contents is passed to /file/add. Use the separate write path.
+:if ([:len $active] = 0) do={
+    /file/add name=($dir . "sdwan-active.json") type=file
+    :set active [/file/find where name=($dir . "sdwan-active.json")]
+}
+/file/set $active contents=$raw
 :local source [/file/get [/file/find where name=($dir . "sdwan-controller.rsc")] contents]
 :local script [/system/script/find where name="sdwan-controller"]
 :if ([:len $script] = 0) do={ /system/script/add name=sdwan-controller source=$source policy=read,write,policy,test,sensitive comment="sdwan:v1:controller" } else={ /system/script/set $script source=$source policy=read,write,policy,test,sensitive }
