@@ -106,9 +106,9 @@ that operation is restored.
 
 ## Export and manual maintenance
 
-The standard bundle contains 14 files: JSON plus 13 RSC files (controller,
+The standard bundle contains 15 files: JSON plus 14 RSC files (controller,
 dataplane, links, admission, config-state, overlay, vpn, dns, install, rollback, deployment, deploy-worker,
-deploy-watchdog). `sdwan.py` defines `FILES`. Use GUI/CLI for protected deployment:
+deploy-watchdog, recovery). `sdwan.py` defines `FILES`. Use GUI/CLI for protected deployment:
 they archive **before** overwriting the old package and send confirmation.
 
 Direct `/import sdwan-install.rsc` applies rules immediately and bypasses this

@@ -34,7 +34,9 @@ SD-WAN для RouterOS: контроль SLA, приоритеты канало�
 [Поведение и границы](docs/LIVE-CONFIGURATION.md) · [Ограниченные проверки](docs/LIVE-CONFIGURATION-VALIDATION.md).
 
 Смешанная схема WAN/LTE/VPN/OSPF и штатные перезапуски с USB LTE проверены
-отдельно в RSC и контейнере. [Отчёт и ограничение аварийного сброса](docs/MIXED-WAN-VALIDATION.md).
+отдельно в RSC и контейнере. [Отчёт](docs/MIXED-WAN-VALIDATION.md). Восстановление после прерывания питания
+проверено отдельно в обоих режимах: [поведение](docs/POWER-LOSS-RECOVERY.md) и
+[результаты](docs/POWER-LOSS-VALIDATION.md).
 
 ## Возможности
 

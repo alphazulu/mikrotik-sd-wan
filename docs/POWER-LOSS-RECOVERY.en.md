@@ -2,9 +2,9 @@
 
 [Русский](POWER-LOSS-RECOVERY.md) | English
 
-**Status: implementation undergoing acceptance.** Storage checks and isolated
-recovery of the confirmed copy ran on x86 RouterOS 7.24.5. Full installation,
-update and traffic validation in both controller modes is still incomplete.
+**Bounded x86 RouterOS 7.24.5 acceptance passed:** initial installation,
+update, confirmed-copy recovery and fresh traffic were checked in RSC and local
+container modes. [Method, results and limits](POWER-LOSS-VALIDATION.en.md).
 This is not a guarantee of atomic writes under every power failure.
 
 ## Data sources
@@ -84,10 +84,9 @@ intermediate contents. A copy that passed the 45-second barrier survived a
 forced QEMU termination and restored active while staging differed. This does
 not validate ARM/NAND behavior or physical power controllers.
 
-New acceptance requires interrupted initial installation, update and confirmed
-operation, both controller modes, fresh TCP/UDP flows, LTE, VPN, OSPF, parent
-image integrity and resource cleanup. The failed early-backup check remains in
-the evidence; it must not be described as a successful rollback.
+Interrupted installation, update and confirmed operation were checked in both
+modes, with fresh TCP/UDP traffic, LTE, VPN, OSPF, parent integrity and cleanup.
+The failed early-backup run remains a separately failed result.
 
 See [protected deployment](DEPLOYMENT.en.md) and
 [previous WAN/LTE/VPN/OSPF functional validation](MIXED-WAN-VALIDATION.en.md).

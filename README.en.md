@@ -34,7 +34,9 @@ admission after reinstall. [Behavior and limits](docs/LIVE-CONFIGURATION.en.md) 
 [Bounded validation](docs/LIVE-CONFIGURATION-VALIDATION.en.md).
 
 Mixed WAN/LTE/VPN/OSPF operation and orderly restarts with USB LTE were checked
-in RSC and container modes. [Report and abrupt-reset limitation](docs/MIXED-WAN-VALIDATION.en.md).
+in RSC and container modes. [Report](docs/MIXED-WAN-VALIDATION.en.md). Recovery after power interruption
+was separately checked in both modes: [behavior](docs/POWER-LOSS-RECOVERY.en.md)
+and [results](docs/POWER-LOSS-VALIDATION.en.md).
 
 ## Features
 
