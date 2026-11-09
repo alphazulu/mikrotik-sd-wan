@@ -2,12 +2,16 @@
 
 [Русский](OVERLAY-DESIGN.md) | English
 
-Status: the first native overlay slice is installed on three CHRs. All four
-tunnels and eight OSPF neighbor entries are healthy. A real inner TCP stream
-survives WAN failure and failback; all-down activates a remote-LAN blackhole.
-The per-router GUI/key workflow is implemented and verified with 5offline and 4live
-Windows/Tk checks; see OVERLAY-GUI.md. Subsequent targeted native/rollback/container checks passed; long acceptance
-continues. See [current status](CURRENT-STATUS.en.md). This remains unreleased.
+The milestones below record the original overlay implementation, which is now
+included in v0.3.0. Its first three-CHR fabric established four tunnels and eight
+OSPF neighbor entries; a real inner TCP stream survived WAN failure and failback.
+All-down activated a remote-LAN blackhole. The original GUI/key workflow passed
+five offline and four live Windows/Tk checks; see [the wizard](OVERLAY-GUI.en.md).
+Source-specific later qualification is listed in
+[current status](CURRENT-STATUS.en.md).
+
+Package counts below belong to their historical milestones. The current SDK
+bundles fourteen RSC modules plus JSON, including the recovery framework.
 
 ## CGNAT and the test fabric
 

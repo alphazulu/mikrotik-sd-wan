@@ -38,6 +38,10 @@ in RSC and container modes. [Report](docs/MIXED-WAN-VALIDATION.en.md). Recovery 
 was separately checked in both modes: [behavior](docs/POWER-LOSS-RECOVERY.en.md)
 and [results](docs/POWER-LOSS-VALIDATION.en.md).
 
+The candidate corrects a cached wrong source on a cold secondary-WAN overlay.
+Its [dual-CGNAT validation](docs/CGNAT-VALIDATION.en.md) records completed native
+and container WAN cases; remaining container NAT/SLA and restart checks are pending.
+
 ## Features
 
 - IPv4 WANs: static interfaces, DHCP-client, PPPoE, LTE with an existing APN,
