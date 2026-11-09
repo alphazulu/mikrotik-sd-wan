@@ -75,8 +75,8 @@ agreed SLO. Existing SD-WAN keeps its timers/lab targets if retention is selecte
 
 1. Validate values and conflicts.
 2. Save editable JSON, suggested as `config/discovered-<identity>.json`.
-3. Export RouterOS files: the standard bundle has 12 files, `sdwan-config.json`
-   and 11 core/deployment `.rsc` files. `sdwan.py` defines `FILES`.
+3. Export RouterOS files: the standard bundle has 14 files, `sdwan-config.json`
+   and 13 core/deployment `.rsc` files. `sdwan.py` defines `FILES`.
 4. Review the change plan, including original routes and FastTrack.
 5. Install: prepare a backup, start the local worker and confirm over a fresh API connection.
 

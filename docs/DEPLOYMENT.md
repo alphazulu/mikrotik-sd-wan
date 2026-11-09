@@ -46,7 +46,7 @@ SDK сохраняет предыдущие bootstrap/worker/watchdog до их 
 
 ## Экспорт и ручное обслуживание
 
-Стандартный комплект содержит 13 файлов: JSON и 12 RSC (controller, dataplane, links, admission, overlay, vpn, dns, install, rollback, deployment, deploy-worker, deploy-watchdog). Список `FILES` находится в `sdwan.py`. Для защищённой установки используйте GUI или CLI: они соблюдают порядок архивирования **до** перезаписи старого пакета и отправляют подтверждение.
+Стандартный комплект содержит 14 файлов: JSON и 13 RSC (controller, dataplane, links, admission, config-state, overlay, vpn, dns, install, rollback, deployment, deploy-worker, deploy-watchdog). Список `FILES` находится в `sdwan.py`. Для защищённой установки используйте GUI или CLI: они соблюдают порядок архивирования **до** перезаписи старого пакета и отправляют подтверждение.
 
 Прямой `/import sdwan-install.rsc` применяет правила сразу и обходит описанную защиту. Это низкоуровневый способ для лаборатории или локальной консоли. При наличии `flash/` укажите этот префикс. Контроллер после любой установки остаётся полностью на RouterOS.
 

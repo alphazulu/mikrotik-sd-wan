@@ -12,7 +12,7 @@
 
 ## RouterOS
 
-Все функции включены в существующий `native/sdwan-links.rsc`; на этапе исходной LTE-итерации использовалась версия библиотеки 4. Текущий стандартный пакет содержит 12 RSC и JSON. Production reader сначала читает `apn-profiles` целевой 7.24.5, затем singular `apn-profile` новых версий. `sdwanLTENormalizeProfiles` сохраняет native массивы и нормализует имена/ID профилей.
+Все функции включены в существующий `native/sdwan-links.rsc`; на этапе исходной LTE-итерации использовалась версия библиотеки 4. Текущий стандартный пакет содержит 13 RSC и JSON. Production reader сначала читает `apn-profiles` целевой 7.24.5, затем singular `apn-profile` новых версий. `sdwanLTENormalizeProfiles` сохраняет native массивы и нормализует имена/ID профилей.
 
 Resolver требует running/enabled interface, правильный APN без automatic default и единственный назначенный динамический IPv4. Source — текущий адрес; raw-IP использует LTE interface как gateway, RNDIS/HiLink — шлюз внутренней bound DHCP lease, закреплённый за интерфейсом. Reconciler обновляет bindings, source pins, routes и Netwatch при disconnect/new-IP; старые метрики не открывают WAN. Возврат требует свежего поколения probes, recover windows и hold-down. Очистка conntrack ограничена затронутыми метками.
 

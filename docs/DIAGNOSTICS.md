@@ -25,7 +25,7 @@
 
 Экспорт содержит разрешённые поля состояния, селекторы политик, причины и события. Учётные данные подключения, APN credentials, PIN, полные RouterOS environment, backup requests и транзакционные журналы не включаются. Файл содержит адреса/топологию вашей сети, как и обычная диагностическая выгрузка.
 
-Исходники: `sdwan/diagnostics.py`, `sdwan/diagnostics_ui.py`, обогащённый статус в `native/sdwan-controller.rsc`. Текущий стандартный комплект содержит JSON и 12 RSC; список `FILES` задаётся в `sdwan.py`. Отчёты первоначального этапа сохранялись в `runtime/policies-acceptance.json`, `runtime/policies-protection-acceptance.json` и `runtime/gui-policies-diagnostics-validation.json`.
+Исходники: `sdwan/diagnostics.py`, `sdwan/diagnostics_ui.py`, обогащённый статус в `native/sdwan-controller.rsc`. Текущий стандартный комплект содержит JSON и 13 RSC; список `FILES` задаётся в `sdwan.py`. Отчёты первоначального этапа сохранялись в `runtime/policies-acceptance.json`, `runtime/policies-protection-acceptance.json` и `runtime/gui-policies-diagnostics-validation.json`.
 
 
 Локальные `runtime/` отчёты, учётные данные и снимки устройств не входят в

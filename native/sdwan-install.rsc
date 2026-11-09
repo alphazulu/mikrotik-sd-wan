@@ -25,7 +25,16 @@
 :global sdwanValidatePolicyLists
 :global sdwanProbeNativeType
 :global sdwanConfigureProbe
+# Preserve legacy proof BEFORE replacing callbacks used by live workers.
+/import file-name=($dir . "sdwan-config-state.rsc")
+:global sdwanStrictAdoptLegacy
+$sdwanStrictAdoptLegacy
 /import file-name=($dir . "sdwan-links.rsc")
+:global sdwanConfigScope
+:local previousCfg [:toarray ""]
+:local previousActive [/file/find where name=($dir . "sdwan-active.json")]
+:if ([:len $previousActive] = 1) do={ :set previousCfg [:deserialize from=json options=json.no-string-conversion value=[/file/get $previousActive contents]] }
+:local configScope [$sdwanConfigScope cfg=$cfg previous=$previousCfg]
 /import file-name=($dir . "sdwan-dns.rsc")
 :global sdwanValidateStrict
 :global sdwanStrictConfigure
@@ -200,12 +209,42 @@ $sdwanValidatePolicyLists cfg=$cfg
         } }
     }
 }
+# A removed/paused controller is a cold installation, even when its JSON and
+# old RAM globals survived. Successful live updates keep the running context.
+:local priorScript [/system/script/find where name="sdwan-controller" and comment="sdwan:v1:controller"]
 :local scheduler [/system/scheduler/find where name="sdwan-controller"]
+:local continuing false
+:if (([:len $priorScript] = 1) && ([:len $scheduler] = 1)) do={ :set continuing (![/system/scheduler/get $scheduler disabled]) }
 :if ([:len $scheduler] > 0) do={ /system/scheduler/disable $scheduler }
 :local attempts 0
 :while (([/system/script/job/print count-only where script="sdwan-controller"] > 0) && ($attempts < 50)) do={ :delay 100ms; :set attempts ($attempts + 1) }
 :if ([/system/script/job/print count-only where script="sdwan-controller"] > 0) do={ :error "SDWAN controller is busy" }
-:foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={ :if (!([/tool/netwatch/get $id comment] ~ "^sdwan:v1:overlay:")) do={ /tool/netwatch/disable $id } }
+# Leave unrelated probe objects, counters and running tests intact.
+# No stale SLA or HTTP job may cross an explicit uninstall/reinstall boundary.
+:if (!$continuing) do={
+    :global sdwanConfigRaw
+    :global sdwanStrictStopJob; :global sdwanStrictCancel
+    :global sdwanStrictResults; :global sdwanStrictDue; :global sdwanStrictGeneration
+    /system/scheduler/disable [/system/scheduler/find where name="sdwan-strict-dispatch" and comment="sdwan:v1:strict"]
+    $sdwanStrictStopJob ownedName="sdwan-strict-dispatch"
+    $sdwanStrictCancel
+    :set sdwanStrictResults [:toarray ""]; :set sdwanStrictDue [:toarray ""]
+    :if ([:typeof $sdwanStrictGeneration] != "num") do={ :set sdwanStrictGeneration 0 }
+    :set sdwanStrictGeneration ($sdwanStrictGeneration + 1)
+    :set sdwanConfigRaw
+    /ip/firewall/address-list/remove [/ip/firewall/address-list/find where comment~"^sdwan:v1:admission:"]
+    /tool/netwatch/remove [/tool/netwatch/find where comment~"^sdwan:v1:icmp:" or comment~"^sdwan:v1:probe:"]
+    :foreach wan in=($cfg->"wans") do={ :set (($configScope->"probe")->($wan->"name")) true }
+}
+:foreach id in=[/tool/netwatch/find where comment~"^sdwan:v1:"] do={
+    :local tag [/tool/netwatch/get $id comment]
+    :local preserve false
+    :foreach wan in=($cfg->"wans") do={
+        :local wn ($wan->"name")
+        :if (!(($configScope->"probe")->$wn)) do={ :if (($tag = ("sdwan:v1:icmp:" . $wn)) || ([:pick $tag 0 [:len ("sdwan:v1:probe:" . $wn . ":")]] = ("sdwan:v1:probe:" . $wn . ":"))) do={ :set preserve true } }
+    }
+    :if ((!$preserve) && (!($tag ~ "^sdwan:v1:overlay:"))) do={ /tool/netwatch/disable $id }
+}
 :if ([:len [/file/find where name=($dir . "sdwan-backup.json")]] = 0) do={
     :local backup [:toarray ""]
     :local routes [:toarray ""]
@@ -404,14 +443,20 @@ $sdwanValidatePolicyLists cfg=$cfg
     :set tag ("sdwan:v1:icmp:" . $wn)
     :set ($wanted->$tag) true
     :set id [/tool/netwatch/find where comment=$tag]
+    :local probeStart 0s
+    :if (!$continuing) do={ :set probeStart 3s }
+    :if (([:len $id] = 1) && (!(($configScope->"probe")->$wn))) do={ :local current [/tool/netwatch/get $id start-delay]; :if ([:tonsec $current] <= 3000000000) do={ :set probeStart $current } }
     :if ([:len $id] = 0) do={ /tool/netwatch/add comment=$tag type=icmp host=($w->"icmp_target") disabled=yes; :set id [/tool/netwatch/find where comment=$tag] }
-    /tool/netwatch/set $id host=($w->"icmp_target") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") packet-count=($h->"packet_count") packet-interval=(($h->"packet_interval_ms") . "ms") thr-avg=5s thr-max=5s thr-stdev=5s thr-jitter=5s thr-loss-percent=100% start-delay=0s startup-delay=0s disabled=$unavailable
+    /tool/netwatch/set $id host=($w->"icmp_target") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") packet-count=($h->"packet_count") packet-interval=(($h->"packet_interval_ms") . "ms") thr-avg=5s thr-max=5s thr-stdev=5s thr-jitter=5s thr-loss-percent=100% start-delay=$probeStart startup-delay=0s disabled=$unavailable
     :foreach p in=($w->"probes") do={
         :set tag ("sdwan:v1:probe:" . $wn . ":" . ($p->"name"))
         :set ($wanted->$tag) true
         :set id [/tool/netwatch/find where comment=$tag]
+        :local probeStart 0s
+        :if (!$continuing) do={ :set probeStart 3s }
+        :if (([:len $id] = 1) && (!(($configScope->"probe")->$wn))) do={ :local current [/tool/netwatch/get $id start-delay]; :if ([:tonsec $current] <= 3000000000) do={ :set probeStart $current } }
         :if ([:len $id] = 0) do={ /tool/netwatch/add comment=$tag type=[$sdwanProbeNativeType probe=$p] host=($p->"host") disabled=yes; :set id [/tool/netwatch/find where comment=$tag] }
-        /tool/netwatch/set $id type=[$sdwanProbeNativeType probe=$p] host=($p->"host") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") start-delay=0s startup-delay=0s disabled=$unavailable
+        /tool/netwatch/set $id type=[$sdwanProbeNativeType probe=$p] host=($p->"host") src-address=($w->"address") interval=(($h->"interval_seconds") . "s") timeout=(($h->"timeout_ms") . "ms") start-delay=$probeStart startup-delay=0s disabled=$unavailable
         $sdwanConfigureProbe pid=$id probe=$p
     }
 }

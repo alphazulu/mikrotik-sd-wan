@@ -20,6 +20,9 @@
 :global sdwanRecordEvent
 :global sdwanConntrackRemoved
 :global sdwanConntrackFind
+:global sdwanConfigPolicyShapes
+:global sdwanConfigKeepFlow
+:if ([:typeof $sdwanConfigKeepFlow] != "array") do={ /import file-name=($dir . "sdwan-config-state.rsc") }
 :local oldConfig false
 :local classificationChanged false
 :local activeFile [/file/find where name=($dir . "sdwan-active.json")]
@@ -261,25 +264,52 @@
     }
 }
 
-# Selector/group/order edits reclassify managed client flows. Ingress, router
-# sessions and probes are preserved; WAN failovers keep their scoped cleanup.
+# Reclassify only flows whose admission may change under the new selectors.
+# Source/destination IPs and lists, protocol, ports, ordering and groups share
+# the same policy semantics. Foreign/ingress/router/probe marks stay untouched.
 :if ($classificationChanged) do={
+    :local oldShapes [$sdwanConfigPolicyShapes cfg=$oldConfig]
+    :local newShapes [$sdwanConfigPolicyShapes cfg=$cfg]
+    :local lists [:toarray ""]
+    :foreach item in=$newShapes do={
+        :foreach field in={"source_list";"destination_list"} do={
+            :local name (($item->"shape")->$field)
+            :if (($name != "") && ([:typeof ($lists->$name)] != "array")) do={
+                :local members [:toarray ""]
+                :foreach row in=[/ip/firewall/address-list/print as-value where list=$name] do={ :if (($row->"disabled") != true) do={ :set ($members->[:len $members]) [:tostr ($row->"address")] } }
+                :set ($lists->$name) $members
+            }
+        }
+    }
     :local count $retired
     :foreach policy in=($oldConfig->"policies") do={
         :foreach wn in=($policy->"wans") do={
             :local mark ("sdwan-out-" . ($policy->"name") . ":" . $wn)
             :local query do={ :return [/ip/firewall/connection/find where connection-mark=$mark] }
             :foreach cid in=[$sdwanConntrackFind query=$query mark=$mark] do={
-                :onerror expired in={ /ip/firewall/connection/remove $cid; :set count ($count + 1) } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+                :onerror expired in={
+                    :local flow [:toarray ""]
+                    :set ($flow->"protocol") [:tostr [/ip/firewall/connection/get $cid protocol]]
+                    :foreach side in={"src";"dst"} do={
+                        :local text [:tostr [/ip/firewall/connection/get $cid ($side . "-address")]]
+                        :local colon [:find $text ":"]
+                        :local port 0
+                        :if ([:typeof $colon] = "num") do={ :set port [:tonum [:pick $text ($colon + 1) [:len $text]]]; :set text [:pick $text 0 $colon] } else={ :onerror missingPort in={ :set port [/ip/firewall/connection/get $cid ($side . "-port")] } do={} }
+                        :set ($flow->($side . "_port")) $port
+                        :local field "source"; :if ($side = "dst") do={ :set field "destination" }
+                        :set ($flow->$field) $text
+                    }
+                    :if (![$sdwanConfigKeepFlow policyName=($policy->"name") previous=$oldShapes current=$newShapes flow=$flow lists=$lists]) do={ /ip/firewall/connection/remove $cid; :set count ($count + 1) }
+                } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
             }
         }
     }
     :if ([:typeof $sdwanConntrackRemoved] != "num") do={ :set sdwanConntrackRemoved 0 }
     :set sdwanConntrackRemoved ($sdwanConntrackRemoved + $count)
     :local event [:toarray ""]
-    :set ($event->"type") "reclassify"; :set ($event->"reason") "policy selectors/groups/order changed"; :set ($event->"removed") $count
+    :set ($event->"type") "reclassify"; :set ($event->"reason") "affected policy selectors/groups/order changed"; :set ($event->"removed") $count
     $sdwanRecordEvent event=$event revision=($cfg->"revision")
-    :log warning ("SDWAN policy selectors changed; managed client connections removed=" . $count)
+    :log warning ("SDWAN policy selectors changed; affected client connections removed=" . $count)
 } else={
     :if ($retired > 0) do={
         :if ([:typeof $sdwanConntrackRemoved] != "num") do={ :set sdwanConntrackRemoved 0 }

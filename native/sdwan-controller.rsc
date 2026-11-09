@@ -34,6 +34,10 @@
 :global sdwanRecordEvent
 :global sdwanProbeAccepted
 :global sdwanHealthSignature
+:global sdwanScopeHealth
+:global sdwanStrictAdoptLegacy
+:global sdwanConfigStateLoaded
+:global sdwanConfigProbeReset
 :global sdwanHealthConfigSignature
 :global sdwanRuntimeWANs
 :global sdwanMaintenance
@@ -48,7 +52,9 @@
     :if (($cfg->"schema_version") != 1) do={ :error "unsupported SDWAN schema" }
     :local vpnEnabled false
     :foreach wan in=($cfg->"wans") do={ :if (($wan->"kind") = "vpn") do={ :set vpnEnabled true } }
-    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 9) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
+    :if (([:typeof $sdwanScopeHealth] != "array") || ($sdwanConfigStateLoaded != 1) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-config-state.rsc") }
+    $sdwanStrictAdoptLegacy
+    :if (([:typeof $sdwanResolveWANs] != "array") || ($sdwanLinksLoaded != 10) || ($sdwanConfigRaw != $raw)) do={ /import file-name=($dir . "sdwan-links.rsc") }
     :if ($vpnEnabled) do={
         :global sdwanVPNLoaded
         :global sdwanVPNTick
@@ -63,42 +69,18 @@
     :if ([:typeof $sdwanLastCleanup] != "array") do={ :set sdwanLastCleanup [:toarray ""] }
     :if ([:typeof $sdwanCleanupUntil] != "array") do={ :set sdwanCleanupUntil [:toarray ""] }
     :local configChanged ($sdwanConfigRaw != $raw)
-    :local signature $sdwanHealthConfigSignature
-    :if ($configChanged || ([:typeof $signature] != "str")) do={ :set signature [$sdwanHealthSignature cfg=$cfg] }
-    :local resetHealth (([:typeof $sdwanState] != "array") || ($configChanged && (([:typeof $sdwanHealthConfigSignature] != "str") || ($sdwanHealthConfigSignature != $signature))))
-    :if ($resetHealth) do={
-        :set sdwanLinkFingerprints [:toarray ""]
-        :set sdwanLinkPending [:toarray ""]
-        :set sdwanLinkWarming [:toarray ""]
-        :set sdwanState [:toarray ""]
-        :set sdwanGood [:toarray ""]
-        :set sdwanBad [:toarray ""]
-        :set sdwanLastBad [:toarray ""]
-        :set sdwanEpoch [:toarray ""]
-        :set sdwanFresh [:toarray ""]
-        :if ([:typeof $sdwanSelected] != "array") do={ :set sdwanSelected [:toarray ""] }
-        :local retained [:toarray ""]
-        :foreach policy in=($cfg->"policies") do={ :local pn ($policy->"name"); :if ([:typeof ($sdwanSelected->$pn)] = "str") do={ :set ($retained->$pn) ($sdwanSelected->$pn) } }
-        :set sdwanSelected $retained
-        :set sdwanWanDown [:toarray ""]
-        :set sdwanCleanupUntil [:toarray ""]
-        :if ([:typeof $sdwanConntrackRemoved] != "num") do={ :set sdwanConntrackRemoved 0 }
-        :if ([:typeof $sdwanLastCleanup] != "array") do={ :set sdwanLastCleanup [:toarray ""] }
-        :log info "SDWAN local controller initialized"
+    :if ($configChanged || ([:typeof $sdwanState] != "array")) do={
+        :local scope [$sdwanScopeHealth cfg=$cfg previousRaw=$sdwanConfigRaw now=$now]
+        :set sdwanHealthConfigSignature [$sdwanHealthSignature cfg=$cfg]
+        :log info "SDWAN configuration reconciled; unaffected SLA state preserved"
     }
-    :if ($configChanged && (!$resetHealth)) do={
-        :local retained [:toarray ""]
-        :foreach policy in=($cfg->"policies") do={ :local pn ($policy->"name"); :if ([:typeof ($sdwanSelected->$pn)] = "str") do={ :set ($retained->$pn) ($sdwanSelected->$pn) } }
-        :set sdwanSelected $retained
-        :log info "SDWAN configuration updated; SLA state preserved"
-    }
-    :set sdwanHealthConfigSignature $signature
     :set sdwanConfigRaw $raw
     :if ([:typeof $sdwanLinkWarming] != "array") do={ :set sdwanLinkWarming [:toarray ""] }
     :set ($cfg->"wans") [$sdwanResolveWANs wans=($cfg->"wans")]
     :if ($vpnEnabled) do={ :set ($cfg->"wans") [$sdwanVPNTick cfg=$cfg] }
     :local dnsBootstrap [$sdwanDNSBootstrap cfg=$cfg force=false]
     :local linkChanges [$sdwanReconcileWANs wans=($cfg->"wans") policies=($cfg->"policies") health=$health]
+    :set sdwanConfigProbeReset [:toarray ""]
     :foreach wn,change in=$linkChanges do={
         :set sdwanConntrackRemoved ($sdwanConntrackRemoved + ($change->"removed"))
         :local cleanup [:toarray ""]

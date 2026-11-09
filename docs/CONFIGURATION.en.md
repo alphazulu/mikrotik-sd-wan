@@ -3,7 +3,7 @@
 [Русский](CONFIGURATION.md) | English
 
 One JSON describes WANs, SLAs, policies and backend. The standard bundle contains
-12 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
+13 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
 initial interface, NAT or baseline firewall setup.
 
 ## Top level

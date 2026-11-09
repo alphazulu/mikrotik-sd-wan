@@ -30,6 +30,7 @@ Each guide has a language switch; the links below follow the selected language.
 ## Routing and WANs
 
 - [Weighted WAN policies and affinity](WEIGHTED-WAN.en.md)
+- [Live configuration and session retention](LIVE-CONFIGURATION.en.md)
 - [Marks, symmetry and conntrack](DATAPLANE.en.md)
 - [Static, DHCP-client and PPPoE](DYNAMIC-WAN.en.md)
 - [LTE and APN](LTE.en.md)
@@ -57,6 +58,7 @@ Each guide has a language switch; the links below follow the selected language.
 - [CPU attribution and optimization priority](CPU-ATTRIBUTION.en.md)
 - [150 measurements: results and limits](PERFORMANCE-COMPARISON.en.md)
 - [Weighted-policy validation and resource cost](WEIGHTED-WAN-VALIDATION.en.md)
+- [Live-configuration validation](LIVE-CONFIGURATION-VALIDATION.en.md)
 - [Native-cycle optimization: results and limits](NATIVE-CYCLE-OPTIMIZATION.en.md)
 - [External generators and observers](../labtools/README.en.md)
 - [Isolated x86 DUT](../labtools/DUT-ADAPTER.en.md)
