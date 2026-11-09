@@ -117,7 +117,7 @@ and captures. Baseline diagnostics observed roughly 0.98 seconds until the first
 primary flow; RAM admission probes still showed about 0.12 seconds. Neither is
 an atomic-cutover or hardware timing guarantee.
 
-The standard bundle now has 12 RSC files and JSON, including
+The standard bundle now has 13 RSC files and JSON, including
 `sdwan-admission.rsc`. Use the updated GUI/SDK for protected installation and
 rollback; do not mix package versions. See [deployment](DEPLOYMENT.en.md).
 

@@ -28,6 +28,11 @@ traffic, native/container fallback, upgrade/uninstall and resource cost. Earlier
 [native-cycle optimization](docs/NATIVE-CYCLE-OPTIMIZATION.en.md) and long acceptance
 have their own source and instrumentation; their CPU results are not reassigned.
 
+Successful configuration updates now retain unaffected WAN/profile SLAs and
+healthy existing TCP/UDP connections, with selective reclassification and fresh
+admission after reinstall. [Behavior and limits](docs/LIVE-CONFIGURATION.en.md) ·
+[Bounded validation](docs/LIVE-CONFIGURATION-VALIDATION.en.md).
+
 ## Features
 
 - IPv4 WANs: static interfaces, DHCP-client, PPPoE, LTE with an existing APN,

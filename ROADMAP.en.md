@@ -51,6 +51,12 @@ selectors, container fallback, DHCP, protected lifecycle and resource windows.
 API flags remain configuration observations; the guide records DHCP convergence,
 explicit WAN-kind edit disruption and transient web polling during reconfiguration.
 
+Scoped live configuration is implemented: unaffected SLA state, probe evidence
+and healthy flows survive successful edits; reinstall requires new measurements.
+[Configuration](docs/LIVE-CONFIGURATION.en.md) · [Evidence and limits](docs/LIVE-CONFIGURATION-VALIDATION.en.md).
+The earlier explicit WAN-kind reset limitation applies to the old source;
+transient optional web polling limits remain recorded separately.
+
 Remaining directions:
 
 - Physical ARM/ARM64, real LTE modems and hardware load testing.

@@ -2,6 +2,11 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
+The latest core update scopes configuration invalidation by WAN, SLA profile
+and connection. [Contract](LIVE-CONFIGURATION.en.md) and [validation](LIVE-CONFIGURATION-VALIDATION.en.md)
+record source-specific checks, retained failures and cold-reinstall behavior.
+It does not inherit the original 48-hour or 150-run acceptance.
+
 **Current main:** optional [weighted WAN policies](WEIGHTED-WAN.en.md) passed
 bounded x86/CHR checks and four native resource windows. [Evidence, source hashes
 and limits](WEIGHTED-WAN-VALIDATION.en.md). This is not a new 48-hour acceptance.

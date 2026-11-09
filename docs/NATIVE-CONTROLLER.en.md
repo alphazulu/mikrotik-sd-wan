@@ -114,7 +114,7 @@ protect deployment. Failure/missing ACK restores and reboots:
 Baseline rollback restores these; emergency deployment recovery restores the
 full snapshot immediately before that operation. `sdwan-*` files/tables and
 project script/scheduler names plus `sdwan:v1:` are reserved. Never run concurrent
-installers. Standard export is JSON plus 12 RSC files; manual import bypasses
+installers. Standard export is JSON plus 13 RSC files; manual import bypasses
 protection, so use the normal GUI/CLI.
 
 ## Lab targets
@@ -157,7 +157,7 @@ guarantee. [Roadmap](../ROADMAP.en.md).
 ## Groups, applications and diagnostics
 
 [Policies](POLICIES.en.md) describes selectors/groups. Native links includes
-ordering/match helpers and bounded RAM history; standard package is 12 RSC+JSON.
+ordering/match helpers and bounded RAM history; standard package is 13 RSC+JSON.
 Status has interface/APN, age, recovery/hold timers and selection reasons.
 [GUI diagnostics](DIAGNOSTICS.en.md) reads owned snapshot/active JSON; decisions
 remain local.

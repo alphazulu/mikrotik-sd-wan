@@ -57,8 +57,8 @@ def main():
                 record('scheduler installation commits after a fresh API connection; backup password absent from logs')
             else:print('Reusing passed positive installation; resuming negative scenarios',flush=True)
 
-            previous={name:r.read_file(name) for name in ('sdwan-config.json','sdwan-active.json','sdwan-backup.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc')}
-            for name in ('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc'):
+            previous={name:r.read_file(name) for name in ('sdwan-config.json','sdwan-active.json','sdwan-backup.json','sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-config-state.rsc')}
+            for name in ('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-config-state.rsc'):
                 file=package/name;file.write_text(file.read_text()+'\n# unconfirmed changed package\n')
             token=start(r,package,'sdwan-edge',revision=cfg['revision'],default_policy='default',timeout=120)
             # Close the installing session. No external ACK or rollback commands.

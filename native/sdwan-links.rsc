@@ -357,20 +357,6 @@
     :set sdwanDrainStarted $next
     :return $report
 }
-# Administrative-only edits keep fresh SLA and established flow bindings.
-:global sdwanHealthSignature do={
-    :local signature [:toarray ""]
-    :set ($signature->"health") ($cfg->"health")
-    :set ($signature->"profiles") ($cfg->"sla_profiles")
-    :local rows [:toarray ""]
-    :foreach spec in=($cfg->"wans") do={
-        :local row [:toarray ""]
-        :foreach field in={"name";"interface";"kind";"address";"gateway";"probe_table";"icmp_target";"apn_profile";"probes";"vpn_type";"vpn_endpoint";"vpn_peer_public_key";"vpn_listen_port";"underlays"} do={ :set ($row->$field) ($spec->$field) }
-        :set ($rows->[:len $rows]) $row
-    }
-    :set ($signature->"wans") $rows
-    :return [:serialize to=json value=$signature options=json.no-string-conversion]
-}
 # Strict expectations never execute blocking HTTP in the control cycle.
 :global sdwanProbeNativeType do={
     :local kind ($probe->"type")
@@ -396,6 +382,7 @@
     }
 }
 :global sdwanProbeAccepted do={
+    :global sdwanStrictProbeSignature
     :global sdwanStrictResults
     :global sdwanStrictRaw
     :global sdwanStrictSignature
@@ -420,7 +407,7 @@
         :set ($result->"reason") "strict-warming"
         :local key (($wan->"name") . "/" . ($probe->"name"))
         :local evidence ($sdwanStrictResults->$key)
-        :if (($sdwanStrictSignature != $sdwanHealthConfigSignature) || ([:typeof $evidence] != "array")) do={ :return $result }
+        :if (([:typeof $evidence] != "array") || (($evidence->"signature") != [$sdwanStrictProbeSignature wan=$wan probe=$probe health=$health])) do={ :return $result }
         :if ((($evidence->"generation") != $sdwanStrictGeneration) || (($evidence->"probe_id") != [:tostr $pid]) || (($evidence->"source") != ($wan->"address")) || (($evidence->"gateway") != ($wan->"route_gateway"))) do={ :return $result }
         :local interval ($health->"strict_probe_interval_seconds")
         :if ([:typeof $interval] != "num") do={ :set interval 10 }
@@ -522,6 +509,10 @@
     :global sdwanRuntimeWANs
     :local current ($sdwanStrictSlots->$slot)
     :if ((($current->"token") != ($job->"token")) || (($job->"generation") != $sdwanStrictGeneration)) do={ :return false }
+    :local signature ($job->"signature")
+    :if (([:typeof $signature] != "str") && (($current->"legacy_signature_adopted") = true)) do={ :set signature ($current->"signature") }
+    :if (([:typeof $signature] != "str") || ($signature != ($current->"signature"))) do={ :return false }
+    :foreach field in={"source";"gateway";"probe_id"} do={ :if (($job->$field) != ($current->$field)) do={ :return false } }
     :local binding false
     :foreach wan in=$sdwanRuntimeWANs do={
         :if ((($wan->"name") = ($job->"wan")) && ($wan->"ready") && (($wan->"address") = ($job->"source")) && (($wan->"route_gateway") = ($job->"gateway"))) do={ :set binding true }
@@ -529,7 +520,8 @@
     :local pid [/tool/netwatch/find where comment=($job->"tag")]
     :if ((!$binding) || ([:tostr $pid] != ($job->"probe_id"))) do={ :return false }
     :local evidence [:toarray ""]
-    :foreach field in={"generation";"source";"gateway";"probe_id"} do={ :set ($evidence->$field) ($job->$field) }
+    :foreach field in={"generation";"source";"gateway";"probe_id";"signature"} do={ :set ($evidence->$field) ($job->$field) }
+    :set ($evidence->"signature") $signature
     :set ($evidence->"up") $up
     :set ($evidence->"reason") $reason
     :set ($evidence->"uptime_seconds") ([:tonsec [/system/resource/get uptime]] / 1000000000)
@@ -601,6 +593,9 @@
     :return true
 }
 :global sdwanStrictDispatch do={
+    :global sdwanStrictAdoptLegacy
+    :global sdwanStrictProbeSignature
+    :global sdwanStrictStopJob
     :global sdwanStrictStopJob
     :global sdwanStrictCommit
     :global sdwanConfigRaw
@@ -618,19 +613,12 @@
     :global sdwanStrictCancel
     :global sdwanProbeNativeType
     :if ([:typeof $sdwanConfigRaw] != "str") do={ :return false }
+    $sdwanStrictAdoptLegacy
     :if ($sdwanStrictRaw != $sdwanConfigRaw) do={
         :set sdwanStrictConfig [:deserialize from=json options=json.no-string-conversion value=$sdwanConfigRaw]
         :set sdwanStrictRaw $sdwanConfigRaw
     }
-    :if ($sdwanStrictSignature != $sdwanHealthConfigSignature) do={
-        $sdwanStrictCancel
-        :if ([:typeof $sdwanStrictGeneration] != "num") do={ :set sdwanStrictGeneration 0 }
-        :set sdwanStrictGeneration ($sdwanStrictGeneration + 1)
-        :set sdwanStrictSignature $sdwanHealthConfigSignature
-        :set sdwanStrictResults [:toarray ""]
-        :set sdwanStrictDue [:toarray ""]
-        :set sdwanStrictCursor 0
-    }
+    :if ([:typeof $sdwanStrictGeneration] != "num") do={ :set sdwanStrictGeneration 0 }
     :if ([:typeof $sdwanStrictSlots] != "array") do={ :set sdwanStrictSlots [:toarray ""] }
     :if ([:typeof $sdwanStrictDue] != "array") do={ :set sdwanStrictDue [:toarray ""] }
     :if ([:typeof $sdwanStrictCursor] != "num") do={ :set sdwanStrictCursor 0 }
@@ -646,12 +634,36 @@
                     :set ($item->"wan") ($wan->"name"); :set ($item->"probe") $probe
                     :set ($item->"source") ($wan->"address"); :set ($item->"gateway") ($wan->"route_gateway")
                     :set ($item->"key") (($wan->"name") . "/" . ($probe->"name"))
+                    :set ($item->"signature") [$sdwanStrictProbeSignature wan=$wan probe=$probe health=($sdwanStrictConfig->"health")]
                     :set ($item->"tag") ("sdwan:v1:probe:" . ($wan->"name") . ":" . ($probe->"name"))
                     :set ($queue->[:len $queue]) $item
                 }
             }
         }
     }
+    # Cancel only obsolete jobs. A late callback is also fenced by its slot
+    # token, generation, probe ID, resolved binding and exact probe signature.
+    :local desired [:toarray ""]
+    :foreach item in=$queue do={ :set ($desired->($item->"key")) $item }
+    :foreach slot in={0;1} do={
+        :local job ($sdwanStrictSlots->$slot)
+        :if ([:typeof $job] = "array") do={
+            :local item ($desired->($job->"key"))
+            :if (([:typeof $item] != "array") || (($job->"signature") != ($item->"signature")) || ([:tostr [/tool/netwatch/find where comment=($job->"tag")]] != ($job->"probe_id"))) do={
+                :foreach prefix in={"sdwan-strict-worker-";"sdwan-strict-timeout-"} do={ :local ownedName ($prefix . $slot); $sdwanStrictStopJob ownedName=$ownedName }
+                :set ($sdwanStrictSlots->$slot)
+            }
+        }
+    }
+    :local results [:toarray ""]; :local dueTimes [:toarray ""]
+    :foreach key,item in=$desired do={
+        :local evidence ($sdwanStrictResults->$key)
+        :local retainDue false
+        :if (([:typeof $evidence] = "array") && (($evidence->"signature") = ($item->"signature"))) do={ :set ($results->$key) $evidence; :set retainDue true }
+        :foreach job in=$sdwanStrictSlots do={ :if ((($job->"key") = $key) && (($job->"signature") = ($item->"signature"))) do={ :set retainDue true } }
+        :if ($retainDue) do={ :set ($dueTimes->$key) ($sdwanStrictDue->$key) }
+    }
+    :set sdwanStrictResults $results; :set sdwanStrictDue $dueTimes
     :local interval (($sdwanStrictConfig->"health")->"strict_probe_interval_seconds")
     :if ([:typeof $interval] != "num") do={ :set interval 10 }
     :local timeout (($sdwanStrictConfig->"health")->"strict_probe_timeout_ms")
@@ -700,14 +712,14 @@
     :local count [$sdwanValidateStrict cfg=$cfg]
     :local scheduler [/system/scheduler/find where name="sdwan-strict-dispatch"]
     :if ([:len $scheduler] = 1) do={ /system/scheduler/disable $scheduler }
-    $sdwanStrictCancel
+    :if ($count = 0) do={ $sdwanStrictCancel }
     :foreach ownedName in={"sdwan-strict-worker-0";"sdwan-strict-worker-1";"sdwan-strict-timeout-0";"sdwan-strict-timeout-1";"sdwan-strict-dispatch"} do={
         :local id [/system/script/find where name=$ownedName]
         :if ($count = 0) do={ /system/script/remove $id } else={
             :local source ":global sdwanStrictDispatch; \$sdwanStrictDispatch"
             :if ($ownedName ~ "worker") do={ :set source (":global sdwanStrictWorker; \$sdwanStrictWorker slot=(" . [:pick $ownedName ([:len $ownedName] - 1) [:len $ownedName]] . ")") }
             :if ($ownedName ~ "timeout") do={ :set source (":global sdwanStrictTimeout; \$sdwanStrictTimeout slot=(" . [:pick $ownedName ([:len $ownedName] - 1) [:len $ownedName]] . ")") }
-            :if ([:len $id] = 0) do={ /system/script/add name=$ownedName source=$source policy=read,write,policy,test,sensitive comment="sdwan:v1:strict" } else={ /system/script/set $id source=$source policy=read,write,policy,test,sensitive }
+            :if ([:len $id] = 0) do={ /system/script/add name=$ownedName source=$source policy=read,write,policy,test,sensitive comment="sdwan:v1:strict" } else={ :if ([/system/script/get $id source] != $source) do={ /system/script/set $id source=$source policy=read,write,policy,test,sensitive } }
         }
     }
     :if ($count = 0) do={
@@ -750,6 +762,7 @@
 # The caller owns SLA/selection and enables policy routes AFTER fresh probes.
 :global sdwanReconcileWANs do={
     :global sdwanCreateWANProbes
+    :global sdwanConfigProbeReset
     :global sdwanLinkFingerprints
     :global sdwanLinkPending
     :if ([:typeof $sdwanLinkFingerprints] != "array") do={ :set sdwanLinkFingerprints [:toarray ""] }
@@ -775,7 +788,7 @@
     :foreach wan in=$wans do={
         :local wn ($wan->"name")
         :local mode ($wan->"kind")
-        :if ($mode != "static") do={
+        :if (($mode != "static") || (($sdwanConfigProbeReset->$wn) = true)) do={
             :local signature ([:tostr ($wan->"ready")] . ":" . ($wan->"address") . ":" . ($wan->"route_gateway") . ":" . ($wan->"interface"))
             :local pending ($sdwanLinkPending->$wn)
             # Installation can observe a brief data-session restart and write
@@ -785,7 +798,7 @@
             :local installedPin [/ip/route/find where comment=("sdwan:v1:pinroute:" . $wn)]
             :if ([:len $installedPin] != 1) do={ :error ("missing or duplicate runtime pin route " . $wn) }
             :local pinMismatch ([/ip/route/get $installedPin disabled] = ($wan->"ready"))
-            :if ((($sdwanLinkFingerprints->$wn) != $signature) || ([:typeof $pending] = "array") || $pinMismatch) do={
+            :if ((($sdwanLinkFingerprints->$wn) != $signature) || ([:typeof $pending] = "array") || $pinMismatch || (($sdwanConfigProbeReset->$wn) = true)) do={
                 :if (($mode = "vpn") && (($wan->"ready") = true) && ([:typeof $pending] = "array") && (($pending->"signature") = $signature)) do={
                     # PPP can advertise running/address before its forwarding
                     # bindings settle. Poll in RAM; do not rebuild rules each tick.
@@ -923,25 +936,6 @@
     :foreach item in=$policies do={ :if (($item->"source") = "") do={ :set ($result->[:len $result]) $item } }
     :return $result
 }
-:global sdwanPolicySignature do={
-    :global sdwanOrderPolicies
-    :local value [:toarray ""]
-    :local groups ($cfg->"groups")
-    :if ([:typeof $groups] != "array") do={ :set groups [:toarray ""] }
-    :set ($value->"groups") $groups
-    :local rows [:toarray ""]
-    :foreach item in=[$sdwanOrderPolicies policies=($cfg->"policies")] do={
-        :local row [:toarray ""]
-        :foreach field in={"name";"source";"source_group";"source_list";"destination";"destination_group";"destination_list";"in_interface";"protocol";"src_ports";"dst_ports";"priority"} do={
-            :local v [:tostr ($item->$field)]
-            :if (($field = "protocol") && ($v = "")) do={ :set v "any" }
-            :set ($row->$field) $v
-        }
-        :set ($rows->[:len $rows]) $row
-    }
-    :set ($value->"policies") $rows
-    :return [:serialize to=json value=$value options=json.no-string-conversion]
-}
 :global sdwanValidatePolicyLists do={
     :foreach policy in=($cfg->"policies") do={
         :foreach key,value in=$policy do={
@@ -988,4 +982,4 @@
     :if ([:len $sdwanEvents] >= 100) do={ :set sdwanEvents [:pick $sdwanEvents ([:len $sdwanEvents] - 99) [:len $sdwanEvents]] }
     :set ($sdwanEvents->[:len $sdwanEvents]) $row
 }
-:global sdwanLinksLoaded 9
+:global sdwanLinksLoaded 10

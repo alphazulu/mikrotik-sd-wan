@@ -15,7 +15,7 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-config-state.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 

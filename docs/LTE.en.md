@@ -18,7 +18,7 @@ reads its gateway while still managing automatic-default settings through APN.
    references the already assigned profile so later replacement can be detected.
 4. Set targets, SLA and client policies. Preview shows that installation saves
    original APN routing flags and disables automatic default for SLA routing.
-5. Run protected installation. Standard bundle is JSON plus 12 RSC files; the
+5. Run protected installation. Standard bundle is JSON plus 13 RSC files; the
    external GUI is no longer required afterward.
 
 LTE interface/APN and required NAT must already exist. The configurator does not

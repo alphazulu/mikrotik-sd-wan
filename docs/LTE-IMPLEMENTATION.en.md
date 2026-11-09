@@ -21,7 +21,7 @@ together. Unknown routing flags or denied reads are not treated as safe defaults
 ## RouterOS
 
 Functions live in existing `native/sdwan-links.rsc`; original LTE used library
-revision 4. The current standard bundle has 12 RSC files and JSON. The production
+revision 4. The current standard bundle has 13 RSC files and JSON. The production
 reader first checks target 7.24.5 `apn-profiles`, then newer singular `apn-profile`.
 `sdwanLTENormalizeProfiles` preserves native arrays and normalizes names/IDs.
 

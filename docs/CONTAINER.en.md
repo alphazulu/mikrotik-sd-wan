@@ -110,7 +110,7 @@ The container needs no Internet or DNS requests.
 
 ## WAN selection and recovery
 
-The standard package has 12 RSC files and JSON. Container mode derives controller,
+The standard package has 13 RSC files and JSON. Container mode derives controller,
 installer and watchdog variants; there is no second route writer. Shared
 dataplane handles inbound connections from every WAN and replies through their
 corresponding tables. Switching removes only affected owned conntrack entries.

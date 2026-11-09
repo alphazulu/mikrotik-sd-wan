@@ -1,0 +1,441 @@
+{
+  "schema_version": 1,
+  "scope": "bounded scoped live configuration on RouterOS7.24.5; actual x86 L6 forwarding and fresh CHR helper/rollback checks",
+  "new_long_acceptance": false,
+  "production_router_accessed": false,
+  "container_source_changed": false,
+  "container_source_sha256": "0772c14a13574b95c77faef9347bdaeb09e34afb835c73ec19aa0e11ca60db9d",
+  "source140_tree": "d5d1719684dce4c7455e935762c38d709045cd12",
+  "final_executable_candidate_tree": "6345fe7db806f544e1b5543a426142861de3f4fc",
+  "delta140_to_final": [
+    "native/sdwan-install.rsc"
+  ],
+  "final_product_SHA256": {
+    "native/sdwan-admission.rsc": "59eab80b46fa680a0b0158272c2cbd02784311e72ed75eca08fc95963e569803",
+    "native/sdwan-config-state.rsc": "17712b7e93bf07f6c78141ceac5a21d2a26e5d2935c16cbd783a66030d010ac0",
+    "native/sdwan-controller.rsc": "e98cd3a1711f2671cba8cf195f64c1164c66d566e7fe842169fe9a4c86f1737f",
+    "native/sdwan-dataplane.rsc": "c58af87093d013bde498046d47981bf634631bdf4c972c737254f6f19aeffbbd",
+    "native/sdwan-deploy-watchdog.rsc": "30e681d7df91378a32ab58d996ca595ffab2e53d375969a927360b7322b9820d",
+    "native/sdwan-deploy-worker.rsc": "53478f120f85b9a0bb786c2f12e5d433e74e8e2169de7dc2852306ff8a23ae35",
+    "native/sdwan-deployment.rsc": "448a30649ea9ddabb9b6bb989c80b5582ff428ea53fc71c2232db06bc034ffa8",
+    "native/sdwan-dns.rsc": "7cda619d4060cdb67d117f767ccf878da1c47fca5231640377880be5d4fbc4e9",
+    "native/sdwan-install.rsc": "ae571d122113a8795963ad288c739d96a89fea1c6781ef57788e92fcb9146cef",
+    "native/sdwan-links.rsc": "52e0ba4393d8ebfbb07eda292b85ca8dd651d0a8fb4344212a5a60946273a158",
+    "native/sdwan-overlay.rsc": "5874824ab5945b057f54e0650172e7a447dfe03ac09a310b53834994cdd24972",
+    "native/sdwan-rollback.rsc": "eecbbb68849c41ed6d9c64081d52742116a30070680b6905a66c17f2fd4e6843",
+    "native/sdwan-vpn.rsc": "2c6b94e4cba903ef5d5980f096097e9bb6af49b9650ead5454556097f2ad2461",
+    "sdwan.py": "e0fcbc843076ea3af127529875f91bd566967702a0fe6803b21c613cdf5c29c8",
+    "sdwan/deployment.py": "301fd605e7b88b191d143444aab40564255f9ef1db80887391621459095c6b2c"
+  },
+  "independent_verification_SHA256": "3355ad60b6be266bef4fc4e7e8c2c2ff8508ed23326210afaf65d2756a661dfd",
+  "baseline134_135_verification_SHA256": "f026386291bf7d1e4026fd37ef0ffb6e6fc4bda36b8d70465c41035ee8ac5600",
+  "scenarios": [
+    {
+      "number": 140,
+      "raw_pass": true,
+      "source_tree": "d5d1719684dce4c7455e935762c38d709045cd12",
+      "report_SHA256": "cf85b3a5cad489613b806cdabc30a217f63f91508867c7c31c7e93a5ea42075f",
+      "checks": [
+        "71 actual RouterOS scope/health/flow/range/strict fence checks",
+        "accepted old main strict workload is healthy before upgrade",
+        "legacy-upgrade-keeps-WAN1",
+        "legacy-upgrade-keeps-WAN2",
+        "legacy-upgrade-keeps-WAN2-netwatch-generation",
+        "new strict evidence has exact per-probe signatures after legacy upgrade",
+        "WAN1-strict-body-edit-keeps-healthy-WAN2",
+        "strict-body-edit-keeps-WAN2-probe-generation",
+        "wrong-WAN1-body-selects-only-verified-WAN2",
+        "WAN1-strict-restore-keeps-healthy-WAN2",
+        "voice-profile-edit-keeps-default-class-WAN1",
+        "voice-profile-edit-keeps-default-class-WAN2",
+        "profile-edit-keeps-Netwatch-generations",
+        "unchanged default SLA profile retains history across integer-to-float formatting",
+        "inflight slow HTTP probe preserves its10s scheduling interval",
+        "strict-steady-retains-default-WAN1",
+        "strict-steady-retains-default-WAN2"
+      ],
+      "retained_sessions": [
+        {
+          "name": "legacy-upgrade-keeps-WAN1-preservation",
+          "sessions": 31,
+          "SHA256": "3dd885612a7c50efcf215e331fb5100fa2783522d0d2d50846e5ba67032de290"
+        },
+        {
+          "name": "strict-steady-retains-default-WAN1-preservation",
+          "sessions": 27,
+          "SHA256": "605841702a5c74e921c25f2541463d4dfe32fda798f06588914aa55b59ed323e"
+        },
+        {
+          "name": "strict-steady-retains-default-WAN2-preservation",
+          "sessions": 7,
+          "SHA256": "c7f75f4692a0a4d850bc9d945b65bea78848cf80eeaa7cddabf2ec3e126438e0"
+        },
+        {
+          "name": "WAN1-strict-body-edit-keeps-healthy-WAN2-preservation",
+          "sessions": 10,
+          "SHA256": "5e07b2c83c7e2ffba0d63ecfd932fd646c473a15477554619b873ed3f82fd984"
+        },
+        {
+          "name": "legacy-upgrade-keeps-WAN2-preservation",
+          "sessions": 5,
+          "SHA256": "19fdda08a201f2f9c8938de5db34f3c1f843be44851d1d946717809df89d2478"
+        },
+        {
+          "name": "WAN1-strict-restore-keeps-healthy-WAN2-preservation",
+          "sessions": 10,
+          "SHA256": "191f1612d977e73bd0d968276df261b91dea9f5c050ac3d92b38d0fde4e040ce"
+        },
+        {
+          "name": "voice-profile-edit-keeps-default-class-WAN1-preservation",
+          "sessions": 27,
+          "SHA256": "1f3adaa47b6387b8fba6f75e29967ce93b5523c5eeb28406c4ed0d2af89269c1"
+        },
+        {
+          "name": "voice-profile-edit-keeps-default-class-WAN2-preservation",
+          "sessions": 7,
+          "SHA256": "9241ef4f16d29b5087841482f0ecb91b678a9ef28d4e9d0156530022000ff813"
+        }
+      ],
+      "captures": [
+        {
+          "name": "wrong-WAN1-body-selects-only-verified-WAN2",
+          "flows": 60,
+          "counts": {
+            "tcp": {
+              "wan1": 0,
+              "wan2": 30,
+              "wan3": 0
+            },
+            "udp": {
+              "wan1": 0,
+              "wan2": 30,
+              "wan3": 0
+            }
+          },
+          "SHA256": "542939e43261a89454dd56656f3cf87f7936f2c36950b5752d5742e1e337ea86"
+        }
+      ],
+      "probe_generations": [
+        {
+          "name": "strict-body-edit-keeps-WAN2-probe-generation",
+          "probes": 4,
+          "all_positive_before": true,
+          "SHA256": "c44fac5e0bcd6510c1e71190fef4341e6ef3691c476afd14fcf659500f454156"
+        },
+        {
+          "name": "legacy-upgrade-keeps-WAN2-netwatch-generation",
+          "probes": 4,
+          "all_positive_before": true,
+          "SHA256": "908c67f4ca2c73cb69a9b599c81204b2cec6545b42e4e95fbb740875af18d6ce"
+        },
+        {
+          "name": "profile-edit-keeps-Netwatch-generations",
+          "probes": 4,
+          "all_positive_before": true,
+          "SHA256": "37430161095373a0013c0761525ecaa4b53385fe119a89c7ae652ef5f343aa83"
+        }
+      ]
+    },
+    {
+      "number": 141,
+      "raw_pass": true,
+      "source_tree": "d5d1719684dce4c7455e935762c38d709045cd12",
+      "report_SHA256": "8d9ac28994ceeb9b81f1908acc9b7f03ca65a1ecddaea0946c54cbda31f45571",
+      "checks": [
+        "failed12-to13module update restores old files/controller and removes previously absent config-state module",
+        "L4-edit-keeps-matching-TCP-and-default-WAN1",
+        "L4-edit-keeps-matching-TCP-and-pinned-WAN2",
+        "L4-edit-retires-only-nonmatching-UDP",
+        "L4-fresh-traffic-WAN-capture",
+        "actual L4 classification sends TCP through PCC and UDP through default",
+        "matching-AddressList-edit-keeps-WAN1",
+        "matching-AddressList-edit-keeps-WAN2",
+        "unrelated-edit-keeps-existing-AddressList-WAN1-flows",
+        "unrelated-edit-keeps-existing-AddressList-WAN2-flows",
+        "edited-pinned-selector-retires-only-client102",
+        "empty-list-fresh-flows-fall-through-default",
+        "static-WAN1-address-edit-keeps-WAN2-and-pinned-sessions",
+        "static-new-source-PCC-traffic",
+        "exact catalog image active with new13module derived controller",
+        "container-equivalent-edit-keeps-WAN1",
+        "container-equivalent-edit-keeps-WAN2",
+        "container-selector-edit-keeps-unrelated-default",
+        "container-selector-edit-keeps-pinned-client102",
+        "container-selector-edit-retires-only-affected-policy",
+        "native-fallback-keeps-unrelated-default",
+        "native-fallback-keeps-pinned-WAN2",
+        "native-fallback-uses-updated-selectors",
+        "container-restart-keeps-unrelated-default",
+        "container-restart-keeps-pinned-WAN2"
+      ],
+      "retained_sessions": [
+        {
+          "name": "L4-edit-keeps-matching-TCP-and-pinned-WAN2-preservation",
+          "sessions": 8,
+          "SHA256": "87a94f3a1c28b708d9e4a294605cef8156d5927d286505aa08b583e6dc5c4019"
+        },
+        {
+          "name": "container-equivalent-edit-keeps-WAN2-preservation",
+          "sessions": 7,
+          "SHA256": "74fc57a1e29cfb8dafc2f175efd27cf756d4bc0561901e616455774e894d74ed"
+        },
+        {
+          "name": "L4-edit-keeps-matching-TCP-and-default-WAN1-preservation",
+          "sessions": 12,
+          "SHA256": "c6ed42233a6496d8d004552cd149cfe3528aa08665aaf791264cdb0306a0cb4d"
+        },
+        {
+          "name": "container-restart-keeps-pinned-WAN2-preservation",
+          "sessions": 2,
+          "SHA256": "1c538f15d902ef7f6231cad3180a03bd5a9d24337d007f844fa2e0a0bf3467f7"
+        },
+        {
+          "name": "unrelated-edit-keeps-existing-AddressList-WAN1-flows-preservation",
+          "sessions": 29,
+          "SHA256": "e70f626f2733a04a9e228bfeb626ca5011882a0179bf2a81bb5dcf62515450dc"
+        },
+        {
+          "name": "native-fallback-keeps-unrelated-default-preservation",
+          "sessions": 2,
+          "SHA256": "4253ff23332aaa5461f3fe3feaf488c4ceb86620e3d8aef837abcd45aee5980b"
+        },
+        {
+          "name": "static-WAN1-address-edit-keeps-WAN2-and-pinned-sessions-preservation",
+          "sessions": 13,
+          "SHA256": "55f97a33f2d675f1018d47254d83b926a74d8ca186afb141e1f38b96168dde39"
+        },
+        {
+          "name": "container-selector-edit-keeps-pinned-client102-preservation",
+          "sessions": 2,
+          "SHA256": "dec3666ea63e12e2ccbd69aeeac4677efcdec85ed6069930b3f435fb4b02a686"
+        },
+        {
+          "name": "container-selector-edit-keeps-unrelated-default-preservation",
+          "sessions": 2,
+          "SHA256": "7d1fed021689f6dbc732ce1aba672c46ab3cb1c443d9c46641cd3734e64b829f"
+        },
+        {
+          "name": "container-restart-keeps-unrelated-default-preservation",
+          "sessions": 2,
+          "SHA256": "d013606c0cb6fea99ec62d601a16a0f111f4a074383892f7f3e56ad8f202cfbe"
+        },
+        {
+          "name": "native-fallback-keeps-pinned-WAN2-preservation",
+          "sessions": 2,
+          "SHA256": "370d36acc1be5d326b637aa76ef984f16b27d4e45276062fe02a67b2e5f1aff0"
+        },
+        {
+          "name": "container-equivalent-edit-keeps-WAN1-preservation",
+          "sessions": 29,
+          "SHA256": "f5d61c5bde3298fca8b613f17e2d8779ba66e3c5e0827d2737a4c084f9b1346e"
+        },
+        {
+          "name": "unrelated-edit-keeps-existing-AddressList-WAN2-flows-preservation",
+          "sessions": 5,
+          "SHA256": "918a543c6c5f8f8180528eeceb14bacb07e625706c979d9b9196c3b4c825fcf8"
+        },
+        {
+          "name": "matching-AddressList-edit-keeps-WAN1-preservation",
+          "sessions": 29,
+          "SHA256": "6ce84e4ff437009fac3d61ea2d629db7df01028cf397beb63a9ffbf9b625a3dd"
+        },
+        {
+          "name": "matching-AddressList-edit-keeps-WAN2-preservation",
+          "sessions": 7,
+          "SHA256": "40961d19a7c30fc22037307af1956422f30a074a3341be97594830809b6ffb9b"
+        }
+      ],
+      "captures": [
+        {
+          "name": "empty-list-fresh-flows-fall-through-default",
+          "flows": 60,
+          "counts": {
+            "tcp": {
+              "wan1": 30,
+              "wan2": 0,
+              "wan3": 0
+            },
+            "udp": {
+              "wan1": 30,
+              "wan2": 0,
+              "wan3": 0
+            }
+          },
+          "SHA256": "8647bfb224d43d7c273b14975da440bf58945778b5154149801dd6c7f4226eaf"
+        },
+        {
+          "name": "native-fallback-uses-updated-selectors",
+          "flows": 60,
+          "counts": {
+            "tcp": {
+              "wan1": 30,
+              "wan2": 0,
+              "wan3": 0
+            },
+            "udp": {
+              "wan1": 30,
+              "wan2": 0,
+              "wan3": 0
+            }
+          },
+          "SHA256": "c4048fd2f43a2a806d6abef40ad4900ddbb7390a9406b889e65fc51c8da9c6dc"
+        },
+        {
+          "name": "static-new-source-PCC-traffic",
+          "flows": 160,
+          "counts": {
+            "tcp": {
+              "wan1": 61,
+              "wan2": 19,
+              "wan3": 0
+            },
+            "udp": {
+              "wan1": 62,
+              "wan2": 18,
+              "wan3": 0
+            }
+          },
+          "SHA256": "f6e0a86c9edc53e20cfb9901157ad7a765394c00468720d053f898e15f92e7a3"
+        },
+        {
+          "name": "L4-fresh-traffic-WAN-capture",
+          "flows": 160,
+          "counts": {
+            "tcp": {
+              "wan1": 58,
+              "wan2": 22,
+              "wan3": 0
+            },
+            "udp": {
+              "wan1": 80,
+              "wan2": 0,
+              "wan3": 0
+            }
+          },
+          "SHA256": "87768c718171601ce68a5cf4caa4f6c329c0257c7175bac0a76698c143ac2a7f"
+        }
+      ],
+      "probe_generations": []
+    },
+    {
+      "number": 145,
+      "raw_pass": true,
+      "source_tree": "6345fe7db806f544e1b5543a426142861de3f4fc",
+      "report_SHA256": "3cc6a84fc61898d85add2f6768d974daffa81d65eff0aaba0e27ff2613d7f53e",
+      "checks": [
+        "actual unchanged Netwatch set preserves counters",
+        "disabled-probe repair on same-config reapply",
+        "repair-keeps-healthy-WAN1-sessions",
+        "repair-keeps-healthy-WAN2-and-pinned-sessions",
+        "hot-strict-reapply-keeps-WAN2-probes",
+        "same-config cold reinstall requires fresh SLA windows"
+      ],
+      "retained_sessions": [
+        {
+          "name": "repair-keeps-healthy-WAN2-and-pinned-sessions-preservation",
+          "sessions": 11,
+          "SHA256": "210502a10382d9ebff433faaccf0e4d46710930f3464584399e6684e159194f2"
+        },
+        {
+          "name": "repair-keeps-healthy-WAN1-sessions-preservation",
+          "sessions": 25,
+          "SHA256": "53b1bc510e794a359352ea1ebaf13d8fc82425e1a90f0e8da88b3da5b2034879"
+        }
+      ],
+      "captures": [],
+      "probe_generations": [
+        {
+          "name": "hot-strict-reapply-keeps-WAN2-probes",
+          "probes": 4,
+          "all_positive_before": true,
+          "SHA256": "fd8b6f65f1407b04ff0835b89bbd780dd395d6dee66bf03bafbb6c7b9e85cabb"
+        }
+      ]
+    },
+    {
+      "number": 146,
+      "raw_pass": true,
+      "source_tree": "6345fe7db806f544e1b5543a426142861de3f4fc",
+      "report_SHA256": "bed274f5c3516be632bd462c41775e59872ec4822644b134c2e04d4201cae83f",
+      "checks": [],
+      "retained_sessions": [],
+      "captures": [],
+      "probe_generations": []
+    },
+    {
+      "number": 148,
+      "raw_pass": true,
+      "source_tree": "6345fe7db806f544e1b5543a426142861de3f4fc",
+      "report_SHA256": "5032b570e129be37119400d1075c0528438c7aa2757ffae3f9c97a9ae926f631",
+      "checks": [
+        "71 actual RouterOS scope/health/flow/range/strict fence checks",
+        "accepted old main strict workload is healthy before upgrade",
+        "legacy-upgrade-keeps-WAN1",
+        "legacy-upgrade-keeps-WAN2",
+        "legacy-upgrade-keeps-WAN2-netwatch-generation",
+        "new strict evidence has exact per-probe signatures after legacy upgrade"
+      ],
+      "retained_sessions": [
+        {
+          "name": "legacy-upgrade-keeps-WAN1-preservation",
+          "sessions": 22,
+          "SHA256": "53b6b9faccadf5f8df19283f5ad65e6d960ee9fa4345fa84bce2a652c61ddaab"
+        },
+        {
+          "name": "legacy-upgrade-keeps-WAN2-preservation",
+          "sessions": 14,
+          "SHA256": "de8e8c700e7a7e0a2e6d0485d0811283792b627a7c4bd591e250a595ccfb15dc"
+        }
+      ],
+      "captures": [],
+      "probe_generations": [
+        {
+          "name": "legacy-upgrade-keeps-WAN2-netwatch-generation",
+          "probes": 4,
+          "all_positive_before": true,
+          "SHA256": "6a3df3602525bc947a5371eb8d6bb329bb02a03a638c5d4701e8611392846eca"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Not a new48-hour/150-run/performance certification",
+    "No zero-loss, atomic cutover or universal update-time guarantee",
+    "NAT source/path changes do not migrate existing sessions",
+    "Protected rollback can reboot and does not promise session retention",
+    "Physical ARM/ARM64, full VPN/OSPF topology requalification and maximum conntrack scale not tested by these new runs",
+    "Optional web polling during protected edits remains outside session-retention guarantee"
+  ],
+  "cold_reinstall": {
+    "before_fix_first_healthy_epoch": 2,
+    "after_fix_first_healthy_epoch": 5,
+    "required_fresh_windows": 4,
+    "disabled_probe_repaired": true
+  },
+  "retained_failed_runs": [
+    {
+      "number": 139,
+      "kind": "real legacy strict upgrade regression; fixed before140",
+      "raw_pass": false,
+      "report_SHA256": "70b2f81a0cb49f463e8bba75f31e3b60a82cd676c11098bc0d04b06ec4bd274b"
+    },
+    {
+      "number": 144,
+      "kind": "test accidentally changed strict probe type while asserting no-op; corrected145",
+      "raw_pass": false,
+      "report_SHA256": "00f56aaf94943f4c27fea3add12ab7583bc175a8f4c3542874150829030c0207"
+    },
+    {
+      "number": 137,
+      "kind": "test scheduler JSON escaping failure before fetch measurements; corrected138",
+      "raw_pass": false,
+      "report_SHA256": "f5e468cd40463fdc4fed4a1d9a9b26b38fa96c2cde23cb265d7c763b1865767e"
+    },
+    {
+      "number": 136,
+      "kind": "old-source slow fetch exceeded original budget; fetch diagnostic138 selected measured delay without relaxing timeout",
+      "raw_pass": false,
+      "report_SHA256": "066514d0555326f0ed45ab980a95fc51fe9d37cf63e407295a03e844eceb1441"
+    }
+  ]
+}

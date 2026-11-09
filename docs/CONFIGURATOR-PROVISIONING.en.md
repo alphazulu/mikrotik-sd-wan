@@ -99,8 +99,9 @@ a stopped instance, not a silent filesystem swap.
 Production MikroTik was not changed. After this milestone, a separate x86 L6
 validated three WANs plus USB RNDIS LTE, full switching cycles and real HTTPS
 downloads through SD-WAN. These are functional checks, not maximum capacity.
-The prepared 150-measurement comparison has not executed; new 48-hour acceptance
-is running. [Current status](CURRENT-STATUS.en.md).
+The original v0.3.0 completed the 150-measurement comparison and 48-hour
+acceptance. These results do not qualify later changes.
+[Current status and scope](CURRENT-STATUS.en.md).
 
 [Performance plan](PERFORMANCE-PLAN.en.md) ·
 [LTE MBIM/AT field design](../lte-rndis-emu/MODEM-CONTROL-PLAN.en.md) ·
