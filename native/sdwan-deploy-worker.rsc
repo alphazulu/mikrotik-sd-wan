@@ -6,6 +6,8 @@
 :local path ($link->"path")
 :local s [:deserialize from=json options=json.no-string-conversion value=[/file/get [/file/find where name=$path] contents]]
 :if (($s->"phase") != "armed") do={ :return }
+:if (($s->"phase") != "armed") do={ :return "" }
+:if ([:len [/ip/firewall/address-list/find where list="sdwan-deployment-boot" and dynamic=yes and comment=("sdwan:v1:deployment:" . ($s->"token"))]] != 1) do={ :return "" }
 :local save do={ /file/set [/file/find where name=$path] contents=[:serialize to=json value=$value options=json.no-string-conversion] }
 :set ($s->"phase") "applying"
 $save path=$path value=$s
@@ -14,7 +16,8 @@ $save path=$path value=$s
     :if ($dir != "") do={
         :foreach objectName in={"sdwan-backup.json";"sdwan-active.json"} do={
             :if (([:len [/file/find where name=($dir . $objectName)]] = 0) && ([:len [/file/find where name=$objectName]] > 0)) do={
-                /file/add name=($dir . $objectName) type=file contents=[/file/get [/file/find where name=$objectName] contents]
+                /file/add name=($dir . $objectName) type=file
+                /file/set [/file/find where name=($dir . $objectName)] contents=[/file/get [/file/find where name=$objectName] contents]
             }
         }
     }

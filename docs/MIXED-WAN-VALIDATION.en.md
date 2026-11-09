@@ -2,8 +2,8 @@
 
 [Русский](MIXED-WAN-VALIDATION.md) | English
 
-**Bounded functional validation passed.** Orderly restarts passed; abrupt
-power loss remains a separate limitation below.
+**Bounded functional validation passed.** Orderly restarts passed; subsequent
+power interruption validation is linked separately under limits.
 
 The lab uses RouterOS 7.24.5, a disposable x86 L6 with 1 vCPU/1024 MiB and a CHR
 peer. The production router and export are excluded. Controllers run in RouterOS
@@ -87,9 +87,10 @@ and function coverage for both Rust profiles, including `main.rs`, and browser c
 
 ## Limits
 
-**Abrupt power loss is not qualified.** A separate hard QMP reset left
-`sdwan-active.json` empty. This change does not implement recovery from that
-case; orderly RouterOS restart is a different check.
+This report covers mixed functionality and orderly restarts. The initial empty
+active-file limitation after a hard reset was addressed and checked separately
+in [power interruption validation](POWER-LOSS-VALIDATION.en.md). The new series
+is not attributed to this historical run.
 
 Physical LTE radio/SIM operation, ARM capacity and connectivity between two
 CGNAT endpoints without a reachable hub/relay are untested. Previous 48-hour

@@ -2,10 +2,13 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-Bounded mixed WAN/LTE/VPN/OSPF validation is complete, with corrected completion
-of cancelled emulator USB requests. Four orderly restarts and two 125-second
-DHCP/SLA windows passed independent replay. A hard reset leaving the active
-configuration file empty remains a separate limitation. [Source, evidence and limits](MIXED-WAN-VALIDATION.en.md).
+Power interruption recovery passed bounded x86/CHR acceptance: both controller
+modes, initial installation, update and empty active with differing staging.
+Independent replay checked 56 flows and 69 coherent file snapshots.
+[Mechanism](POWER-LOSS-RECOVERY.en.md) · [Results and limits](POWER-LOSS-VALIDATION.en.md).
+
+Earlier mixed WAN/LTE/VPN/OSPF and orderly-restart validation retains its own
+results. [Source and checks](MIXED-WAN-VALIDATION.en.md).
 
 The preceding core update scopes configuration invalidation by WAN, SLA profile
 and connection. [Contract](LIVE-CONFIGURATION.en.md) and [validation](LIVE-CONFIGURATION-VALIDATION.en.md)

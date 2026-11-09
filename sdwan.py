@@ -15,7 +15,7 @@ from sdwan.wan import adopted_dynamic_route
 from sdwan.lte import apn_binding
 
 ROOT=Path(__file__).resolve().parent
-FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-config-state.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-deploy-watchdog.rsc')
+FILES=('sdwan-controller.rsc','sdwan-install.rsc','sdwan-rollback.rsc','sdwan-dataplane.rsc','sdwan-links.rsc','sdwan-admission.rsc','sdwan-config-state.rsc','sdwan-overlay.rsc','sdwan-vpn.rsc','sdwan-dns.rsc','sdwan-deployment.rsc','sdwan-deploy-worker.rsc','sdwan-recovery.rsc','sdwan-deploy-watchdog.rsc')
 PREFIX='sdwan:v1:'
 
 
@@ -158,7 +158,7 @@ def preflight(router,c,expected):
     if isinstance(settings,list):settings=settings[0]
     if settings.get('rp-filter')=='strict':actions.append({'action':'set rp-filter to loose for multiple WANs; save original for rollback','menu':'ip/settings'})
     actions.append({'action':'order SD-WAN mangle jumps first and local routing rules before WAN source pins; clear only affected managed conntrack marks on policy/WAN transitions'})
-    actions.append({'action':'save encrypted full backup and previous files; apply in local scheduler; require fresh API confirmation within 120 seconds; native watchdog restores backup and reboots on failure or timeout'})
+    actions.append({'action':'save encrypted full backup and previous files; apply in local scheduler; wait for three 45-second storage barriers (backup, full archive manifest, confirmed checkpoint) before fresh API confirmation; native watchdog restores backup and reboots on failure or timeout'})
     if 'maintenance' in c:
         from sdwan.maintenance import backup_plan
         plan=backup_plan(router,expected,c['maintenance']['backup_keep'])
