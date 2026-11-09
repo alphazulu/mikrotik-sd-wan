@@ -2,10 +2,11 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-The candidate fixes the cold secondary-WAN overlay source. Native dual-CGNAT
-WAN/NAT/SLA and container WAN failure cases have bounded, independently replayed
-results. Remaining container NAT/SLA and orderly-restart qualification is in progress.
-[Source, evidence and limits](CGNAT-VALIDATION.en.md).
+A direct cold container installation exposed an additional, intermittent reverse
+conntrack source problem. The revised candidate handles both directions and
+rearms source checks during recovery; final-source qualification is running.
+Earlier 144 Internet flow results retain their own sources and scopes.
+[Evidence, retained failures and limits](CGNAT-VALIDATION.en.md).
 
 Power interruption recovery passed bounded x86/CHR acceptance: both controller
 modes, initial installation, update and empty active with differing staging.
