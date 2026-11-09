@@ -457,7 +457,8 @@
     :foreach cid in=[$sdwanConntrackFind query=$inbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
         :onerror expired in={
             :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]
-            :if (($localAddresses->$destination) = true) do={
+            # A DNAT reply source precedes reverse translation; retain that mapping.
+            :if ((($localAddresses->$destination) = true) && ([/ip/firewall/connection/get $cid dstnat] != true)) do={
                 :set ($result->"seen") (($result->"seen") + 1)
                 :local wireSource [:tostr [/ip/firewall/connection/get $cid reply-src-address]]
                 :if ([$sdwanOverlayWrongSource wireSource=$wireSource localAddresses=$localAddresses wanAddresses=$wanAddresses]) do={
@@ -744,4 +745,4 @@
     :set sdwanOverlayState $next
     :return $report
 }
-:global sdwanOverlayLoaded 4
+:global sdwanOverlayLoaded 5
