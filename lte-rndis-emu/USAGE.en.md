@@ -39,6 +39,12 @@ SLA thresholds, probe settings and the radio model are unchanged. It does not
 establish physical LTE latency.
 
 
+A cancelled pending USB request receives a `cancelled` completion with its
+original ID, as required by the [usbredir protocol](https://github.com/SPICEorg/usbredir/blob/master/usb-redirection-protocol.txt).
+This lets QEMU reuse request IDs after a guest reboot. An already completed
+request is not completed twice. Cancellation regressions cover 64-bit IDs,
+unrelated pending requests and the optional AT endpoint.
+
 ## Command contract
 
 Working directory: this subproject root, `lte-rndis-emu`.
