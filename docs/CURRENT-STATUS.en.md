@@ -2,7 +2,12 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-The latest core update scopes configuration invalidation by WAN, SLA profile
+Bounded mixed WAN/LTE/VPN/OSPF validation is complete, with corrected completion
+of cancelled emulator USB requests. Four orderly restarts and two 125-second
+DHCP/SLA windows passed independent replay. A hard reset leaving the active
+configuration file empty remains a separate limitation. [Source, evidence and limits](MIXED-WAN-VALIDATION.en.md).
+
+The preceding core update scopes configuration invalidation by WAN, SLA profile
 and connection. [Contract](LIVE-CONFIGURATION.en.md) and [validation](LIVE-CONFIGURATION-VALIDATION.en.md)
 record source-specific checks, retained failures and cold-reinstall behavior.
 It does not inherit the original 48-hour or 150-run acceptance.

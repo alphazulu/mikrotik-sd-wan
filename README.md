@@ -33,6 +33,9 @@ SD-WAN для RouterOS: контроль SLA, приоритеты канало�
 выборочно, а переустановка требует новых измерений.
 [Поведение и границы](docs/LIVE-CONFIGURATION.md) · [Ограниченные проверки](docs/LIVE-CONFIGURATION-VALIDATION.md).
 
+Смешанная схема WAN/LTE/VPN/OSPF и штатные перезапуски с USB LTE проверены
+отдельно в RSC и контейнере. [Отчёт и ограничение аварийного сброса](docs/MIXED-WAN-VALIDATION.md).
+
 ## Возможности
 
 - IPv4 WAN: статические интерфейсы, DHCP-client, PPPoE, LTE с существующим APN и
