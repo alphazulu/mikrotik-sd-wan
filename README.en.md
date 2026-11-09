@@ -39,7 +39,7 @@ was separately checked in both modes: [behavior](docs/POWER-LOSS-RECOVERY.en.md)
 and [results](docs/POWER-LOSS-VALIDATION.en.md).
 
 The revised secondary-WAN source correction is under qualification after an
-intermittent direct-container startup failure. [Dual-CGNAT evidence](docs/CGNAT-VALIDATION.en.md)
+intermittent direct-container startup failure and a targeted DNAT preservation fix. [Dual-CGNAT evidence](docs/CGNAT-VALIDATION.en.md)
 separates earlier verified results from the new candidate's pending fault matrix.
 
 ## Features

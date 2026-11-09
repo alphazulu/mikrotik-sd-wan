@@ -5,7 +5,8 @@
 A direct cold container installation exposed an additional, intermittent reverse
 conntrack source problem. The revised candidate handles both directions and
 rearms source checks during recovery; final-source qualification is running.
-Earlier 144 Internet flow results retain their own sources and scopes.
+The preceding candidate passed 136 Internet flows; the DNAT guard passed eight
+targeted tuple cases. Its full matrix is rerunning. Earlier results keep their own sources.
 [Evidence, retained failures and limits](CGNAT-VALIDATION.en.md).
 
 Power interruption recovery passed bounded x86/CHR acceptance: both controller

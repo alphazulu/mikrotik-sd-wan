@@ -2,10 +2,10 @@
 
 [Русский](CGNAT-VALIDATION.md) | English
 
-Qualification of the revised source correction is in progress. A direct cold
-container installation exposed a second, intermittent conntrack direction gap
-after the earlier bounded tests. Those historical results remain valid only
-for their recorded sources and scopes; they do not qualify the new candidate.
+Final qualification is in progress after a targeted test found a DNAT mapping
+selected for deletion. The helper now excludes inbound DNAT; eight real
+conntrack cases passed. The full native/container matrix is rerunning on the
+corrected frozen source. Earlier completed results retain their own sources.
 
 ## Topology and source
 
@@ -29,9 +29,13 @@ routes**: two neighbors per branch, four on the hub.
 Historical traces 231, 233 and 236 use frozen tree
 e111b0bcd359684cf084046156606438a52ef87f. Public runtime commit
 [48b0742](https://github.com/alphazulu/mikrotik-sd-wan/commit/48b074272d775f5f78c5ec00b0a5f92f664eff73)
-has exactly that tree. The revised candidate is frozen separately at tree
-71afaa5bf64ca159e8057b8beaee38e2418d67dc. Its fresh fault matrix is in progress;
-no final-source PASS is claimed yet.
+has exactly that tree. The next candidate,
+[a87c350](https://github.com/alphazulu/mikrotik-sd-wan/commit/a87c35038c621c06313939f1bd1d4c9e11b3cfac),
+tree 71afaa5bf64ca159e8057b8beaee38e2418d67dc, passed the full run 242.
+
+The final candidate adds DNAT preservation and is frozen separately at tree
+3462cf4fc5fa8e1d8fd92b546897a3b6ca664a9b. Its targeted run 250 passed; full
+run 251 is in progress. No full PASS of this final source is claimed yet.
 
 ## Cold secondary-WAN source correction
 
@@ -49,8 +53,9 @@ its planned manual deletion was never performed. The startup issue is intermitte
 
 The revised RouterOS helper checks both directions of the exact owned UDP
 listener/remote-address/remote-port tuple. For outbound originals it inspects
-reply-dst-address; for inbound originals it inspects reply-src-address. Original
-local source or destination ownership is required. It retires a tuple only when
+reply-dst-address; for inbound originals it inspects reply-src-address. Original local source or destination ownership is required. Inbound DNAT
+is excluded: its reply source is recorded before reverse translation and cannot
+identify the reply's wire source by itself. The helper retires a tuple only when
 the post-NAT source is another known local interface's address. Valid masquerade,
 chosen-WAN aliases and unknown external sources are retained. Responders, inner
 TCP/UDP, other ports and other remote endpoints are outside the adoption check.
@@ -63,9 +68,14 @@ inventory and conntrack scan. Address inventory is capped at 1024 entries.
 State remains in RAM; no periodic storage writes are added. This is not a
 zero-writes claim for RouterOS as a whole.
 
-Actual RouterOS import and all 21 native source/recovery-window cases passed on
-the revised frozen source. The new direct-container/native fault matrix and its
-final independent replay are still pending.
+Actual RouterOS import and 21 native source/recovery-window cases passed on
+the preceding source. The corrected source passed 420 Python tests and eight
+real inbound tuple cases: wrong source retirement plus seven retained controls,
+including chosen-WAN aliases, unrelated ports/endpoints, forwarded traffic and
+DNAT. The exact old helper retained the deliberately created bad reverse tuple;
+the new helper removed it. These use controlled synthetic Ethernet input on one
+fresh guest; authenticated WireGuard and Internet behavior require the full
+three-router matrix, whose final independent replay is still pending.
 
 ## Independently replayed results
 
@@ -79,6 +89,13 @@ These historical results total **144 fresh Internet flows across three separate 
 they do not qualify the revised candidate or the failed cold-install case.
 Snapshot counts are deduplicated within each run. Flows and conntrack IDs are
 not claimed to persist between fabrics or through reboot.
+
+Run 242 separately verified **136 additional Internet flows** on tree
+71afaa5bf64ca159e8057b8beaee38e2418d67dc, with 896 unique private snapshots
+across three cohorts. It covered direct cold container installation, both
+controller modes, ten physical WAN cases, four NAT rotations, eight negative
+Internet attempts, two orderly guest reboots and two backend conversions.
+The subsequent DNAT guard is qualified separately; 242 does not cover that edit.
 
 The checks also established:
 
@@ -123,6 +140,16 @@ known-bad library. The lab instead observed actual library imports through
 RouterOS onerror, requiring rejection of the bad control, acceptance of the
 current library and unchanged configured forwarding. A duplicate child-log
 label stopped run 235 before reboot; scoped run 236 corrected that label.
+
+A separate exact-helper test, 248, exposed selection of an existing inbound
+DNAT mapping. Run 249 adds only the DNAT exclusion and module reload version;
+250 independently verified all eight controlled tuple cases on that source.
+Earlier targeted harness failures remain failed: literal named port arguments
+were strings, and an immediate API absence assertion preceded deletion visibility.
+The corrected fixture passes numeric variables and polls both the same and a
+fresh API connection for up to ten seconds. The observed polling span in 250 was
+1.01 s; this is not a controller latency guarantee. A serialized-function text
+marker proved unreliable and is not used as an acceptance condition.
 
 ## Limits and references
 
