@@ -250,7 +250,13 @@ class Session:
             self._emit(self.codec.pack(INTERRUPT_STATUS, ident, struct.pack("<BB", ST_SUCCESS, payload[0])))
             return
         if typ == CANCEL:
-            self.pending = deque(item for item in self.pending if item[0] != ident)
+            for item in self.pending:
+                if item[0] == ident:
+                    self.pending.remove(item)
+                    endpoint = item[1]
+                    self._emit(self.codec.pack(BULK, ident, bulk_header(
+                        endpoint, ST_CANCELLED, b"", self.codec.negotiated)))
+                    break
             return
         if typ == CONTROL:
             self._control(ident, payload)

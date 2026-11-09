@@ -59,6 +59,7 @@
 - [150 измерений: результаты и ограничения](PERFORMANCE-COMPARISON.md)
 - [Проверка весов и стоимость по ресурсам](WEIGHTED-WAN-VALIDATION.md)
 - [Проверка изменений конфигурации](LIVE-CONFIGURATION-VALIDATION.md)
+- [Смешанная схема WAN, LTE, VPN и OSPF](MIXED-WAN-VALIDATION.md)
 - [Оптимизация нативного цикла: результаты и границы](NATIVE-CYCLE-OPTIMIZATION.md)
 - [Внешние генераторы и наблюдатели](../labtools/README.md)
 - [Изолированный x86 DUT](../labtools/DUT-ADAPTER.md)

@@ -33,6 +33,9 @@ healthy existing TCP/UDP connections, with selective reclassification and fresh
 admission after reinstall. [Behavior and limits](docs/LIVE-CONFIGURATION.en.md) ·
 [Bounded validation](docs/LIVE-CONFIGURATION-VALIDATION.en.md).
 
+Mixed WAN/LTE/VPN/OSPF operation and orderly restarts with USB LTE were checked
+in RSC and container modes. [Report and abrupt-reset limitation](docs/MIXED-WAN-VALIDATION.en.md).
+
 ## Features
 
 - IPv4 WANs: static interfaces, DHCP-client, PPPoE, LTE with an existing APN,
