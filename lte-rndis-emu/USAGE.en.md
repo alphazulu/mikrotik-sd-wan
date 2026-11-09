@@ -30,6 +30,15 @@ Follow only `decision.path`:
 `scripts/gadget-configfs.sh` probes first and exits 3 without loading modules unless
 the path is `configfs-dummy-hcd`. `CONFIG_USB_SUPPORT=y` alone is insufficient.
 
+### TCP transport latency
+
+`qemu-args` includes `nodelay=on`; `serve` also sets `TCP_NODELAY` on the accepted
+USB connection. Use the generated arguments and restart only your owned test QEMU
+after updating. This removes artificial Nagle/delayed-ACK delay in USB redirection.
+SLA thresholds, probe settings and the radio model are unchanged. It does not
+establish physical LTE latency.
+
+
 ## Command contract
 
 Working directory: this subproject root, `lte-rndis-emu`.

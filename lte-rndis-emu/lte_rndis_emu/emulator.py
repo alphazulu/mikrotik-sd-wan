@@ -46,7 +46,7 @@ def _parse_id(text: str) -> int:
 
 
 def qemu_chardev(port: int) -> str:
-    base = f"socket,id=lteusb,host=127.0.0.1,port={port}"
+    base = f"socket,id=lteusb,host=127.0.0.1,port={port},nodelay=on"
     qemu = _qemu_bin()
     if not qemu:
         return base
@@ -206,6 +206,8 @@ def serve(args) -> int:
                     extra.close()
                     log_exclusive()
                     continue
+                # USB completions must not wait for Nagle/delayed ACK.
+                extra.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 extra.setblocking(False)
                 client = extra
                 out.clear()

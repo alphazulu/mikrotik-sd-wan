@@ -24,6 +24,9 @@ jobs:
           persist-credentials: false
       - name: Install Tk and virtual display
         run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: LTE emulator protocol and live socket regressions
+        working-directory: lte-rndis-emu
+        run: /usr/bin/python3 -W error::ResourceWarning -m unittest discover -s tests -v
       - name: External tool unit tests
         working-directory: labtools
         run: /usr/bin/python3 -W error::ResourceWarning -m unittest discover -s tests -v
