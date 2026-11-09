@@ -425,6 +425,14 @@
     :if (([:typeof $ip] != "ip") || ($ip = 0.0.0.0)) do={ :return false }
     :return ((($localAddresses->[:tostr $ip]) = true) && (($wanAddresses->[:tostr $ip]) != true))
 }
+# RAM-only audit while recovering and for 30 seconds after the last failed probe.
+:global sdwanOverlaySourceUntil do={
+    :if ($ready != true) do={ :return 0 }
+    :local until 0
+    :if ($same && (($previous->"source_check_version") = 2) && (($previous->"source_ready") = true) && ([:typeof ($previous->"source_check_until")] = "num")) do={ :set until ($previous->"source_check_until") }
+    :if (($until = 0) || ($probeUp != true)) do={ :set until ($now + 30) }
+    :return $until
+}
 :global sdwanOverlayAdoptSource do={
     :global sdwanConntrackFind
     :global sdwanOverlayWrongSource
@@ -445,10 +453,25 @@
             }
         } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
     }
+    :local inbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] }
+    :foreach cid in=[$sdwanConntrackFind query=$inbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
+        :onerror expired in={
+            :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]
+            :if (($localAddresses->$destination) = true) do={
+                :set ($result->"seen") (($result->"seen") + 1)
+                :local wireSource [:tostr [/ip/firewall/connection/get $cid reply-src-address]]
+                :if ([$sdwanOverlayWrongSource wireSource=$wireSource localAddresses=$localAddresses wanAddresses=$wanAddresses]) do={
+                    /ip/firewall/connection/remove $cid
+                    :set ($result->"retired") (($result->"retired") + 1)
+                }
+            }
+        } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+    }
     :return $result
 }
 :global sdwanOverlayRebind do={
     :global sdwanOverlayAdoptSource
+    :global sdwanOverlaySourceUntil
     :global sdwanOverlayRetireTransport
     :global sdwanOverlayTransport
     :if ([:typeof $sdwanOverlayTransport] != "array") do={ :set sdwanOverlayTransport [:toarray ""] }
@@ -462,11 +485,9 @@
     :local same (([:typeof $previous] = "array") && (($previous->"signature") = $signature))
     :local initiator ([:len [:tostr ($tunnel->"endpoint")]] > 0)
     :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
-    :local sourceUntil 0
-    :if ($same && ([:typeof ($previous->"source_check_until")] = "num")) do={ :set sourceUntil ($previous->"source_check_until") }
-    :if ((($wan->"ready") = true) && ($sourceUntil = 0)) do={ :set sourceUntil ($now + 30) }
-    :local checkSource ($initiator && (($wan->"ready") = true) && ((!$same) || ((($previous->"source_checked") != true) && ($now <= $sourceUntil))))
-    :if ($same && (!$checkSource)) do={ :return 0 }
+    :local sourceUntil [$sdwanOverlaySourceUntil previous=$previous same=$same ready=($wan->"ready") probeUp=$probeUp now=$now]
+    :local checkSource ($initiator && (($wan->"ready") = true) && ($now <= $sourceUntil))
+    :if ($same && (!$checkSource)) do={ :set ($previous->"source_ready") ($wan->"ready"); :set ($previous->"source_check_until") $sourceUntil; :set ($sdwanOverlayTransport->($tunnel->"name")) $previous; :return 0 }
     :local currentAddresses [/ip/address/print as-value]
     # Fail closed on oversized inventories, keeping the prior snapshot for retry.
     :if ([:len $currentAddresses] > 1024) do={ :return 0 }
@@ -488,15 +509,13 @@
     }
     :local retired 0
     :if (([:typeof $previous] = "array") && (!$same)) do={ :set retired [$sdwanOverlayRetireTransport previous=$previous] }
-    :local sourceChecked (!$initiator)
-    :if ($same && (($previous->"source_checked") = true)) do={ :set sourceChecked true }
     :if ($checkSource) do={
         :local adopted [$sdwanOverlayAdoptSource localPort=($tunnel->"listen_port") remoteIP=$endpoint remotePort=$endpointPort localAddresses=$localAddresses wanAddresses=$wanAddresses]
         :set retired ($retired + ($adopted->"retired"))
-        :if (($adopted->"seen") > 0) do={ :set sourceChecked true }
         :if (($adopted->"retired") > 0) do={ :log warning ("SDWAN overlay removed stale WAN source tuple: " . ($tunnel->"name")) }
     }
-    :set ($row->"source_checked") $sourceChecked
+    :set ($row->"source_check_version") 2
+    :set ($row->"source_ready") ($wan->"ready")
     :set ($row->"source_check_until") $sourceUntil
     :set ($row->"local_addresses") $localAddresses
     :set ($row->"signature") $signature
@@ -682,7 +701,8 @@
         :foreach wan in=($cfg->"wans") do={ :if (($wan->"name") = ($tunnel->"wan")) do={ :set wanSpec $wan } }
         :local peer [/interface/wireguard/peers/find where comment=("sdwan:v1:overlay:peer:" . $tn)]
         :if ([:len $peer] != 1) do={ :error "missing owned overlay transport peer" }
-        :local retired [$sdwanOverlayRebind tunnel=$tunnel wan=$wanSpec peerID=$peer]
+        :local probeUp ([/tool/netwatch/get $probe status] = "up")
+        :local retired [$sdwanOverlayRebind tunnel=$tunnel wan=$wanSpec peerID=$peer probeUp=$probeUp]
         :local signature (($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"address") . ":" . ($wanSpec->"address") . ":" . ($wanSpec->"route_gateway") . ":" . [:tostr $probe] . ":" . [:serialize to=json value=$h options=json.no-string-conversion])
         :local epoch [/tool/netwatch/get $probe done-tests]
         :if ([:typeof $epoch] != "num") do={ :set epoch 0 }
@@ -698,7 +718,7 @@
         :if (($admin != "") && ($admin != "enabled")) do={ :set ready false }
         :local stale (($now - ($state->"fresh_at")) > ($h->"stale_seconds"))
         :local warming ($now < ($state->"not_before"))
-        :local good ($ready && (!$stale) && (!$warming) && ([/tool/netwatch/get $probe status] = "up"))
+        :local good ($ready && (!$stale) && (!$warming) && $probeUp)
         :if ((!$warming) && ($fresh || (!$ready) || $stale)) do={
             :if ($good) do={
                 :set ($state->"good") (($state->"good") + 1); :set ($state->"bad") 0
@@ -724,4 +744,4 @@
     :set sdwanOverlayState $next
     :return $report
 }
-:global sdwanOverlayLoaded 3
+:global sdwanOverlayLoaded 4
