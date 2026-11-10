@@ -2,10 +2,11 @@
 
 [Русский](CGNAT-VALIDATION.md) | English
 
-Final qualification is in progress after a targeted test found a DNAT mapping
-selected for deletion. The helper now excludes inbound DNAT; eight real
-conntrack cases passed. The full native/container matrix is rerunning on the
-corrected frozen source. Earlier completed results retain their own sources.
+Bounded final-source qualification passed for native RouterOS and the local
+unprivileged Rust scratch controller: 136 bidirectional Internet flows, WAN/NAT/SLA
+faults, backend conversions and orderly guest restarts. Eight additional real
+inbound tuple cases confirm wrong-source retirement and DNAT preservation.
+This is functional virtual-lab evidence; earlier results retain their own sources.
 
 ## Topology and source
 
@@ -33,9 +34,10 @@ has exactly that tree. The next candidate,
 [a87c350](https://github.com/alphazulu/mikrotik-sd-wan/commit/a87c35038c621c06313939f1bd1d4c9e11b3cfac),
 tree 71afaa5bf64ca159e8057b8beaee38e2418d67dc, passed the full run 242.
 
-The final candidate adds DNAT preservation and is frozen separately at tree
-3462cf4fc5fa8e1d8fd92b546897a3b6ca664a9b. Its targeted run 250 passed; full
-run 251 is in progress. No full PASS of this final source is claimed yet.
+The final source is tree 3462cf4fc5fa8e1d8fd92b546897a3b6ca664a9b.
+Public runtime commit [ebf45ea](https://github.com/alphazulu/mikrotik-sd-wan/commit/ebf45eabc15b50ffdba631622a774d4b1d13b494)
+has exactly that tree. Targeted run 250 and full run 251 both passed independent
+terminal replay. Subsequent publication changes are documentation only.
 
 ## Cold secondary-WAN source correction
 
@@ -53,7 +55,8 @@ its planned manual deletion was never performed. The startup issue is intermitte
 
 The revised RouterOS helper checks both directions of the exact owned UDP
 listener/remote-address/remote-port tuple. For outbound originals it inspects
-reply-dst-address; for inbound originals it inspects reply-src-address. Original local source or destination ownership is required. Inbound DNAT
+reply-dst-address; for inbound originals it inspects reply-src-address. Original
+local source or destination ownership is required. Inbound DNAT
 is excluded: its reply source is recorded before reverse translation and cannot
 identify the reply's wire source by itself. The helper retires a tuple only when
 the post-NAT source is another known local interface's address. Valid masquerade,
@@ -68,14 +71,14 @@ inventory and conntrack scan. Address inventory is capped at 1024 entries.
 State remains in RAM; no periodic storage writes are added. This is not a
 zero-writes claim for RouterOS as a whole.
 
-Actual RouterOS import and 21 native source/recovery-window cases passed on
-the preceding source. The corrected source passed 420 Python tests and eight
+Actual RouterOS import and all 21 native source/recovery-window cases passed
+on the final source. It also passed 420 Python tests and eight
 real inbound tuple cases: wrong source retirement plus seven retained controls,
 including chosen-WAN aliases, unrelated ports/endpoints, forwarded traffic and
 DNAT. The exact old helper retained the deliberately created bad reverse tuple;
 the new helper removed it. These use controlled synthetic Ethernet input on one
 fresh guest; authenticated WireGuard and Internet behavior require the full
-three-router matrix, whose final independent replay is still pending.
+three-router matrix. Run 251 passed that matrix with independent replay.
 
 ## Independently replayed results
 
@@ -84,8 +87,9 @@ three-router matrix, whose final independent replay is still pending.
 | 231: native WAN1 loss at A, return, loss at B, loss at both, return; NAT port change | 48 | Four held paths, 12 conntrack rows, 222 unique snapshots |
 | 233: native NAT address/port and Internet-SLA failure/return; native-to-container transition; five container WAN loss/return cases | 56 | Four held paths, 12 rows, 462 unique snapshots |
 | 236: native and container orderly reboot; remaining container NAT/SLA cases | 40 | Two fresh post-reboot cohorts, four held paths and 12 rows per cohort, 397 snapshots |
+| 251: final DNAT-safe source; direct container startup, both full WAN/NAT/SLA matrices, two reboots and backend conversions | 136 | Three cohorts, 12 rows each, 900 unique snapshots; 25 preservation phases |
 
-These historical results total **144 fresh Internet flows across three separate fabrics**;
+Traces 231, 233 and 236 total **144 fresh Internet flows across three separate fabrics**;
 they do not qualify the revised candidate or the failed cold-install case.
 Snapshot counts are deduplicated within each run. Flows and conntrack IDs are
 not claimed to persist between fabrics or through reboot.
@@ -111,7 +115,8 @@ The checks also established:
 - Native and local-container guest reboots reset uptime, retain the level-6
   license, collect fresh SLA samples and restore all four paths and new flows.
   Pre-reboot test sessions are deliberately stopped.
-- Nine native source-predicate cases passed. The source/image of the local
+- Nine native source-predicate and twelve recovery-window cases passed.
+  The source/image of the local
   scratch container is unchanged and retains its 100% executable line/function
   unit-coverage pin; CI includes base, web, main and browser JavaScript.
 - Owned processes, namespaces and nine management ports were released.
@@ -142,7 +147,7 @@ current library and unchanged configured forwarding. A duplicate child-log
 label stopped run 235 before reboot; scoped run 236 corrected that label.
 
 A separate exact-helper test, 248, exposed selection of an existing inbound
-DNAT mapping. Run 249 adds only the DNAT exclusion and module reload version;
+DNAT mapping. Candidate 249 adds only the DNAT exclusion and module reload version;
 250 independently verified all eight controlled tuple cases on that source.
 Earlier targeted harness failures remain failed: literal named port arguments
 were strings, and an immediate API absence assertion preceded deletion visibility.

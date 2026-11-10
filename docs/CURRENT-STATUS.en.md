@@ -2,12 +2,11 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
-A direct cold container installation exposed an additional, intermittent reverse
-conntrack source problem. The revised candidate handles both directions and
-rearms source checks during recovery; final-source qualification is running.
-The preceding candidate passed 136 Internet flows; the DNAT guard passed eight
-targeted tuple cases. Its full matrix is rerunning. Earlier results keep their own sources.
-[Evidence, retained failures and limits](CGNAT-VALIDATION.en.md).
+Final-source dual-CGNAT validation passed: native/local-container WAN/NAT/SLA,
+direct cold container startup, two backend conversions and two orderly reboots.
+Independent replay verified 136 Internet flows and 900 private snapshots;
+eight real inbound tuple cases confirm DNAT preservation and wrong-source removal.
+[Sources, retained failures and limits](CGNAT-VALIDATION.en.md).
 
 Power interruption recovery passed bounded x86/CHR acceptance: both controller
 modes, initial installation, update and empty active with differing staging.

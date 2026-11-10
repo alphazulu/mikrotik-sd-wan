@@ -38,9 +38,9 @@ in RSC and container modes. [Report](docs/MIXED-WAN-VALIDATION.en.md). Recovery 
 was separately checked in both modes: [behavior](docs/POWER-LOSS-RECOVERY.en.md)
 and [results](docs/POWER-LOSS-VALIDATION.en.md).
 
-The revised secondary-WAN source correction is under qualification after an
-intermittent direct-container startup failure and a targeted DNAT preservation fix. [Dual-CGNAT evidence](docs/CGNAT-VALIDATION.en.md)
-separates earlier verified results from the new candidate's pending fault matrix.
+Secondary-WAN overlay source adoption checks both conntrack directions and
+preserves inbound DNAT. [Dual-CGNAT validation](docs/CGNAT-VALIDATION.en.md)
+records final-source native/container WAN/NAT/SLA, reboot and private-flow checks.
 
 ## Features
 
