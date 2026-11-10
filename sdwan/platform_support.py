@@ -1,11 +1,12 @@
 """Read-only readiness and evidence-based mode selection for the GUI/SDK."""
 import re
+from .routeros_versions import allowed
 
 VERSION = '7.24.5'
 ARCHITECTURES = {'x86':'amd64', 'x86_64':'amd64', 'arm':'arm', 'arm64':'arm64'}
 RESOURCE_FIELDS = 'version,board-name,architecture-name,platform,cpu,cpu-count,cpu-frequency,total-memory,free-memory,total-hdd-space,free-hdd-space,uptime'
 CAPABILITY_FIELDS = {
-    'system/package':'.id,name,version,disabled,scheduled',
+    'system/package':'.id,name,version,disabled,scheduled,available',
     'system/device-mode':'mode,flagged,scheduler,fetch,container,l2tp,ipsec,attempt-count',
     'disk':'.id,slot,type,fs,size,free,disabled,mount-point,mounted,mount-filesystem,mount-read-only,swap',
     'file':'.id,name,type,size',
@@ -168,14 +169,14 @@ def assess(resource,capabilities,config,catalog=None):
     checks=[];missing=[];features=[]
     def add(key,state,detail): checks.append({'key':key,'state':state,'detail':detail})
     version=resource.get('version','').split()[0] if resource.get('version') else ''
-    add('routeros-version','ready' if version==VERSION else 'blocked','Целевая проверенная версия RouterOS '+VERSION+'; обнаружена '+(version or 'неизвестная'))
+    add('routeros-version','ready' if allowed(version) else 'blocked','Целевая проверенная версия RouterOS '+VERSION+'; обнаружена '+(version or 'неизвестная')+(' (экспериментальный стенд, совместимость ещё не подтверждена)' if version!=VERSION and allowed(version) else ''))
     packages={row.get('name'):row for row in capabilities.get('system/package',[])}
     required=['routeros']+(['container'] if config.get('controller_backend')=='container' else [])
     if config.get('controller_backend')=='container':
         add('container-architecture','ready' if resource.get('architecture-name') in ARCHITECTURES else 'blocked','Поддерживаемая архитектура контейнера')
     for name in required:
         row=packages.get(name)
-        if not row:
+        if not row or boolean(row.get('available')) is True:
             state='unknown' if 'system/package' in capabilities.get('errors',{}) else 'missing'
             if state=='missing': missing.append(name)
         elif row.get('version')!=version: state='blocked'

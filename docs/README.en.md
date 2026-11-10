@@ -52,6 +52,7 @@ Each guide has a language switch; the links below follow the selected language.
 ## Lab and methodology
 
 - [QEMU/CHR lab](LAB.en.md)
+- [Physical ARM64 lab with one cable](HARDWARE-LAB.en.md)
 - [Test execution order](TESTING.en.md)
 - [Long acceptance](NETWORK-SOAK.en.md)
 - [Performance comparison methodology](PERFORMANCE-PLAN.en.md)
