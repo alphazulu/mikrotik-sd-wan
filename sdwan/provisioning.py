@@ -172,7 +172,8 @@ def prepare_device(router,config,expected,*,root=ROOT,timeout=180,progress=None)
     """Explicit GUI action: install matching package/reboot, then request flags."""
     if router.call('system/identity')['name']!=expected:raise ValueError('Router identity changed')
     resource=router.call('system/resource')
-    if resource['version'].split()[0]!=VERSION:raise ValueError('Prepare the validated RouterOS '+VERSION+' version first')
+    from .routeros_versions import require
+    version=require(resource)
     notify=progress or (lambda message:None)
     capabilities=collect(router);actions=[]
     preliminary=assess(resource,capabilities,config)
@@ -182,12 +183,12 @@ def prepare_device(router,config,expected,*,root=ROOT,timeout=180,progress=None)
     if config.get('controller_backend')=='container':
         arch=resource.get('architecture-name')
         if arch not in ARCHITECTURES:raise ValueError('Architecture does not support containers')
-        package=next((row for row in capabilities['system/package'] if row.get('name')=='container'),None)
+        package=next((row for row in capabilities['system/package'] if row.get('name')=='container' and row.get('available')!='true'),None)
         if package is None and 'system/package' in capabilities['errors']:raise ValueError('Cannot inspect installed packages')
         reboot=False
-        if not package or package.get('version')!=VERSION:
+        if not package or package.get('version')!=version:
             suffix='' if arch in ('x86','x86_64') else '-'+arch
-            filename='container-'+VERSION+suffix+'.npk';url='https://download.mikrotik.com/routeros/'+VERSION+'/'+filename
+            filename='container-'+version+suffix+'.npk';url='https://download.mikrotik.com/routeros/'+version+'/'+filename
             notify('Загрузка подходящего пакета container с сервера MikroTik и проверка передачи...')
             local=download(url,Path(root)/'runtime/downloads',packages=True)
             transfer(router,local,filename,sha256_file(local))
@@ -203,12 +204,12 @@ def prepare_device(router,config,expected,*,root=ROOT,timeout=180,progress=None)
                 try:
                     if router.call('system/identity')['name']!=expected:raise ValueError('Router identity changed after reboot')
                     capabilities=collect(router)
-                    if any(row.get('name')=='container' and row.get('version')==VERSION and row.get('disabled')!='true' for row in capabilities['system/package']):break
+                    if any(row.get('name')=='container' and row.get('version')==version and row.get('disabled')!='true' for row in capabilities['system/package']):break
                 except (OSError,RuntimeError):router.close()
                 time.sleep(2)
             else:raise TimeoutError('Package installation/reconnection not confirmed')
             resource=router.call('system/resource')
-            if resource['version'].split()[0]!=VERSION:raise ValueError('RouterOS version changed unexpectedly after package installation')
+            if resource['version'].split()[0]!=version:raise ValueError('RouterOS version changed unexpectedly after package installation')
             actions.append('matching container package active after reboot')
     readiness=assess(resource,capabilities,config)
     return _feature_request(router,readiness,expected,root,actions,notify)

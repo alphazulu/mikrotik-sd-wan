@@ -41,10 +41,11 @@ def prerequisites(router,config,expected):
     web.validate_interfaces(router,config)
     if one(router.call('system/identity'))['name']!=expected:raise ValueError('Router identity differs from expected identity')
     resource=one(router.call('system/resource'))
-    if resource['version'].split()[0]!='7.24.5':raise ValueError('Container backend is validated on RouterOS 7.24.5')
+    from .routeros_versions import require
+    version=require(resource)
     if resource.get('architecture-name') not in ('x86','x86_64','arm','arm64'):raise ValueError('Router architecture does not support this container backend')
     packages=router.call('system/package')
-    if not any(row.get('name')=='container' and row.get('version')=='7.24.5' and row.get('disabled')!='true' for row in packages):raise ValueError('Install the matching RouterOS 7.24.5 container package first')
+    if not any(row.get('name')=='container' and row.get('version')==version and row.get('disabled')!='true' for row in packages):raise ValueError('Install the matching RouterOS '+version+' container package first')
     if one(router.call('system/device-mode')).get('container') not in ('true',True):raise ValueError('Enable device-mode container=yes and confirm physically before preparation')
     network,host,guest=addresses(config)
     for row in router.call('ip/address'):
@@ -197,7 +198,9 @@ def prepare(router,config,expected,*,timeout=120):
             'dedicated_api_user':USER,'api_policies':sorted(POLICIES),'storage':runtime['storage']}
 
 def deactivate(router):
-    if not any(row.get('name')=='container' for row in router.call('system/package')):return
+    # Newer RouterOS prints downloadable packages together with installed ones.
+    # A catalog entry has no version and does not provide a /container menu.
+    if not any(row.get('name')=='container' and row.get('version') and row.get('available')!='true' and row.get('disabled')!='true' for row in router.call('system/package')):return
     row=read_container(router)
     if row and row.get('comment')==PREFIX+'controller':
         router.call('container/'+row['.id'],{'start-on-boot':'no'},'PATCH')

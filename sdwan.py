@@ -84,7 +84,8 @@ def preflight(router,c,expected):
     if identity!=expected:raise ValueError(f'Router identity {identity!r} differs from expected {expected!r}')
     res=router.call('system/resource')
     if isinstance(res,list):res=res[0]
-    if res['version'].split()[0]!='7.24.5':raise ValueError('This build is validated for RouterOS 7.24.5 only')
+    from sdwan.routeros_versions import require
+    require(res)
     routes=router.call('ip/route')
     from sdwan.vpn_egress import validate_pushed_defaults
     validate_pushed_defaults(routes,c)
