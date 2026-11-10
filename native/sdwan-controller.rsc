@@ -505,7 +505,7 @@
     :set sdwanDrainingMarks $retainedMarks
     :local overlayReport [:toarray ""]
     :if ((($cfg->"overlay")->"enabled") = true) do={
-        :if ($sdwanOverlayLoaded != 2) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
+        :if ($sdwanOverlayLoaded != 5) do={ /import file-name=($dir . "sdwan-overlay.rsc") }
         :set overlayReport [$sdwanOverlayTick cfg=$cfg now=$now]
     }
     :local output [:toarray ""]

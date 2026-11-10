@@ -25,7 +25,7 @@ POLICY='read,write,policy,test,sensitive'
 
 def function(source):
     start=source.index(':global sdwanOverlayRetireTransport do={')
-    end=source.index('\n:global sdwanOverlayRebind do={',start)
+    end=source.index('\n:global ',start+1)
     return source[start:end].replace(':global sdwanOverlayRetireTransport do={',':local retireFixture do={',1)
 
 

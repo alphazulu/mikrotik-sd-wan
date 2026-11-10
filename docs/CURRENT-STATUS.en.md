@@ -2,6 +2,12 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
+Final-source dual-CGNAT validation passed: native/local-container WAN/NAT/SLA,
+direct cold container startup, two backend conversions and two orderly reboots.
+Independent replay verified 136 Internet flows and 900 private snapshots;
+eight real inbound tuple cases confirm DNAT preservation and wrong-source removal.
+[Sources, retained failures and limits](CGNAT-VALIDATION.en.md).
+
 Power interruption recovery passed bounded x86/CHR acceptance: both controller
 modes, initial installation, update and empty active with differing staging.
 Independent replay checked 56 flows and 69 coherent file snapshots.

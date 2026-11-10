@@ -418,7 +418,61 @@
     }
     :return $count
 }
+# A local socket may already have a no-NAT conntrack entry from another WAN.
+# Compare the post-NAT wire source, preserving valid masquerade and aliases.
+:global sdwanOverlayWrongSource do={
+    :local ip [:toip $wireSource]
+    :if (([:typeof $ip] != "ip") || ($ip = 0.0.0.0)) do={ :return false }
+    :return ((($localAddresses->[:tostr $ip]) = true) && (($wanAddresses->[:tostr $ip]) != true))
+}
+# RAM-only audit while recovering and for 30 seconds after the last failed probe.
+:global sdwanOverlaySourceUntil do={
+    :if ($ready != true) do={ :return 0 }
+    :local until 0
+    :if ($same && (($previous->"source_check_version") = 2) && (($previous->"source_ready") = true) && ([:typeof ($previous->"source_check_until")] = "num")) do={ :set until ($previous->"source_check_until") }
+    :if (($until = 0) || ($probeUp != true)) do={ :set until ($now + 30) }
+    :return $until
+}
+:global sdwanOverlayAdoptSource do={
+    :global sdwanConntrackFind
+    :global sdwanOverlayWrongSource
+    :local result {"seen"=0;"retired"=0}
+    :local endpointIP [:toip $remoteIP]
+    :if (([:typeof $endpointIP] != "ip") || ($endpointIP = 0.0.0.0) || ([:typeof $localPort] != "num") || ([:typeof $remotePort] != "num") || ($localPort < 1) || ($localPort > 65535) || ($remotePort < 1) || ($remotePort > 65535) || ([:typeof $localAddresses] != "array") || ([:typeof $wanAddresses] != "array") || ([:len $localAddresses] > 1024) || ([:len $wanAddresses] = 0) || ([:len $wanAddresses] > 1024)) do={ :return $result }
+    :local query do={ :return [/ip/firewall/connection/find where protocol=udp and src-port=$localPort and dst-address=$remoteIP and dst-port=$remotePort] }
+    :foreach cid in=[$sdwanConntrackFind query=$query localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
+        :onerror expired in={
+            :local source [:tostr [/ip/firewall/connection/get $cid src-address]]
+            :if (($localAddresses->$source) = true) do={
+                :set ($result->"seen") (($result->"seen") + 1)
+                :local wireSource [:tostr [/ip/firewall/connection/get $cid reply-dst-address]]
+                :if ([$sdwanOverlayWrongSource wireSource=$wireSource localAddresses=$localAddresses wanAddresses=$wanAddresses]) do={
+                    /ip/firewall/connection/remove $cid
+                    :set ($result->"retired") (($result->"retired") + 1)
+                }
+            }
+        } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+    }
+    :local inbound do={ :return [/ip/firewall/connection/find where protocol=udp and src-address=$remoteIP and src-port=$remotePort and dst-port=$localPort] }
+    :foreach cid in=[$sdwanConntrackFind query=$inbound localPort=$localPort remoteIP=$remoteIP remotePort=$remotePort] do={
+        :onerror expired in={
+            :local destination [:tostr [/ip/firewall/connection/get $cid dst-address]]
+            # A DNAT reply source precedes reverse translation; retain that mapping.
+            :if ((($localAddresses->$destination) = true) && ([/ip/firewall/connection/get $cid dstnat] != true)) do={
+                :set ($result->"seen") (($result->"seen") + 1)
+                :local wireSource [:tostr [/ip/firewall/connection/get $cid reply-src-address]]
+                :if ([$sdwanOverlayWrongSource wireSource=$wireSource localAddresses=$localAddresses wanAddresses=$wanAddresses]) do={
+                    /ip/firewall/connection/remove $cid
+                    :set ($result->"retired") (($result->"retired") + 1)
+                }
+            }
+        } do={ :if ([:pick $expired 0 12] != "no such item") do={ :error $expired } }
+    }
+    :return $result
+}
 :global sdwanOverlayRebind do={
+    :global sdwanOverlayAdoptSource
+    :global sdwanOverlaySourceUntil
     :global sdwanOverlayRetireTransport
     :global sdwanOverlayTransport
     :if ([:typeof $sdwanOverlayTransport] != "array") do={ :set sdwanOverlayTransport [:toarray ""] }
@@ -429,11 +483,17 @@
     :local row {"source"=[:tostr ($wan->"address")];"listen_port"=($tunnel->"listen_port");"endpoint"=[:tostr $endpoint];"endpoint_port"=$endpointPort}
     :local signature ([:serialize to=json value=$row options=json.no-string-conversion] . ":" . ($tunnel->"wan") . ":" . ($wan->"route_gateway") . ":" . ($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"endpoint") . ":" . ($tunnel->"endpoint_port"))
     :local previous ($sdwanOverlayTransport->($tunnel->"name"))
-    :if (([:typeof $previous] = "array") && (($previous->"signature") = $signature)) do={ :return 0 }
+    :local same (([:typeof $previous] = "array") && (($previous->"signature") = $signature))
+    :local initiator ([:len [:tostr ($tunnel->"endpoint")]] > 0)
+    :local now ([:tonsec [/system/resource/get uptime]] / 1000000000)
+    :local sourceUntil [$sdwanOverlaySourceUntil previous=$previous same=$same ready=($wan->"ready") probeUp=$probeUp now=$now]
+    :local checkSource ($initiator && (($wan->"ready") = true) && ($now <= $sourceUntil))
+    :if ($same && (!$checkSource)) do={ :set ($previous->"source_ready") ($wan->"ready"); :set ($previous->"source_check_until") $sourceUntil; :set ($sdwanOverlayTransport->($tunnel->"name")) $previous; :return 0 }
     :local currentAddresses [/ip/address/print as-value]
     # Fail closed on oversized inventories, keeping the prior snapshot for retry.
     :if ([:len $currentAddresses] > 1024) do={ :return 0 }
     :local localAddresses [:toarray ""]
+    :local wanAddresses [:toarray ""]
     # Read flags directly instead of filtering on default-valued booleans.
     :foreach addressRow in=$currentAddresses do={
         :if ((($addressRow->"disabled") != true) && (($addressRow->"invalid") != true)) do={
@@ -441,12 +501,23 @@
             :local slash [:find $address "/"]
             :if ([:typeof $slash] = "num") do={
                 :local ip [:toip [:pick $address 0 $slash]]
-                :if (([:typeof $ip] = "ip") && ($ip != 0.0.0.0)) do={ :set ($localAddresses->[:tostr $ip]) true }
+                :if (([:typeof $ip] = "ip") && ($ip != 0.0.0.0)) do={
+                    :set ($localAddresses->[:tostr $ip]) true
+                    :if (([:tostr ($addressRow->"interface")] = ($wan->"interface")) || ([:tostr ($addressRow->"actual-interface")] = ($wan->"interface"))) do={ :set ($wanAddresses->[:tostr $ip]) true }
+                }
             }
         }
     }
     :local retired 0
-    :if ([:typeof $previous] = "array") do={ :set retired [$sdwanOverlayRetireTransport previous=$previous] }
+    :if (([:typeof $previous] = "array") && (!$same)) do={ :set retired [$sdwanOverlayRetireTransport previous=$previous] }
+    :if ($checkSource) do={
+        :local adopted [$sdwanOverlayAdoptSource localPort=($tunnel->"listen_port") remoteIP=$endpoint remotePort=$endpointPort localAddresses=$localAddresses wanAddresses=$wanAddresses]
+        :set retired ($retired + ($adopted->"retired"))
+        :if (($adopted->"retired") > 0) do={ :log warning ("SDWAN overlay removed stale WAN source tuple: " . ($tunnel->"name")) }
+    }
+    :set ($row->"source_check_version") 2
+    :set ($row->"source_ready") ($wan->"ready")
+    :set ($row->"source_check_until") $sourceUntil
     :set ($row->"local_addresses") $localAddresses
     :set ($row->"signature") $signature
     :set ($sdwanOverlayTransport->($tunnel->"name")) $row
@@ -631,7 +702,8 @@
         :foreach wan in=($cfg->"wans") do={ :if (($wan->"name") = ($tunnel->"wan")) do={ :set wanSpec $wan } }
         :local peer [/interface/wireguard/peers/find where comment=("sdwan:v1:overlay:peer:" . $tn)]
         :if ([:len $peer] != 1) do={ :error "missing owned overlay transport peer" }
-        :local retired [$sdwanOverlayRebind tunnel=$tunnel wan=$wanSpec peerID=$peer]
+        :local probeUp ([/tool/netwatch/get $probe status] = "up")
+        :local retired [$sdwanOverlayRebind tunnel=$tunnel wan=$wanSpec peerID=$peer probeUp=$probeUp]
         :local signature (($tunnel->"local_public_key") . ":" . ($tunnel->"peer_public_key") . ":" . ($tunnel->"address") . ":" . ($wanSpec->"address") . ":" . ($wanSpec->"route_gateway") . ":" . [:tostr $probe] . ":" . [:serialize to=json value=$h options=json.no-string-conversion])
         :local epoch [/tool/netwatch/get $probe done-tests]
         :if ([:typeof $epoch] != "num") do={ :set epoch 0 }
@@ -647,7 +719,7 @@
         :if (($admin != "") && ($admin != "enabled")) do={ :set ready false }
         :local stale (($now - ($state->"fresh_at")) > ($h->"stale_seconds"))
         :local warming ($now < ($state->"not_before"))
-        :local good ($ready && (!$stale) && (!$warming) && ([/tool/netwatch/get $probe status] = "up"))
+        :local good ($ready && (!$stale) && (!$warming) && $probeUp)
         :if ((!$warming) && ($fresh || (!$ready) || $stale)) do={
             :if ($good) do={
                 :set ($state->"good") (($state->"good") + 1); :set ($state->"bad") 0
@@ -673,4 +745,4 @@
     :set sdwanOverlayState $next
     :return $report
 }
-:global sdwanOverlayLoaded 2
+:global sdwanOverlayLoaded 5

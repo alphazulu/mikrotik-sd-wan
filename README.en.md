@@ -38,6 +38,10 @@ in RSC and container modes. [Report](docs/MIXED-WAN-VALIDATION.en.md). Recovery 
 was separately checked in both modes: [behavior](docs/POWER-LOSS-RECOVERY.en.md)
 and [results](docs/POWER-LOSS-VALIDATION.en.md).
 
+Secondary-WAN overlay source adoption checks both conntrack directions and
+preserves inbound DNAT. [Dual-CGNAT validation](docs/CGNAT-VALIDATION.en.md)
+records final-source native/container WAN/NAT/SLA, reboot and private-flow checks.
+
 ## Features
 
 - IPv4 WANs: static interfaces, DHCP-client, PPPoE, LTE with an existing APN,

@@ -38,6 +38,10 @@ SD-WAN для RouterOS: контроль SLA, приоритеты канало�
 проверено отдельно в обоих режимах: [поведение](docs/POWER-LOSS-RECOVERY.md) и
 [результаты](docs/POWER-LOSS-VALIDATION.md).
 
+Проверка источника overlay второго WAN учитывает оба направления conntrack
+и сохраняет входящий DNAT. [Результаты двух CGNAT](docs/CGNAT-VALIDATION.md)
+подтверждают WAN/NAT/SLA, перезапуски и межфилиальные потоки в обоих режимах.
+
 ## Возможности
 
 - IPv4 WAN: статические интерфейсы, DHCP-client, PPPoE, LTE с существующим APN и
