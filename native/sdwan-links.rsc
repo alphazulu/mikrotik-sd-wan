@@ -660,15 +660,10 @@
             }
         }
     }
-    :local results [:toarray ""]; :local dueTimes [:toarray ""]
-    :foreach key,item in=$desired do={
-        :local evidence ($sdwanStrictResults->$key)
-        :local retainDue false
-        :if (([:typeof $evidence] = "array") && (($evidence->"signature") = ($item->"signature"))) do={ :set ($results->$key) $evidence; :set retainDue true }
-        :foreach job in=$sdwanStrictSlots do={ :if ((($job->"key") = $key) && (($job->"signature") = ($item->"signature"))) do={ :set retainDue true } }
-        :if ($retainDue) do={ :set ($dueTimes->$key) ($sdwanStrictDue->$key) }
-    }
-    :set sdwanStrictResults $results; :set sdwanStrictDue $dueTimes
+    # Never republish a snapshot over concurrent worker commits. Retain keys
+    # still desired; the reader rejects old signatures until a new check wins.
+    :foreach key,evidence in=$sdwanStrictResults do={ :if ([:typeof ($desired->$key)] != "array") do={ :set ($sdwanStrictResults->$key) } }
+    :foreach key,due in=$sdwanStrictDue do={ :if ([:typeof ($desired->$key)] != "array") do={ :set ($sdwanStrictDue->$key) } }
     :local interval (($sdwanStrictConfig->"health")->"strict_probe_interval_seconds")
     :if ([:typeof $interval] != "num") do={ :set interval 10 }
     :local timeout (($sdwanStrictConfig->"health")->"strict_probe_timeout_ms")
@@ -703,7 +698,7 @@
                 :foreach other in=$sdwanStrictSlots do={ :if (($other->"key") = $key) do={ :set busy true } }
                 :local pid [/tool/netwatch/find where comment=($item->"tag")]
                 :local previous ($sdwanStrictResults->$key)
-                :if (([:typeof $previous] != "array") || (($previous->"probe_id") != [:tostr $pid]) || (($previous->"source") != ($item->"source")) || (($previous->"gateway") != ($item->"gateway"))) do={ :set due 0 }
+                :if (([:typeof $previous] != "array") || (($previous->"signature") != ($item->"signature")) || (($previous->"probe_id") != [:tostr $pid]) || (($previous->"source") != ($item->"source")) || (($previous->"gateway") != ($item->"gateway"))) do={ :set due 0 }
                 :if ((!$busy) && (([:typeof $due] != "num") || ($now >= $due)) && ([:len $pid] = 1)) do={
                     :set chosen true
                     :set sdwanStrictSequence ($sdwanStrictSequence + 1)

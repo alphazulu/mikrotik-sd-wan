@@ -85,10 +85,13 @@ python3 tests/strict_dispatch_acceptance.py \
 Credentials use `{"username":"admin","password":"YOUR_LAB_PASSWORD"}`.
 Keep credentials and raw results outside the public tree.
 
-The 26 actual RSC cases cover completed/unfinished slot ownership, late timers,
+The 29 actual RSC cases cover completed/unfinished slot ownership, late timers,
 all callback identity fences, obsolete Netwatch IDs, overdue failure, exact job
 name cancellation, the two-slot bound, overlapping dispatchers and the native
-controller's actual entry guard. The runner and the baseline/candidate comparison
+controller's actual entry guard. A test-only scheduling barrier also verifies
+that a concurrent callback survives result pruning and that an edited expectation
+triggers an immediate check. The report records both the original source hash
+and the instrumented test payload hash. The runner and the baseline/candidate comparison
 passed on CHR 7.24.5. The old library failed the early-release case.
 This contract does not establish six-WAN freshness, all VPN failover scenarios,
 hardware performance or a 48-hour soak result.

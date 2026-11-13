@@ -13,6 +13,25 @@ sys.path.insert(0, str(ROOT))
 from sdwan.router import Router
 
 
+def with_prune_barrier(text):
+    """Add a test-only scheduling barrier; keep both original/payload hashes."""
+    pause = '''
+:global sdwanStrictTestPausePrune
+:if ($sdwanStrictTestPausePrune = true) do={
+    :global sdwanStrictTestPrunePaused
+    :set sdwanStrictTestPrunePaused true
+    :delay 500ms
+}
+'''
+
+    old_publish = '    :set sdwanStrictResults $results; :set sdwanStrictDue $dueTimes\n'
+    boundary = '    :local interval (($sdwanStrictConfig->"health")->"strict_probe_interval_seconds")\n'
+    anchor = old_publish if old_publish in text else boundary
+    if text.count(anchor) != 1:
+        raise ValueError('Review the strict reconciliation barrier anchor')
+    return text.replace(anchor, pause + anchor, 1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--api-url', required=True)
@@ -43,6 +62,8 @@ def main():
             (ROOT / 'native/sdwan-links.rsc', 'contract-links.rsc'),
             (ROOT / 'tests/strict_dispatch_acceptance.rsc', 'contract-tests.rsc'),
         ]]
+        local, remote, text = payloads[1]
+        payloads[1] = (local, remote, with_prune_barrier(text))
         controller = ROOT / 'native/sdwan-controller.rsc'
         prelude = controller.read_text().split(':global sdwanStatusJSON', 1)[0]
         prelude += (':global sdwanContractControllerRuns; :set sdwanContractControllerRuns '
@@ -52,6 +73,7 @@ def main():
             if router.file_entry(remote):
                 raise ValueError('Contract file already exists: ' + remote)
             result['sha256'][local.name] = hashlib.sha256(local.read_bytes()).hexdigest()
+            result.setdefault('payload_sha256', {})[remote] = hashlib.sha256(text.encode()).hexdigest()
             router.upload(remote, text)
             files.append(remote)
         source = '''
@@ -94,7 +116,8 @@ def main():
         # Only after the fresh-router guard can these exact names belong to us.
         if created:
             names = {name, 'sdwan-controller', 'strict-contract-old-timer',
-                     'strict-contract-postcommit-timeout', 'sdwan-strict-worker-0-extra',
+                     'strict-contract-postcommit-timeout', 'strict-contract-pruning-dispatch',
+                     'sdwan-strict-worker-0-extra',
                      'sdwan-strict-dispatch', 'sdwan-strict-worker-0',
                      'sdwan-strict-worker-1', 'sdwan-strict-timeout-0',
                      'sdwan-strict-timeout-1'}

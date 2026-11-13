@@ -153,6 +153,44 @@ $sdwanStrictDispatch
 $sdwanStrictContractCheck name="post-commit timeout cannot clear recycled slot" ok=($sdwanStrictCommitPaused && (($afterCommit->"token") != ($timingJob->"token")) && ((($sdwanStrictSlots->0)->"token") = ($afterCommit->"token")))
 :set sdwanStrictCommit $sdwanStrictCommitReal
 $sdwanStrictCancel
+# The driver installs a test-only pause at the reconciliation boundary. Commit
+# a newer result while that dispatcher is suspended, then let it finish.
+:set sdwanStrictResults [:toarray ""]
+:set sdwanStrictDue [:toarray ""]
+:set sdwanStrictCursor 0
+$sdwanStrictDispatch
+:local concurrentJob ($sdwanStrictSlots->0)
+:local seeded [$sdwanStrictCommit slot=(0) job=$concurrentJob up=(true) reason="before-prune"]
+:set ($concurrentJob->"finished") false
+:set ($sdwanStrictSlots->0) $concurrentJob
+:foreach junk in={"gone/a";"gone/b";"gone/c"} do={ :set ($sdwanStrictResults->$junk) ($sdwanStrictResults->($concurrentJob->"key")); :set ($sdwanStrictDue->$junk) 999999 }
+:global sdwanStrictTestPausePrune true
+:global sdwanStrictTestPrunePaused false
+/system/script/add name=strict-contract-pruning-dispatch source=":global sdwanStrictDispatch; \$sdwanStrictDispatch" policy=read,write,policy,test,sensitive
+:execute script="/system/script/run strict-contract-pruning-dispatch"
+:set attempts 0
+:while ((!$sdwanStrictTestPrunePaused) && ($attempts < 100)) do={ :delay 20ms; :set attempts ($attempts + 1) }
+:local concurrent [$sdwanStrictCommit slot=(0) job=$concurrentJob up=(true) reason="committed-during-prune"]
+:set sdwanStrictTestPausePrune false
+:delay 600ms
+$sdwanStrictContractCheck name="concurrent commit survives reconciliation" ok=($seeded && $concurrent && $sdwanStrictTestPrunePaused && ((($sdwanStrictResults->($concurrentJob->"key"))->"reason") = "committed-during-prune"))
+:local removed true
+:foreach junk in={"gone/a";"gone/b";"gone/c"} do={ :if (([:typeof ($sdwanStrictResults->$junk)] = "array") || ([:typeof ($sdwanStrictDue->$junk)] = "num")) do={ :set removed false } }
+$sdwanStrictContractCheck name="obsolete result and due keys removed" ok=$removed
+$sdwanStrictCancel
+# An edited expectation cannot wait behind the old result's future due time.
+:local editedWan ($sdwanRuntimeWANs->0)
+:local editedProbes ($editedWan->"probes")
+:local editedProbe ($editedProbes->0)
+:set ($editedProbe->"http_expected_body") "changed"
+:set ($editedProbes->0) $editedProbe
+:set ($editedWan->"probes") $editedProbes
+:set ($sdwanRuntimeWANs->0) $editedWan
+:set sdwanStrictCursor 0
+$sdwanStrictDispatch
+:local editedJob ($sdwanStrictSlots->0)
+$sdwanStrictContractCheck name="changed expectation probes immediately" ok=((($editedJob->"key") = "wan1/a") && (($editedJob->"signature") != ($concurrentJob->"signature")))
+$sdwanStrictCancel
 :set sdwanStrictDispatchContractJSON [:serialize to=json value=$sdwanStrictContractRows options=json.no-string-conversion]
 }
 }
