@@ -5,6 +5,7 @@ import json
 import time
 import sys
 from container_support import Lab,ROOT
+from container_intent import read_intent,write_intent
 
 def main():
     env=Lab();r=env.router;lab=env.lab;baseline=json.loads(r.read_file('sdwan-active.json'))
@@ -20,7 +21,7 @@ def main():
     def healthy():return env.wait(lambda s:len(s.get('states',{}))==6 and all(x['state']=='healthy' for x in s['states'].values()))
     def invalid(text,reason):
         before=env.status()['container'].get('rejections',0)
-        r.upload('sdwan-container-intent.json',text)
+        write_intent(r,text)
         current=env.wait(lambda s:s['container'].get('rejections',0)>before)
         assert current['container']['last_rejection']==reason,current['container']
         return current
@@ -36,11 +37,11 @@ def main():
     try:
         if not resume:
             env.apply(fixture);healthy();s=env.start();owner=s['container']['owner_instance']
-            good=r.read_file('sdwan-container-intent.json');bad=json.loads(good);bad['instance']='f'*32;bad['seq']=999999
+            good=read_intent(r);bad=json.loads(good);bad['instance']='f'*32;bad['seq']=999999
             rejected=invalid(json.dumps(bad),'intent live foreign owner')
             assert rejected['container']['active'] and rejected['container']['owner_instance']==owner
             assert rejected['selected']['client101']=='wan1'
-            r.upload('sdwan-container-intent.json',good)
+            write_intent(r,good)
             record('foreign intent cannot replace the live owner or its accepted routing plan')
             lab.proxy_request({'wan':'wan1','set':{'delay':90.0}})
             s=env.wait(lambda x:x['states']['default/wan1']['state']=='degraded' and x['selected']['client101']=='wan2' and x['container']['active'])
@@ -51,10 +52,10 @@ def main():
             block=env.add('edge','ip/firewall/raw',{'chain':'prerouting','in-interface':'sdwan-container-mgmt','src-address':'172.31.255.2','dst-address':'172.31.255.1','protocol':'tcp','dst-port':port,'action':'drop'})
             env.wait(lambda x:not x['container']['active'],timeout=20)
             assert env.container().get('running')=='true'
-            before=r.read_file('sdwan-container-intent.json');time.sleep(5);assert r.read_file('sdwan-container-intent.json')==before
+            before=read_intent(r);time.sleep(5);assert read_intent(r)==before
             lab.api('edge','ip/firewall/raw/'+block,method='DELETE');env.wait(lambda x:x['container']['active'])
             record('API blackhole stops successful heartbeat; native fallback and recovery need no controller restart')
-            primary=env.container();owner=env.status()['container']['owner_instance'];before=r.read_file('sdwan-container-intent.json')
+            primary=env.container();owner=env.status()['container']['owner_instance'];before=read_intent(r)
             lab.api('edge','container',{'file':primary['file'],'name':competitor,'root-dir':'sdwan-test-container-competitor-root',
                      'interface':'sdwan-container-veth','mountlists':'sdwan-controller','cmd':'run /config/controller.json',
                      'memory-max':'16777216','shm-size':'0','logging':'yes','start-on-boot':'no','comment':'sdwan-container-test'},'PUT')
@@ -66,13 +67,13 @@ def main():
             else:raise AssertionError('Competing test container extraction timed out')
             lab.api('edge','container/start',{'numbers':row['.id']},'POST');time.sleep(10)
             assert env.status()['container']['owner_instance']==owner
-            assert r.read_file('sdwan-container-intent.json')==before
+            assert read_intent(r)==before
             record('second real local Rust container backs away from a live owner without overwriting intent')
             lab.api('edge','container/stop',{'numbers':primary['.id']},'POST')
             env.wait(lambda s:s['container']['active'] and s['container']['owner_instance']!=owner,timeout=25)
             record('second local container claims only after the old lease expires, with one RouterOS route writer')
             remove_competitor();env.wait(lambda s:not s['container']['active'],timeout=15);env.start();healthy()
-            old=env.status()['container'];old_intent=r.read_file('sdwan-container-intent.json')
+            old=env.status()['container'];old_intent=read_intent(r)
             changed=copy.deepcopy(fixture);next(p for p in changed['policies'] if p['name']=='client101')['wans']=['wan2','wan1']
             env.apply(changed);s=env.wait(lambda s:s['selected']['client101']=='wan2' and s['container']['active'])
             assert s['revision']==fixture['revision'] and s['container']['generation']>old['generation'] and s['container']['boot_id']==old['boot_id']
@@ -92,12 +93,12 @@ def main():
             try:
                 s=r.status()
                 if s.get('container',{}).get('boot_id') not in (None,old_boot) and s['container']['active'] and s.get('selected',{}).get('client101')=='wan2' and all(v['state']=='healthy' for v in s.get('states',{}).values()):
-                    candidate=json.loads(r.read_file('sdwan-container-intent.json'))
+                    candidate=json.loads(read_intent(r))
                     if candidate['boot_id']==s['container']['boot_id']:break
             except (OSError,RuntimeError):r.close()
             time.sleep(1)
         else:raise AssertionError('Local controller did not recover after RouterOS reboot')
-        intent=json.loads(r.read_file('sdwan-container-intent.json'))
+        intent=json.loads(read_intent(r))
         assert intent['boot_id']==s['container']['boot_id'] and s['selected']['client101']=='wan2'
         record('RouterOS reboot changes boot fence and autonomously restarts the container with fresh probes and intent',seconds=round(time.monotonic()-started,1))
         report['pass']=True

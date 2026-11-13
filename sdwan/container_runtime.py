@@ -59,6 +59,12 @@ def prerequisites(router,config,expected):
         if existing.overlaps(network):raise ValueError('Container subnet overlaps an existing routed network: '+str(existing))
     return resource,network,host,guest
 
+def check_intent_inbox(router):
+    rows=router.call('ip/firewall/address-list/print',{'.proplist':'.id,list,address,dynamic,disabled','.query':['list=sdwan-container-intent']},'POST')
+    if len(rows)>1 or any(x.get('list')!='sdwan-container-intent' or x.get('address')!='127.0.0.1' or x.get('dynamic')!='true' or x.get('disabled')=='true' or not x.get('.id') for x in rows):
+        raise ValueError('RAM intent inbox is ambiguous or contains a foreign/static entry')
+    return rows
+
 def check_ready(router,config,expected):
     _,network,host,guest=prerequisites(router,config,expected)
     row=read_container(router)
@@ -79,7 +85,7 @@ def check_ready(router,config,expected):
     api=next(x for x in router.call('ip/service') if x.get('name')=='api' and x.get('dynamic')!='true')
     permitted,_=api_service_access(api,guest)
     if not permitted or actual.get('endpoint')!=host+':'+str(api['port']):raise ValueError('Prepared local native API endpoint/ACL changed')
-    if not any(x['name']==router.storage_prefix+'sdwan-container-intent.json' for x in router.call('file/print',{'.proplist':'name'},'POST')):raise ValueError('Prepared intent file is missing')
+    check_intent_inbox(router)
     mounts=[x for x in router.call('container/mounts') if x.get('list')=='sdwan-controller']
     expected_mounts={(runtime['config'],'/config'),(runtime['secrets'],'/secrets')}
     if set(row.get('mountlists','').split(','))!={'sdwan-controller'} or len(mounts)!=2 or {(x['src'].strip('/'),x['dst']) for x in mounts}!=expected_mounts or any(x.get('mode')!='ro' for x in mounts):raise ValueError('Prepared container mounts differ from the dedicated read-only config/secret paths')
@@ -97,6 +103,7 @@ def prepare(router,config,expected,*,timeout=120):
     """Import an uploaded image and create stopped runtime; does not install SD-WAN."""
     if config.get('controller_backend')!='container':raise ValueError('Select controller_backend=container before preparation')
     resource,network,host,guest=prerequisites(router,config,expected)
+    check_intent_inbox(router)
     cfg=settings(config);runtime=paths(config)
     current=read_container(router)
     if current and (current.get('comment')!=PREFIX+'controller' or current.get('root-dir','').strip('/')!=runtime['root']):raise ValueError('Existing container name/storage is not managed by this configuration')
@@ -178,7 +185,6 @@ def prepare(router,config,expected,*,timeout=120):
             rule=dict(fields,comment=PREFIX+tag)
             if before:rule['place-before']=before
             router.call(menu,rule,'PUT')
-    if not any(f['name']==router.storage_prefix+'sdwan-container-intent.json' for f in router.call('file/print',{'.proplist':'name'},'POST')):router.upload('sdwan-container-intent.json','')
     if not current:
         router.call('container',{'file':cfg['image_file'],'interface':VETH,'root-dir':runtime['root'],
                     'name':NAME,'comment':PREFIX+'controller','cmd':'run /config/controller.json',

@@ -2,6 +2,9 @@
 
 [Русский](CURRENT-STATUS.md) | English
 
+**0.4.0:** the container RAM inbox passed CHR acceptance, with a dedicated hAP transport-write control. [26 runtime checks, 24 flows and limits](RAM-CONTROL-VALIDATION.en.md). Recursive routing without static-route switches remains a separate prototype. Historical 0.3 results and their source pins are retained below.
+
+
 Final-source dual-CGNAT validation passed: native/local-container WAN/NAT/SLA,
 direct cold container startup, two backend conversions and two orderly reboots.
 Independent replay verified 136 Internet flows and 900 private snapshots;

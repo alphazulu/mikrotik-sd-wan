@@ -24,6 +24,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests'), str(ROOT / 'tools')]
 from vpn_lab import VPNLab
+from container_intent import read_intent,write_intent
 from vpn_traffic import VPNTraffic, tcp_stream, same_path
 from soak_observer import EventCursor, FlowObserver, expected_selection, validate_intent
 from sdwan.container_runtime import paths, read_container
@@ -295,7 +296,7 @@ def main():
                     expected = digest((package / filename).read_text())
                     assert digest(router.read_file(filename)) == expected, name + ': installed runtime differs from frozen source'
                     baseline_files[name][filename] = expected
-        intent = a.read_file('sdwan-container-intent.json')
+        intent = read_intent(a)
         started = time.monotonic()
         report.update(status='running', measured_started_utc=time.time(), phase='native', stream_ids=streams)
         write_json(report_path, report)
@@ -358,7 +359,7 @@ def main():
                 report['traffic_observer'] = flow_observer.summary()
                 report['forced_transitions'] = forced_phases
                 pending_intent_events.extend(events['sitea'])
-                next_intent = a.read_file('sdwan-container-intent.json')
+                next_intent = read_intent(a)
                 if next_intent != intent:
                     receipt = validate_intent(intent, next_intent, cfg, frames['sitea'], pending_intent_events, backend_claim)
                     report.setdefault('intent_transitions', []).append(dict(receipt, elapsed_seconds=elapsed, before_sha256=digest(intent), after_sha256=digest(next_intent)))

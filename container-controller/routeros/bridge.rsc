@@ -14,8 +14,8 @@
     :global sdwanContainerBridgeVersion
     :global sdwanContainerRejects
     :global sdwanContainerLastReject
-    :if (([:typeof $sdwanContainerBoot] != "str") || ($sdwanContainerBridgeVersion != 1)) do={
-        :set sdwanContainerBridgeVersion 1
+    :if (([:typeof $sdwanContainerBoot] != "str") || ($sdwanContainerBridgeVersion != 2)) do={
+        :set sdwanContainerBridgeVersion 2
         :set sdwanContainerBoot [:rndstr from="0123456789abcdef" length=32]
         :set sdwanContainerGeneration 0
         :set sdwanContainerRaw ""
@@ -50,18 +50,31 @@
         :set sdwanContainerPlan [:toarray ""]
     }
     :local rejection ""
-    :local path ($dir . "sdwan-container-intent.json")
-    :local files [/file/find where name=$path]
-    :if ([:len $files] = 1) do={
-        :local text [:tostr [/file/get $files contents]]
-        :if ($text != [:tostr $sdwanContainerSeen]) do={
+    :local inbox "sdwan-container-intent"
+    :local channelReady true
+    :local ids [/ip/firewall/address-list/find where list="sdwan-container-intent"]
+    :if ([:len $ids] > 0) do={
+        :local malformed ([:len $ids] != 1)
+        :local text ""
+        :if (!$malformed) do={
+            :local id ($ids->0)
+            :set malformed ((![/ip/firewall/address-list/get $id dynamic]) || [/ip/firewall/address-list/get $id disabled] || ([:tostr [/ip/firewall/address-list/get $id address]] != "127.0.0.1"))
+            :set text [:tostr [/ip/firewall/address-list/get $id comment]]
+        }
+        :if ($malformed) do={ :set channelReady false }
+        :if ($malformed || ($text != [:tostr $sdwanContainerSeen])) do={
             :set sdwanContainerSeen $text
             :onerror invalid in={
+                :if ($malformed) do={
+                    :set sdwanContainerOwner ""
+                    :set sdwanContainerPlan [:toarray ""]
+                    :error "intent RAM inbox ownership"
+                }
                 :if (([:len $text] = 0) || ([:len $text] > 32768)) do={ :error "intent length" }
                 :local intent [:deserialize from=json options=json.no-string-conversion value=$text]
                 :if ([:typeof $intent] != "array") do={ :error "intent object" }
                 :if ([:typeof ($intent->"protocol")] != "num") do={ :error "intent protocol" }
-                :if (($intent->"protocol") != 1) do={ :error "intent protocol" }
+                :if (($intent->"protocol") != 2) do={ :error "intent protocol" }
                 :if ([:typeof ($intent->"boot_id")] != "str") do={ :error "intent boot fence" }
                 :if (($intent->"boot_id") != $sdwanContainerBoot) do={ :error "intent boot fence" }
                 :if ([:typeof ($intent->"generation")] != "num") do={ :error "intent configuration fence" }
@@ -110,12 +123,20 @@
                 :set sdwanContainerLastReject $rejection
             }
         }
+    } else={
+        :set sdwanContainerOwner ""
+        :set sdwanContainerPlan [:toarray ""]
+        :set sdwanContainerSeen ""
     }
     :local result [:toarray ""]
-    :set ($result->"protocol") 1
+    :set ($result->"protocol") 2
     :set ($result->"boot_id") $sdwanContainerBoot
     :set ($result->"generation") $sdwanContainerGeneration
-    :set ($result->"intent_file") $path
+    # Empty compatibility field lets an older image observe protocol2 without
+    # reconnecting on every poll. No file is read or written by this bridge.
+    :set ($result->"intent_file") ""
+    :set ($result->"intent_list") ""
+    :if ($channelReady) do={ :set ($result->"intent_list") $inbox }
     :set ($result->"owner_instance") $sdwanContainerOwner
     :set ($result->"lease_remaining_seconds") 0
     :if ($alive) do={ :set ($result->"lease_remaining_seconds") 6 }

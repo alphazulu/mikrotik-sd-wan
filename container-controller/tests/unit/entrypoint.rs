@@ -178,7 +178,7 @@ fn live_cycle_uses_exact_password_recovers_errors_and_stops_without_periodic_fla
                                     sentence(&mut stream, &["!done"]);
                                     break;
                                 }
-                                let raw=serde_json::json!({"revision":"test","uptime_seconds":polls,"states":{"default/wan":{"state":"healthy"}},"container":{"protocol":1,"boot_id":"boot","generation":1,"intent_file":"sdwan-container-intent.json","owner_instance":owner,"lease_remaining_seconds":if polls==3{0}else{3}}}).to_string();
+                                let raw=serde_json::json!({"revision":"test","uptime_seconds":polls,"states":{"default/wan":{"state":"healthy"}},"container":{"protocol":2,"boot_id":"boot","generation":1,"intent_list":"sdwan-container-intent","owner_instance":owner,"lease_remaining_seconds":if polls==3{0}else{3}}}).to_string();
                                 sentence(&mut stream, &["!re", &format!("=value={raw}")]);
                                 sentence(&mut stream, &["!done"]);
                                 if polls == 6 {
@@ -189,15 +189,24 @@ fn live_cycle_uses_exact_password_recovers_errors_and_stops_without_periodic_fla
                                 sentence(&mut stream, &["!done"]);
                             }
                         }
-                        "/file/print" => {
-                            sentence(&mut stream, &["!re", "=.id=*1"]);
+                        "/ip/firewall/address-list/print" => {
+                            sentence(
+                                &mut stream,
+                                &[
+                                    "!re",
+                                    "=.id=*1",
+                                    "=list=sdwan-container-intent",
+                                    "=address=127.0.0.1",
+                                    "=dynamic=true",
+                                ],
+                            );
                             sentence(&mut stream, &["!done"]);
                         }
-                        "/file/set" => {
+                        "/ip/firewall/address-list/set" => {
                             writes += 1;
                             let text = words
                                 .iter()
-                                .find_map(|s| s.strip_prefix("=contents="))
+                                .find_map(|s| s.strip_prefix("=comment="))
                                 .unwrap();
                             let intent: serde_json::Value = serde_json::from_str(text).unwrap();
                             owner = intent["instance"].as_str().unwrap().into();
