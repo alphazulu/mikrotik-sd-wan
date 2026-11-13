@@ -2,7 +2,11 @@
 :if ([:len [/file/find where name="flash"]] > 0) do={ :set dir "flash/" }
 # MikroTik RouterOS 7.24.5. Installed as system/script sdwan-controller.
 # Runtime decisions are entirely local. Active config: sdwan-active.json (promoted by the installer).
-:if ([/system/script/job/print count-only where script="sdwan-controller"] > 1) do={ :return "" }
+# On 7.24.5 script jobs expose either the script name or its internal ID.
+:local copies 0
+:local ownedID [:tostr [/system/script/find where name="sdwan-controller"]]
+:foreach job in=[/system/script/job/print as-value] do={ :local owner [:tostr ($job->"script")]; :if (($owner = "sdwan-controller") || (($ownedID != "") && ($owner = $ownedID))) do={ :set copies ($copies + 1) } }
+:if ($copies > 1) do={ :return "" }
 :global sdwanStatusJSON
 :global sdwanState
 :global sdwanGood

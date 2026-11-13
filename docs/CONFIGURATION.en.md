@@ -3,7 +3,7 @@
 [Русский](CONFIGURATION.md) | English
 
 One JSON describes WANs, SLAs, policies and backend. The standard bundle contains
-13 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
+14 RSC files and JSON. Generation does not create PPPoE/APN credentials or replace
 initial interface, NAT or baseline firewall setup.
 
 ## Top level
@@ -79,6 +79,9 @@ Probes support `http-get`, `https-get`, `tcp-conn` with `host/port`, and `dns` w
 `host/dns_server`. Names allow dots, hyphens and underscores. Duplicating a target
 does not increase quorum. Probes are pinned to their WAN and must not silently
 escape through a backup provider.
+
+Optional exact HTTP body/path checks and their shared asynchronous capacity
+limits: [strict probes](STRICT-PROBES.en.md).
 
 ## Policies
 

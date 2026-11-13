@@ -589,13 +589,18 @@
         $sdwanStrictStopJob ownedName=$ownedName
         $sdwanStrictCommit slot=$slot job=$job up=(false) reason="strict-timeout"
     }
-    :set ($sdwanStrictSlots->$slot)
+    # Commit may yield to a dispatcher that has already recycled this slot.
+    :if ((($sdwanStrictSlots->$slot)->"token") = ($job->"token")) do={ :set ($sdwanStrictSlots->$slot) }
     :return true
 }
 :global sdwanStrictDispatch do={
+    # A slow tick must not let the next scheduled copy recycle its slots.
+    :local copies 0
+    :local ownedID [:tostr [/system/script/find where name="sdwan-strict-dispatch"]]
+    :foreach job in=[/system/script/job/print as-value] do={ :local owner [:tostr ($job->"script")]; :if (($owner = "sdwan-strict-dispatch") || (($ownedID != "") && ($owner = $ownedID))) do={ :set copies ($copies + 1) } }
+    :if ($copies > 1) do={ :return false }
     :global sdwanStrictAdoptLegacy
     :global sdwanStrictProbeSignature
-    :global sdwanStrictStopJob
     :global sdwanStrictStopJob
     :global sdwanStrictCommit
     :global sdwanConfigRaw
@@ -670,6 +675,14 @@
     :if ([:typeof $timeout] != "num") do={ :set timeout 2000 }
     :foreach slot in={0;1} do={
         :local running ($sdwanStrictSlots->$slot)
+        # Completed requests no longer consume their entire timeout. Cancel the
+        # old named jobs before reusing the slot; callbacks still check tokens.
+        :if (([:typeof $running] = "array") && (($running->"finished") = true)) do={
+            :foreach prefix in={"sdwan-strict-worker-";"sdwan-strict-timeout-"} do={ :local ownedName ($prefix . $slot); $sdwanStrictStopJob ownedName=$ownedName }
+            :local current ($sdwanStrictSlots->$slot)
+            :if ((($current->"token") = ($running->"token")) && (($current->"generation") = ($running->"generation"))) do={ :set ($sdwanStrictSlots->$slot) }
+            :set running ($sdwanStrictSlots->$slot)
+        }
         :if (([:typeof $running] = "array") && (($nowNS - ($running->"started_ns")) > (($timeout + 3000) * 1000000))) do={
             :foreach prefix in={"sdwan-strict-worker-";"sdwan-strict-timeout-"} do={ :local ownedName ($prefix . $slot); $sdwanStrictStopJob ownedName=$ownedName }
             $sdwanStrictCommit slot=$slot job=$running up=(false) reason="strict-timeout"
