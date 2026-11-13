@@ -5,6 +5,9 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 pub type Row = BTreeMap<String, String>;
+pub const INTENT_LIST: &str = "sdwan-container-intent";
+pub const INTENT_ADDRESS: &str = "127.0.0.1";
+pub const MAX_INTENT: usize = 32768;
 const MAX_WORD: usize = 1024 * 1024;
 const MAX_SENTENCE: usize = MAX_WORD + 8192;
 const MAX_ROWS: usize = 512;
@@ -298,24 +301,43 @@ impl Api {
         Err(invalid("Active SD-WAN configuration unavailable"))
     }
     pub fn write_intent(&mut self, name: &str, contents: &str) -> io::Result<()> {
-        if name != "sdwan-container-intent.json" && name != "flash/sdwan-container-intent.json" {
-            return Err(invalid("Unexpected intent filename"));
+        if name != INTENT_LIST || contents.is_empty() || contents.len() > MAX_INTENT {
+            return Err(invalid("Invalid RAM intent destination or length"));
         }
         let rows = self.call(&[
-            "/file/print".into(),
-            "=.proplist=.id,name".into(),
-            format!("?name={name}"),
+            "/ip/firewall/address-list/print".into(),
+            "=.proplist=.id,list,address,dynamic,disabled".into(),
+            format!("?list={name}"),
         ])?;
-        let id = rows
-            .first()
-            .filter(|_| rows.len() == 1)
-            .and_then(|r| r.get(".id"))
-            .ok_or_else(|| invalid("Provisioned intent file unavailable"))?;
-        self.call(&[
-            "/file/set".into(),
-            format!("=.id={id}"),
-            format!("=contents={contents}"),
-        ])?;
+        if rows.len() > 1 {
+            return Err(invalid("Ambiguous RAM intent inbox"));
+        }
+        if let Some(row) = rows.first() {
+            if row.get("list").map(String::as_str) != Some(INTENT_LIST)
+                || row.get("address").map(String::as_str) != Some(INTENT_ADDRESS)
+                || row.get("dynamic").map(String::as_str) != Some("true")
+                || row.get("disabled").map(String::as_str) == Some("true")
+            {
+                return Err(invalid("RAM intent inbox ownership differs"));
+            }
+            let id = row
+                .get(".id")
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| invalid("RAM intent inbox identifier unavailable"))?;
+            self.call(&[
+                "/ip/firewall/address-list/set".into(),
+                format!("=.id={id}"),
+                format!("=comment={contents}"),
+            ])?;
+        } else {
+            self.call(&[
+                "/ip/firewall/address-list/add".into(),
+                format!("=list={INTENT_LIST}"),
+                format!("=address={INTENT_ADDRESS}"),
+                "=dynamic=yes".into(),
+                format!("=comment={contents}"),
+            ])?;
+        }
         Ok(())
     }
 }

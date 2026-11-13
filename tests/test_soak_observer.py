@@ -93,7 +93,7 @@ class CursorTests(unittest.TestCase):
 class IntentTests(unittest.TestCase):
     def fixture(self):
         cfg,state=fixture();state['container']={'active':True,'owner_instance':'owned','boot_id':'boot','generation':1,'lease_remaining_seconds':6}
-        intent={'revision':cfg['revision'],'protocol':1,'release':False,'instance':'owned','boot_id':'boot','generation':1,'seq':1,'selected':state['selected'],'observed_uptime':100}
+        intent={'revision':cfg['revision'],'protocol':2,'release':False,'instance':'owned','boot_id':'boot','generation':1,'seq':1,'selected':state['selected'],'observed_uptime':100}
         return cfg,state,intent
 
     def test_unchanged_and_proved_claim_plan_change(self):

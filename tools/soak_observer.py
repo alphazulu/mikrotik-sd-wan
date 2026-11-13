@@ -83,14 +83,14 @@ class EventCursor:
 
 
 def validate_intent(old_text, new_text, cfg, frame, transitions=(), backend_start=False):
-    """Persistent intent may change only for a proved plan/ownership transition."""
+    """RAM intent may change only for a proved plan/ownership transition."""
     if old_text == new_text:
         return None
-    assert backend_start or transitions, 'steady controller rewrote persistent intent'
+    assert backend_start or transitions, 'steady controller rewrote stable RAM intent'
     old = json.loads(old_text) if old_text.strip() else {}
     new = json.loads(new_text)
     assert new.get('revision') == cfg['revision'], 'intent revision differs'
-    assert new.get('protocol') == 1 and new.get('release') is False, 'invalid or released intent'
+    assert new.get('protocol') == 2 and new.get('release') is False, 'invalid or released intent'
     # Field schema is checked against the controller's accepted fenced lease,
     # not against a host-generated desired plan.
     accepted = frame.get('container', {})

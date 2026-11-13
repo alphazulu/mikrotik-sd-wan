@@ -46,10 +46,10 @@ fn metrics() -> Metrics {
             ),
         ]),
         container: Some(Bridge {
-            protocol: 1,
+            protocol: 2,
             boot_id: "boot".into(),
             generation: 1,
-            intent_file: "sdwan-container-intent.json".into(),
+            intent_list: "sdwan-container-intent".into(),
             owner_instance: String::new(),
             lease_remaining_seconds: 3,
         }),
@@ -108,7 +108,7 @@ fn no_bridge_old_protocol_and_another_owner_are_read_only() {
         assert!(a.state.contains(if kind == 2 {
             "another controller"
         } else {
-            "protocol1"
+            "protocol2"
         }));
     }
 }
@@ -153,7 +153,7 @@ fn unchanged_claim_writes_once_and_live_owner_only_heartbeats() {
     assert_eq!(f.reads, 1);
     assert_eq!(f.writes.len(), 1);
     let (name, intent) = &f.writes[0];
-    assert_eq!(name, "sdwan-container-intent.json");
+    assert_eq!(name, "sdwan-container-intent");
     assert_eq!(intent["instance"], "self");
     assert_eq!(intent["seq"], 1);
     assert_eq!(intent["boot_id"], "boot");
@@ -322,4 +322,36 @@ fn claim_retry_timer_starts_after_the_api_write_finishes() {
         .step(&mut client, &m, || clock.get(), || Ok(()))
         .unwrap();
     assert_eq!(client.fake.writes.len(), 2);
+}
+
+#[test]
+fn ram_metadata_required_without_legacy_file_fallback_or_heartbeat() {
+    let now = Instant::now();
+    for name in ["", "sdwan-container-intent.json", "foreign"] {
+        let mut e = Engine::new(Mode::Active, "owner".into());
+        let mut f = Fake::default();
+        let mut m = metrics();
+        let mut heartbeats = 0;
+        m.container.as_mut().unwrap().intent_list = name.into();
+        let result = step(&mut e, &mut f, &m, now, &mut heartbeats).unwrap();
+        assert!(result.state.contains("RAM inbox metadata"));
+        assert!(f.writes.is_empty());
+        assert_eq!(heartbeats, 0);
+    }
+    let raw = r#"{"revision":"r","uptime_seconds":1,"states":{},"container":{"protocol":1,"boot_id":"b","generation":1,"intent_file":"sdwan-container-intent.json"}}"#;
+    let m: Metrics = serde_json::from_str(raw).unwrap();
+    assert_eq!(m.container.as_ref().unwrap().intent_list, "");
+    let mut e = Engine::new(Mode::Active, "owner".into());
+    let mut f = Fake::default();
+    let mut h = 0;
+    // The normal old-protocol read-only path is tested with a valid config/revision.
+    let mut old = metrics();
+    old.container.as_mut().unwrap().protocol = 1;
+    old.container.as_mut().unwrap().intent_list.clear();
+    assert!(step(&mut e, &mut f, &old, now, &mut h)
+        .unwrap()
+        .state
+        .contains("protocol2"));
+    assert!(f.writes.is_empty());
+    assert_eq!(h, 0);
 }

@@ -4,6 +4,7 @@ import json
 import copy
 import time
 from container_support import Lab,ROOT
+from container_intent import read_intent,write_intent
 import stream_traffic
 
 def main():
@@ -25,8 +26,8 @@ def main():
         first=env.start();owner=first['container']['owner_instance']
         env.wait(lambda s:all('Rust container intent' in p['reason'] for p in s['policies'].values()))
         record('dedicated API user claims live fenced lease; all policies use Rust decisions',owner_length=len(owner))
-        intent=router.read_file('sdwan-container-intent.json');time.sleep(9)
-        assert router.read_file('sdwan-container-intent.json')==intent
+        intent=read_intent(router);time.sleep(9)
+        assert read_intent(router)==intent
         leases=router.call('ip/firewall/address-list')
         assert any(x.get('list')=='sdwan-container-live' and x.get('dynamic')=='true' for x in leases)
         record('unchanged decisions do not rewrite intent; heartbeat lives in dynamic RAM address list')
@@ -65,8 +66,8 @@ def main():
         block=env.add('edge','ip/firewall/raw',{'chain':'prerouting','in-interface':'sdwan-container-mgmt','src-address':'172.31.255.2','dst-address':'172.31.255.1','protocol':'udp','dst-port':'45999','action':'drop'})
         freeze=time.monotonic();env.wait(lambda s:not s['container']['active'],timeout=15)
         assert env.container().get('running')=='true';traffic.assert_sessions(retained=[b,c])
-        frozen_intent=router.read_file('sdwan-container-intent.json');time.sleep(8)
-        assert router.read_file('sdwan-container-intent.json')==frozen_intent
+        frozen_intent=read_intent(router);time.sleep(8)
+        assert read_intent(router)==frozen_intent
         record('lost heartbeat expires lease with process still running; blocked path does not cause repeated flash writes',fallback_seconds=round(time.monotonic()-freeze-8,2))
         lab.api('edge','ip/firewall/raw/'+block,method='DELETE');env.wait(lambda s:s['container']['active'])
         record('restoring heartbeat resumes the same process with a fresh accepted claim')

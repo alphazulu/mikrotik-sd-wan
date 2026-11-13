@@ -99,7 +99,7 @@ Preparation checks ownership and existing permissions. It does not overwrite
 foreign bridge/veth/container/mount-list objects with reserved names. The API user
 is restricted to the container address and explicit `read,write,policy,test,sensitive,api`
 permissions; other permissions are disabled. RouterOS 7.24.5 needs these to read
-public globals and write intent. API-service prefixes are read from `available-from`
+public globals and update the dynamic Address List. API-service prefixes are read from `available-from`
 or legacy `address`. Existing management prefixes are preserved, adding only
 the container `/32` when needed; readiness verifies access again.
 
@@ -123,16 +123,35 @@ same revision; reboot changes boot fence.
 
 Heartbeat uses a separate rule and a dynamic RouterOS address list with a six-second
 timeout: RAM, without periodic flash writes. The process confirms heartbeat first,
-then writes intent. Stable selection does not rewrite the file; unavailable
+then writes intent. Stable selection does not rewrite intent; unavailable
 heartbeat does not cause writes every poll. Lease expiry returns selection to
 native logic; actual time also depends on scheduler/load. Ownership change with
 the same route does not reset client connections.
+
+Protocol 2 carries intent JSON in the comment of one dynamic entry:
+`list=sdwan-container-intent address=127.0.0.1 dynamic=yes`. The inbox is RAM,
+not a file. Reboot removes it; the container recreates it with the new boot fence.
+The writer checks the exact list/address, dynamic flag and ID. Static, foreign or
+ambiguous entries are never overwritten. Missing or malformed inbox structure
+relinquishes ownership; invalid JSON or stale commands retain the last accepted
+plan until lease expiry. Payload is bounded to 32768 UTF-8 bytes. The former
+`sdwan-container-intent.json` is never read by protocol 2.
+
+Upgrade the image and RSC adapter together. With mismatched protocol versions,
+the new process or old image waits without heartbeat/intent writes, while RouterOS
+uses native selection. Preparation retains the legacy file because rolling back
+an older package may need it; remove it manually after a confirmed upgrade.
+Static route/configuration changes, disk logging and RouterOS housekeeping remain
+separate possible sources of persistent writes.
+
 
 New image versions require reimport of the stopped owned container; preparing an
 existing root directory does not replace its contents. WAN/SLA/policies use normal
 JSON deployment without rebuilding. Infrastructure preparation is separate; a
 failed deployment restores its immediately preceding state. Return-to-baseline
 restores original SD-WAN network state and stops the owned container, retaining files.
+
+Protocol and migration details: [RAM channel](RAM-CONTROL.en.md) · [0.4.0 acceptance](RAM-CONTROL-VALIDATION.en.md).
 
 ## Minimal image build
 

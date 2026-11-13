@@ -252,7 +252,7 @@ fn config_ram_cache_and_both_storage_fallbacks_validate_identifiers_and_contents
     }
 }
 #[test]
-fn environment_identity_and_intent_file_ownership_are_checked() {
+fn environment_identity_and_intent_bounds_are_checked() {
     for kind in 0..4 {
         let response = match kind {
             0 => reply(&[&["!done"]]),
@@ -271,37 +271,97 @@ fn environment_identity_and_intent_file_ownership_are_checked() {
         drop(api);
         job.join().unwrap();
     }
-    for case in 0..5 {
-        let mut replies = vec![reply(&[&["!done"]])];
-        if case != 0 {
-            replies.push(if case == 1 {
-                reply(&[&["!done"]])
-            } else if case == 2 {
-                reply(&[&["!re", "=name=missing-id"], &["!done"]])
-            } else {
-                reply(&[&["!re", "=.id=*7"], &["!done"]])
-            });
-            if case >= 3 {
-                replies.push(reply(&[&["!done"]]));
-            }
-        }
-        let (addr, job) = server(replies);
+    for (name, text) in [
+        ("foreign", "valid".to_string()),
+        ("sdwan-container-intent.json", "valid".to_string()),
+        (INTENT_LIST, String::new()),
+        (INTENT_LIST, "я".repeat(MAX_INTENT / 2 + 1)),
+    ] {
+        let (addr, job) = server(vec![reply(&[&["!done"]])]);
         let mut api = Api::connect(addr, "fixture", "fixture").unwrap();
-        let name = if case == 0 {
-            "foreign.json"
-        } else if case == 4 {
-            "flash/sdwan-container-intent.json"
+        assert!(api.write_intent(name, &text).is_err());
+        drop(api);
+        assert_eq!(
+            job.join().unwrap().len(),
+            1,
+            "invalid destination/length must not issue reads or writes"
+        );
+    }
+}
+#[test]
+fn ram_intent_only_creates_or_updates_one_owned_dynamic_row() {
+    for case in 0..12 {
+        let mut fields = vec![
+            "!re",
+            "=.id=*7",
+            "=list=sdwan-container-intent",
+            "=address=127.0.0.1",
+            "=dynamic=true",
+            "=disabled=false",
+        ];
+        match case {
+            3 => fields[4] = "=dynamic=false",
+            4 => fields[3] = "=address=192.0.2.1",
+            5 => fields[2] = "=list=foreign",
+            6 => fields[5] = "=disabled=true",
+            7 => {
+                fields.remove(1);
+            }
+            8 => fields[1] = "=.id=",
+            _ => {}
+        }
+        let query = if case == 0 || case == 11 {
+            reply(&[&["!done"]])
+        } else if case == 2 {
+            reply(&[&fields, &fields, &["!done"]])
+        } else if case == 10 {
+            reply(&[&["!trap", "=message=read denied"], &["!done"]])
         } else {
-            "sdwan-container-intent.json"
+            reply(&[&fields, &["!done"]])
         };
-        let result = api.write_intent(name, "fixture-intent");
-        assert_eq!(result.is_ok(), case >= 3);
+        let mut responses = vec![reply(&[&["!done"]]), query];
+        if matches!(case, 0 | 1 | 9 | 11) {
+            responses.push(if case >= 9 {
+                reply(&[&["!trap", "=message=write denied"], &["!done"]])
+            } else {
+                reply(&[&["!done"]])
+            });
+        }
+        let (addr, job) = server(responses);
+        let mut api = Api::connect(addr, "fixture", "fixture").unwrap();
+        let result = api.write_intent(INTENT_LIST, "fixture-intent");
+        assert_eq!(result.is_ok(), case <= 1, "case {case}");
         drop(api);
         let commands = job.join().unwrap();
-        if case >= 3 {
+        assert!(commands.iter().all(|c| !c[0].starts_with("/file/")));
+        assert_eq!(
+            commands[1],
+            vec![
+                "/ip/firewall/address-list/print",
+                "=.proplist=.id,list,address,dynamic,disabled",
+                "?list=sdwan-container-intent"
+            ]
+        );
+        if matches!(case, 0 | 11) {
             assert_eq!(
                 commands[2],
-                vec!["/file/set", "=.id=*7", "=contents=fixture-intent"]
+                vec![
+                    "/ip/firewall/address-list/add",
+                    "=list=sdwan-container-intent",
+                    "=address=127.0.0.1",
+                    "=dynamic=yes",
+                    "=comment=fixture-intent"
+                ]
+            );
+        }
+        if matches!(case, 1 | 9) {
+            assert_eq!(
+                commands[2],
+                vec![
+                    "/ip/firewall/address-list/set",
+                    "=.id=*7",
+                    "=comment=fixture-intent"
+                ]
             );
         }
     }

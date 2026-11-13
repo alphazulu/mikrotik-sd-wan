@@ -10,7 +10,9 @@ installation.
 
 ## Project status
 
-Implementation **0.3.0** includes the web interface, VPN WANs and branch overlay.
+In 0.4.0 container intent exchange moves to RAM. Six control updates on a dedicated hAP produced 0 written sectors versus 24 for a file. [Design and upgrading](docs/RAM-CONTROL.en.md) · [acceptance and limits](docs/RAM-CONTROL-VALIDATION.en.md).
+
+The previous **0.3.0** implementation includes the web interface, VPN WANs and branch overlay.
 Uninterrupted 48-hour RSC/container acceptance and the separate **150/150-measurement**
 comparison passed, with independent lab-restoration checks.
 [Results and limits](docs/PERFORMANCE-COMPARISON.en.md) concern virtual x86.
@@ -41,6 +43,8 @@ and [results](docs/POWER-LOSS-VALIDATION.en.md).
 Secondary-WAN overlay source adoption checks both conntrack directions and
 preserves inbound DNAT. [Dual-CGNAT validation](docs/CGNAT-VALIDATION.en.md)
 records final-source native/container WAN/NAT/SLA, reboot and private-flow checks.
+
+
 
 ## Features
 

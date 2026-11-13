@@ -45,7 +45,8 @@ pub struct Bridge {
     pub protocol: u32,
     pub boot_id: String,
     pub generation: u64,
-    pub intent_file: String,
+    #[serde(default)]
+    pub intent_list: String,
     #[serde(default)]
     pub owner_instance: String,
     #[serde(default)]

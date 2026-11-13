@@ -7,6 +7,12 @@ Separate read-only mounts supply configuration and password. The controller runs
 on MikroTik itself; RouterOS measures SLAs, applies decisions and retains native
 fallback.
 
+
+Version 0.4.0 uses protocol 2: intent lives in the comment of a dynamic Address
+List entry in RAM instead of a persistent file. Upgrade the image and RSC adapter
+together; mismatched versions leave WAN selection to the native controller.
+[State exchange and upgrades](../docs/CONTAINER.en.md#wan-selection-and-recovery).
+
 The `base` profile contains no HTTP server. Optional `web` embeds the UI and bounded
 RAM history/events; the module is disabled by default. There is no database, HTTP
 access log, CDN or automatic history persistence. See [statistics](../docs/STATISTICS.en.md).

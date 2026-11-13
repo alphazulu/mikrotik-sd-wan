@@ -8,6 +8,7 @@ import argparse,contextlib,fcntl,http.client,importlib.util,json,signal,subproce
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'tools'))
 from vpn_lab import VPNLab
+from container_intent import read_intent,write_intent
 from sdwan.container_runtime import read_container,paths
 
 def main():
@@ -67,9 +68,9 @@ def main():
     time.sleep(1)
    assert child.returncode==0,'Inspect private network-container-vpn-matrix.log'
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);matrix=json.loads(native_report.read_text());assert matrix['pass'] and len(matrix['checks'])==7 and observed;report['vpn_matrix_checks']=7;record('two-VPN priority matrix passes under the local Rust backend, including scoped real TCP cleanup and independent branch survival; live web observes both VPN parents')
-  wait(active);intent=r.read_file('sdwan-container-intent.json');writes=web()['resources']['write_bytes'];samples=[];sample_start=time.monotonic()
+  wait(active);intent=read_intent(r);writes=web()['resources']['write_bytes'];samples=[];sample_start=time.monotonic()
   for _ in range(12):
-   time.sleep(5);data=web();assert not data['stale'] and data['current']['actor']=='container';assert r.read_file('sdwan-container-intent.json')==intent
+   time.sleep(5);data=web();assert not data['stale'] and data['current']['actor']=='container';assert read_intent(r)==intent
    if type(writes) is int:assert data['resources']['write_bytes']==writes
    assert data['resources']['rss_bytes']>0 and data['history_points']<=12
    measured=r.call('container/print',{'.proplist':'memory-current,cpu-usage','.query':['name=sdwan-container-controller']},'POST')[0]

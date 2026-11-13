@@ -101,7 +101,7 @@ def main():
         assert wan_packets()>before
         record('direct ISP/WAN HTTP attempt reaches owned firewall deny and receives no web access')
         def files():
-            names=['sdwan-container-intent.json','sdwan-active.json',paths(cfg)['settings'],paths(cfg)['password'],paths(cfg)['web_token']]
+            names=['sdwan-active.json',paths(cfg)['settings'],paths(cfg)['password'],paths(cfg)['web_token']]
             rows=r.file_records(names,'name,size,last-modified')
             digests={name:hashlib.sha256(r.read_file(name).encode()).hexdigest() for name in names}
             return rows,digests

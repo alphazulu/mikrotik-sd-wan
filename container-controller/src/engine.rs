@@ -1,7 +1,7 @@
 //! One routing cycle with an injected clock, RouterOS client and RAM heartbeat.
 //! Production uses monomorphized adapters; tests need no CHR, files or delays.
 use crate::{
-    api::Api,
+    api::{Api, INTENT_LIST},
     model::{self, Config, Intent, Metrics},
 };
 use serde::Deserialize;
@@ -115,11 +115,16 @@ impl Engine {
         let cfg = self.config.as_ref().expect("configuration loaded above");
         let plan = model::choose(cfg, metrics)?;
         if self.mode == Mode::Active {
-            let Some(bridge) = metrics.container.as_ref().filter(|b| b.protocol == 1) else {
+            let Some(bridge) = metrics.container.as_ref().filter(|b| b.protocol == 2) else {
                 return Ok(Outcome::waiting(
-                    "waiting for provisioned RouterOS bridge protocol1; no writes",
+                    "waiting for provisioned RouterOS RAM bridge protocol2; no writes",
                 ));
             };
+            if bridge.intent_list != INTENT_LIST {
+                return Ok(Outcome::waiting(
+                    "waiting for RAM inbox metadata; no writes or heartbeat",
+                ));
+            }
             if !bridge.owner_instance.is_empty()
                 && bridge.owner_instance != self.instance
                 && bridge.lease_remaining_seconds > 0
@@ -150,7 +155,7 @@ impl Engine {
                     .checked_add(1)
                     .ok_or_else(|| invalid("Intent sequence exhausted"))?;
                 let intent = Intent {
-                    protocol: 1,
+                    protocol: 2,
                     instance: &self.instance,
                     seq: self.seq,
                     boot_id: &bridge.boot_id,
@@ -160,7 +165,7 @@ impl Engine {
                     selected: &plan,
                     release: false,
                 };
-                client.write_intent(&bridge.intent_file, &serde_json::to_string(&intent)?)?;
+                client.write_intent(&bridge.intent_list, &serde_json::to_string(&intent)?)?;
                 self.last_written = Some((bridge.boot_id.clone(), bridge.generation, plan.clone()));
                 self.last_claim = Some(clock());
             }
