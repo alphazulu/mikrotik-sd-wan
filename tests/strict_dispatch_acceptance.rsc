@@ -191,6 +191,32 @@ $sdwanStrictDispatch
 :local editedJob ($sdwanStrictSlots->0)
 $sdwanStrictContractCheck name="changed expectation probes immediately" ok=((($editedJob->"key") = "wan1/a") && (($editedJob->"signature") != ($concurrentJob->"signature")))
 $sdwanStrictCancel
+# A completed HTTP request can be newer than the controller's cycle timestamp.
+# Use an actual UP Netwatch primer and the real acceptance helper, with its
+# signature, generation, object ID and resolved binding checks left intact.
+:global sdwanProbeAccepted
+:global sdwanStrictProbeSignature
+:local clockProbe {"name"="clock";"type"="http-get";"host"="127.0.0.1";"port"=8728;"http_expected_body"="healthy\n"}
+/tool/netwatch/add type=tcp-conn host=127.0.0.1 port=8728 interval=1s startup-delay=0s start-delay=0s comment="sdwan:v1:probe:wan1:clock"
+:local clockPid [/tool/netwatch/find where comment="sdwan:v1:probe:wan1:clock"]
+:set attempts 0
+:while (([/tool/netwatch/get $clockPid status] != "up") && ($attempts < 100)) do={ :delay 50ms; :set attempts ($attempts + 1) }
+:local clockWan ($sdwanRuntimeWANs->0)
+:local clockHealth {"strict_probe_interval_seconds"=10;"strict_probe_timeout_ms"=2000}
+:local cycleNow ([:tonsec [/system/resource/get uptime]] / 1000000000)
+:delay 1200ms
+:local evidence {"up"=true;"reason"="verified";"generation"=$sdwanStrictGeneration;"source"=($clockWan->"address");"gateway"=($clockWan->"route_gateway");"probe_id"=[:tostr $clockPid];"signature"=[$sdwanStrictProbeSignature wan=$clockWan probe=$clockProbe health=$clockHealth];"uptime_seconds"=([:tonsec [/system/resource/get uptime]] / 1000000000)}
+:set ($sdwanStrictResults->"wan1/clock") $evidence
+:local accepted [$sdwanProbeAccepted pid=$clockPid probe=$clockProbe wan=$clockWan health=$clockHealth now=$cycleNow]
+$sdwanStrictContractCheck name="commit newer than cycle timestamp is fresh" ok=((($accepted->"up") = true) && (($accepted->"reason") = "verified") && (($accepted->"age_seconds") >= 0))
+:set ($evidence->"uptime_seconds") (([:tonsec [/system/resource/get uptime]] / 1000000000) - 24)
+:set ($sdwanStrictResults->"wan1/clock") $evidence
+:set accepted [$sdwanProbeAccepted pid=$clockPid probe=$clockProbe wan=$clockWan health=$clockHealth now=([:tonsec [/system/resource/get uptime]] / 1000000000)]
+$sdwanStrictContractCheck name="expired evidence remains rejected" ok=((($accepted->"up") = false) && (($accepted->"reason") = "strict-stale") && (($accepted->"age_seconds") > 23))
+:set ($evidence->"uptime_seconds") (([:tonsec [/system/resource/get uptime]] / 1000000000) + 10)
+:set ($sdwanStrictResults->"wan1/clock") $evidence
+:set accepted [$sdwanProbeAccepted pid=$clockPid probe=$clockProbe wan=$clockWan health=$clockHealth now=([:tonsec [/system/resource/get uptime]] / 1000000000)]
+$sdwanStrictContractCheck name="future evidence remains rejected" ok=((($accepted->"up") = false) && (($accepted->"reason") = "strict-stale") && (($accepted->"age_seconds") < 0))
 :set sdwanStrictDispatchContractJSON [:serialize to=json value=$sdwanStrictContractRows options=json.no-string-conversion]
 }
 }

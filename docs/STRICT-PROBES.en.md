@@ -66,13 +66,18 @@ Do not duplicate targets to inflate quorum: host/type/port must be distinct.
 Evidence older than `2 * interval_seconds + 3` seconds is rejected. That limit
 is unchanged by early slot release. Failed or stale evidence cannot become UP
 merely because the underlying TCP port responds.
+Age is sampled from the current RouterOS uptime after reading the evidence.
+A worker can finish after the controller samples the start of its cycle; using
+that older cycle timestamp would incorrectly reject a fresh result as future
+evidence. Actual future timestamps are still rejected.
 
 ## Reproduce the narrow dispatcher contract
 
 Use a disposable CHR 7.24.5 with an empty script/scheduler/Netwatch baseline and
 identity `sdwan-strict-contract`. Expose its API only through a loopback forward.
-The test imports helpers and creates controlled named jobs and disabled Netwatch
-objects. Discard the test VM afterward; this is not a deployment test on an
+The test imports helpers, creates controlled named jobs and disabled Netwatch
+objects, and enables one loopback TCP primer to test evidence age. Discard the
+test VM afterward; this is not a deployment test on an
 existing SD-WAN router.
 
 ```sh
@@ -85,15 +90,20 @@ python3 tests/strict_dispatch_acceptance.py \
 Credentials use `{"username":"admin","password":"YOUR_LAB_PASSWORD"}`.
 Keep credentials and raw results outside the public tree.
 
-The 29 actual RSC cases cover completed/unfinished slot ownership, late timers,
+The 32 actual RSC cases cover completed/unfinished slot ownership, late timers,
 all callback identity fences, obsolete Netwatch IDs, overdue failure, exact job
 name cancellation, the two-slot bound, overlapping dispatchers and the native
 controller's actual entry guard. A test-only scheduling barrier also verifies
 that a concurrent callback survives result pruning and that an edited expectation
 triggers an immediate check. The report records both the original source hash
-and the instrumented test payload hash. The runner and the baseline/candidate comparison
-passed on CHR 7.24.5. The old library failed the early-release case.
+and the instrumented test payload hash. Three cases check a commit newer than
+the caller's cycle timestamp, expired evidence and actual future evidence.
+The runner and the baseline/candidate comparison passed on CHR 7.24.5. Earlier
+baselines exposed the slot and reconciliation defects; the latest comparison
+isolated the clock defect, with only the delayed fresh commit failing in the
+baseline and all 32 cases passing in the candidate.
 This contract does not establish six-WAN freshness, all VPN failover scenarios,
 hardware performance or a 48-hour soak result.
 
-[Configuration](CONFIGURATION.en.md) · [Live changes](LIVE-CONFIGURATION.en.md)
+[Configuration](CONFIGURATION.en.md) · [Live changes](LIVE-CONFIGURATION.en.md) ·
+[RouterOS scripting manual](https://manual.mikrotik.com/docs/developer-guides/scripting/)

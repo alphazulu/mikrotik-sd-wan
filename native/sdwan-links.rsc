@@ -411,7 +411,8 @@
         :if ((($evidence->"generation") != $sdwanStrictGeneration) || (($evidence->"probe_id") != [:tostr $pid]) || (($evidence->"source") != ($wan->"address")) || (($evidence->"gateway") != ($wan->"route_gateway"))) do={ :return $result }
         :local interval ($health->"strict_probe_interval_seconds")
         :if ([:typeof $interval] != "num") do={ :set interval 10 }
-        :local age ($now - ($evidence->"uptime_seconds"))
+        # A worker may commit after the caller sampled its cycle start time.
+        :local age (([:tonsec [/system/resource/get uptime]] / 1000000000) - ($evidence->"uptime_seconds"))
         :set ($result->"age_seconds") $age
         :if (($age < 0) || ($age > (($interval * 2) + 3))) do={ :set ($result->"reason") "strict-stale"; :return $result }
         :set ($result->"reason") ($evidence->"reason")
