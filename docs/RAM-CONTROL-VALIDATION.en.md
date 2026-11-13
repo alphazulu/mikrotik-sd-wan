@@ -1,8 +1,6 @@
 # RAM-channel acceptance for 0.4.0
 
 [Русский](RAM-CONTROL-VALIDATION.md) | English
-CI candidate: lab-build artifacts differ from CI archives; the catalog now pins CI. Separate execution acceptance of the CI image is pending before release.
-
 
 Completed November 13, 2026. Container intent now uses a dynamic Address List
 instead of a file. [Contract and upgrades](RAM-CONTROL.en.md).
@@ -16,6 +14,7 @@ instead of a file. [Contract and upgrades](RAM-CONTROL.en.md).
 | Native adapter, CHR 7.24.5 | 27 fence/replay/release, missing/static/ambiguous inbox, old-protocol and legacy-file isolation checks |
 | Real container on CHR | 26 startup/failover/return/fallback/restart/reboot/generation/version-mismatch checks |
 | Independent traffic replay | 24 TCP/UDP flows across primary, backup, return, native fallback, reboot and rollback: replies, full CT tuples, marks and NAT |
+| Exact CI image | 11 additional checks and 20 TCP/UDP flows on CHR 7.24.5: protected native maintenance, hash/ID-verified import, failover, return, native fallback, restart and reboot; independent CT/reply/mark/NAT replay |
 | Broken adapter | Missing lease metadata prevents commit despite ACK; rollback/reboot restores exact files and active configuration |
 | Dedicated hAP ax2, 7.25.1 | Transport control: six RAM updates produced 0 sectors, six file updates 24 sectors; persistent API session, configuration preserved |
 
@@ -68,6 +67,14 @@ It binds coverage, six builds and the accepted executable source. The release
 catalog and `SHA256SUMS` pin individual archives. Final CHR report SHA256:
 `1dd558642ffee36fca4d8c201fbbdf06ab5ff784f91f5fe3db4304535cce82d0`.
 Raw evidence remains private.
+
+Lab-built and CI images differ byte for byte. The release catalog pins the six
+archives from CI run `43359176132`; separate acceptance executed this exact CI
+image rather than the lab binary. Accepted amd64/base image ID:
+`3666fdfaad0134e58da75b025611095c08b73d7f2087e51c11bea5af6c3e67bd`.
+Gzip archive SHA256: `9453689636aa651c1504ad46b059eeeb2d348a5476406d6b78264366b325dd57`.
+Separate CI-image report SHA256: `c3debbc57c6580833a58ef3afaf96b7b07b8c84b743c62614f4e3481a521afd8`.
+
 
 Failed attempts were retained and excluded from PASS: empty inbox results through
 `print as-value` in the first adapter; singleton device-mode lists; an occupied
