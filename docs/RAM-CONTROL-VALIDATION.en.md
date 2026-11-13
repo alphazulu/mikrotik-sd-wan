@@ -1,6 +1,8 @@
 # RAM-channel acceptance for 0.4.0
 
 [Русский](RAM-CONTROL-VALIDATION.md) | English
+CI candidate: lab-build artifacts differ from CI archives; the catalog now pins CI. Separate execution acceptance of the CI image is pending before release.
+
 
 Completed November 13, 2026. Container intent now uses a dynamic Address List
 instead of a file. [Contract and upgrades](RAM-CONTROL.en.md).
