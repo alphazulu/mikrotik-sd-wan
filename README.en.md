@@ -12,6 +12,9 @@ installation.
 
 In 0.4.0 container intent exchange moves to RAM. Six control updates on a dedicated hAP produced 0 written sectors versus 24 for a file. [Design and upgrading](docs/RAM-CONTROL.en.md) · [acceptance and limits](docs/RAM-CONTROL-VALIDATION.en.md).
 
+Full functional acceptance of the published ARM64 base image 0.4.0 on a dedicated hAP ax2: 26 checks and 72 TCP/UDP flows. [Results and limits](docs/HAP-AX2-04-VALIDATION.en.md).
+[Load, idle writes and negative UDP stress windows](docs/HAP-AX2-04-PERFORMANCE.en.md).
+
 The previous **0.3.0** implementation includes the web interface, VPN WANs and branch overlay.
 Uninterrupted 48-hour RSC/container acceptance and the separate **150/150-measurement**
 comparison passed, with independent lab-restoration checks.
