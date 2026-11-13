@@ -411,7 +411,8 @@
         :if ((($evidence->"generation") != $sdwanStrictGeneration) || (($evidence->"probe_id") != [:tostr $pid]) || (($evidence->"source") != ($wan->"address")) || (($evidence->"gateway") != ($wan->"route_gateway"))) do={ :return $result }
         :local interval ($health->"strict_probe_interval_seconds")
         :if ([:typeof $interval] != "num") do={ :set interval 10 }
-        :local age ($now - ($evidence->"uptime_seconds"))
+        # A worker may commit after the caller sampled its cycle start time.
+        :local age (([:tonsec [/system/resource/get uptime]] / 1000000000) - ($evidence->"uptime_seconds"))
         :set ($result->"age_seconds") $age
         :if (($age < 0) || ($age > (($interval * 2) + 3))) do={ :set ($result->"reason") "strict-stale"; :return $result }
         :set ($result->"reason") ($evidence->"reason")
@@ -589,13 +590,18 @@
         $sdwanStrictStopJob ownedName=$ownedName
         $sdwanStrictCommit slot=$slot job=$job up=(false) reason="strict-timeout"
     }
-    :set ($sdwanStrictSlots->$slot)
+    # Commit may yield to a dispatcher that has already recycled this slot.
+    :if ((($sdwanStrictSlots->$slot)->"token") = ($job->"token")) do={ :set ($sdwanStrictSlots->$slot) }
     :return true
 }
 :global sdwanStrictDispatch do={
+    # A slow tick must not let the next scheduled copy recycle its slots.
+    :local copies 0
+    :local ownedID [:tostr [/system/script/find where name="sdwan-strict-dispatch"]]
+    :foreach job in=[/system/script/job/print as-value] do={ :local owner [:tostr ($job->"script")]; :if (($owner = "sdwan-strict-dispatch") || (($ownedID != "") && ($owner = $ownedID))) do={ :set copies ($copies + 1) } }
+    :if ($copies > 1) do={ :return false }
     :global sdwanStrictAdoptLegacy
     :global sdwanStrictProbeSignature
-    :global sdwanStrictStopJob
     :global sdwanStrictStopJob
     :global sdwanStrictCommit
     :global sdwanConfigRaw
@@ -655,21 +661,24 @@
             }
         }
     }
-    :local results [:toarray ""]; :local dueTimes [:toarray ""]
-    :foreach key,item in=$desired do={
-        :local evidence ($sdwanStrictResults->$key)
-        :local retainDue false
-        :if (([:typeof $evidence] = "array") && (($evidence->"signature") = ($item->"signature"))) do={ :set ($results->$key) $evidence; :set retainDue true }
-        :foreach job in=$sdwanStrictSlots do={ :if ((($job->"key") = $key) && (($job->"signature") = ($item->"signature"))) do={ :set retainDue true } }
-        :if ($retainDue) do={ :set ($dueTimes->$key) ($sdwanStrictDue->$key) }
-    }
-    :set sdwanStrictResults $results; :set sdwanStrictDue $dueTimes
+    # Never republish a snapshot over concurrent worker commits. Retain keys
+    # still desired; the reader rejects old signatures until a new check wins.
+    :foreach key,evidence in=$sdwanStrictResults do={ :if ([:typeof ($desired->$key)] != "array") do={ :set ($sdwanStrictResults->$key) } }
+    :foreach key,due in=$sdwanStrictDue do={ :if ([:typeof ($desired->$key)] != "array") do={ :set ($sdwanStrictDue->$key) } }
     :local interval (($sdwanStrictConfig->"health")->"strict_probe_interval_seconds")
     :if ([:typeof $interval] != "num") do={ :set interval 10 }
     :local timeout (($sdwanStrictConfig->"health")->"strict_probe_timeout_ms")
     :if ([:typeof $timeout] != "num") do={ :set timeout 2000 }
     :foreach slot in={0;1} do={
         :local running ($sdwanStrictSlots->$slot)
+        # Completed requests no longer consume their entire timeout. Cancel the
+        # old named jobs before reusing the slot; callbacks still check tokens.
+        :if (([:typeof $running] = "array") && (($running->"finished") = true)) do={
+            :foreach prefix in={"sdwan-strict-worker-";"sdwan-strict-timeout-"} do={ :local ownedName ($prefix . $slot); $sdwanStrictStopJob ownedName=$ownedName }
+            :local current ($sdwanStrictSlots->$slot)
+            :if ((($current->"token") = ($running->"token")) && (($current->"generation") = ($running->"generation"))) do={ :set ($sdwanStrictSlots->$slot) }
+            :set running ($sdwanStrictSlots->$slot)
+        }
         :if (([:typeof $running] = "array") && (($nowNS - ($running->"started_ns")) > (($timeout + 3000) * 1000000))) do={
             :foreach prefix in={"sdwan-strict-worker-";"sdwan-strict-timeout-"} do={ :local ownedName ($prefix . $slot); $sdwanStrictStopJob ownedName=$ownedName }
             $sdwanStrictCommit slot=$slot job=$running up=(false) reason="strict-timeout"
@@ -690,7 +699,7 @@
                 :foreach other in=$sdwanStrictSlots do={ :if (($other->"key") = $key) do={ :set busy true } }
                 :local pid [/tool/netwatch/find where comment=($item->"tag")]
                 :local previous ($sdwanStrictResults->$key)
-                :if (([:typeof $previous] != "array") || (($previous->"probe_id") != [:tostr $pid]) || (($previous->"source") != ($item->"source")) || (($previous->"gateway") != ($item->"gateway"))) do={ :set due 0 }
+                :if (([:typeof $previous] != "array") || (($previous->"signature") != ($item->"signature")) || (($previous->"probe_id") != [:tostr $pid]) || (($previous->"source") != ($item->"source")) || (($previous->"gateway") != ($item->"gateway"))) do={ :set due 0 }
                 :if ((!$busy) && (([:typeof $due] != "num") || ($now >= $due)) && ([:len $pid] = 1)) do={
                     :set chosen true
                     :set sdwanStrictSequence ($sdwanStrictSequence + 1)

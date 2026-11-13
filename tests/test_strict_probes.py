@@ -42,5 +42,17 @@ class StrictProbeTests(unittest.TestCase):
         for wan in cfg['wans']:
             wan['probes']=[dict(wan['probes'][0],name='p'+str(i),port=48000+i,http_expected_body='ok') for i in range(6)]
         with self.assertRaisesRegex(ValueError,'At most 16'):validate(cfg)
+    def test_capacity_boundary_includes_incomplete_worker_round(self):
+        for count,interval,accepted in [(12,10,True),(13,10,False),(13,11,True),
+                                        (16,10,False),(16,11,False),(16,12,True)]:
+            with self.subTest(count=count,interval=interval):
+                cfg=load(ROOT/'config/sdwan.json')
+                cfg['health'].update(strict_probe_interval_seconds=interval,strict_probe_timeout_ms=2000)
+                probe=cfg['wans'][0]['probes'][0]
+                cfg['wans'][0]['probes']=[dict(probe,name='p'+str(i),port=49000+i,
+                    http_expected_body='healthy\n') for i in range(count)]
+                if accepted:validate(cfg)
+                else:
+                    with self.assertRaisesRegex(ValueError,'freshness budget'):validate(cfg)
 
 if __name__=='__main__':unittest.main()
