@@ -4,6 +4,9 @@
 
 **0.4.0:** the container RAM inbox passed CHR acceptance, with a dedicated hAP transport-write control. [26 runtime checks, 24 flows and limits](RAM-CONTROL-VALIDATION.en.md). Recursive routing without static-route switches remains a separate prototype. Historical 0.3 results and their source pins are retained below.
 
+Additional full ARM64 base 0.4.0 acceptance on hAP ax2 passed: 26 checks, 72 independently replayed TCP/UDP flows, reboot, generation and original-configuration restoration. [Results and limits](HAP-AX2-04-VALIDATION.en.md).
+[Load, idle writes and negative UDP stress windows](HAP-AX2-04-PERFORMANCE.en.md).
+
 
 Final-source dual-CGNAT validation passed: native/local-container WAN/NAT/SLA,
 direct cold container startup, two backend conversions and two orderly reboots.
