@@ -71,13 +71,48 @@ The original method had no separate healthy-SLA barrier before each UDP window.
 Later windows could therefore start during recovery from a previous failure.
 They describe a load-stress sequence rather than eight independent steady-path
 comparisons. A smaller common offered load and an explicit health barrier before
-each window are needed for clarification; this series is not retrospectively
+each window were used in the supplement below; this series is not retrospectively
 replaced with successful attempts.
 
 Writes were observed during these transitions: native 14/15/4/12 sectors,
 container 21/13/8/12. They cannot be attributed to idle RAM-inbox polling because
 the windows included state and route changes. Sector counters do not measure
 flash erase cycles or establish storage lifetime. [Remaining writes](RAM-CONTROL.en.md).
+
+## Supplement: the same 50 Mbit/s UDP load
+
+A separate set contains 12 windows: three modes, both directions, two 20-second
+repeats each, with a 1000-byte payload. Every window required ten consecutive
+seconds of healthy SLA and correct WAN selection beforehand. **All 12 windows
+qualify**; WAN selection remained stable. This supplements the original series
+without replacing its eight negative results.
+
+| Mode | Receiver up/down, Mbit/s | CPU up/down | Mean UDP loss up/down | Sector increase across all four windows |
+|---|---:|---:|---:|---:|
+| Baseline | 49.81 / 50.00 | 20.80% / 20.70% | 0.3628% / 0.0040% | 0 |
+| Native RSC | 49.95 / 49.97 | 41.75% / 39.60% | 0.0824% / 0.0652% | 0 |
+| Local Rust base | 49.96 / 49.99 | 44.45% / 41.90% | 0.0592% / 0.0216% | 0 |
+
+Container memory-current reached 679,936 bytes, about 0.65 MiB, under this load.
+The measurement confirms a bounded steady 50 Mbit/s case in this fixture; it
+does not determine its maximum safe load. Lower loss in one short pair of
+repeats does not establish a mode's advantage.
+
+The first supplementary attempt retained eight usable baseline/native windows
+but stopped during container preparation: the synchronous deployment bootstrap
+exceeded the control API's 45-second timeout. After verified full restoration,
+only the four missing container windows were run separately. The preparation
+control session's timeout was increased to 120 seconds; the measurement observer
+kept its three-second timeout and one session without reconnections. Product
+code was unchanged. Both attempts restored the baseline and original files and
+cleaned up the temporary network. The first attempt remains FAILED; success of
+the 12 windows does not mean every preparation attempt succeeded.
+
+Independent replay of this supplement checked receiver bytes, CPU interval
+boundaries, memory-current, sector counters, WAN selection and ten-second health
+barriers from raw snapshots. SHA256 of the two original reports:
+`0a2c633c9bcdba2dfa053b8d0a7b0ea0ce99c4cbe7a864956d025553ec2c1b62`
+and `52aa0b334e5207f2e4cab8bd189010e325a0ccb81044dbf1b877e46e8720ea63`.
 
 ## Pins and independent assessment
 
